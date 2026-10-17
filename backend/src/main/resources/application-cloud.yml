@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: jdbc:mysql://${CLOUD_DB_HOST}:${CLOUD_DB_PORT:3306}/${CLOUD_DB_NAME}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=SERVER&connectTimeout=5000&socketTimeout=30000&sslMode=REQUIRED
+    username: ${CLOUD_DB_USERNAME}
+    password: ${CLOUD_DB_PASSWORD}
+melonhub:
+  seed-demo: false

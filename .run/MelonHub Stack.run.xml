@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="MelonHub Stack" type="CompoundRunConfigurationType">
+    <toRun name="MelonHub Backend" type="Application" />
+    <toRun name="MelonHub Frontend" type="js.build_tools.npm" />
+    <method v="2" />
+  </configuration>
+</component>

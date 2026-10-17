@@ -1,0 +1,21 @@
+server:
+  port: ${SERVER_PORT:8080}
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  error:
+    include-message: never
+spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:cloud}
+  config:
+    import: "optional:file:./.env[.properties],optional:file:../.env[.properties]"
+  flyway:
+    enabled: true
+  jackson:
+    time-zone: Asia/Shanghai
+melonhub:
+  admin-username: ${ADMIN_USERNAME:admin}
+  admin-password: ${ADMIN_PASSWORD}
+  seed-demo: ${SEED_DEMO:false}
+logging:
+  level:
+    org.flywaydb: WARN

@@ -1,0 +1,13 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="MelonHub Tests" type="JUnit" factoryName="JUnit">
+    <module name="rbac-service" />
+    <option name="PACKAGE_NAME" value="com.melonhub.rbac" />
+    <option name="TEST_OBJECT" value="package" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <envs>
+      <env name="SEED_DEMO" value="false" />
+      <env name="SPRING_PROFILES_ACTIVE" value="test" />
+    </envs>
+    <method v="2"><option name="Make" enabled="true" /></method>
+  </configuration>
+</component>
