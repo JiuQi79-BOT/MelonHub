@@ -3,5 +3,17 @@ spring:
     url: ${TEST_DB_URL}
     username: ${TEST_DB_USERNAME}
     password: ${TEST_DB_PASSWORD}
+  data:
+    redis:
+      database: 1
+management:
+  server:
+    port: -1
 melonhub:
   seed-demo: false
+  cache:
+    prefix: "melonhub-test:"
+  rate-limit:
+    login-per-minute: 10000
+  maintenance:
+    enabled: false
