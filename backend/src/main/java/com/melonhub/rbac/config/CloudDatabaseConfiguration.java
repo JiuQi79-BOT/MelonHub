@@ -12,15 +12,22 @@ import org.springframework.core.env.Environment;
 public class CloudDatabaseConfiguration {
     @Bean static BeanFactoryPostProcessor databaseTargetGuard(Environment env) {
         return beanFactory -> {
-            boolean test = Arrays.asList(env.getActiveProfiles()).contains("test");
+            var profiles = Arrays.asList(env.getActiveProfiles());
+            boolean test = profiles.contains("test");
             String database = test ? "melonhub_rbac_test" : "melonhub_rbac";
             try {
-                if (!test && !Arrays.asList(env.getActiveProfiles()).contains("cloud")) throw new IllegalArgumentException();
+                String target = test ? env.getProperty("TEST_DB_TARGET", "cloud") : profiles.contains("local") ? "local" : "cloud";
+                if (!Set.of("cloud", "local").contains(target)
+                        || profiles.contains("cloud") && profiles.contains("local")
+                        || !test && !profiles.contains(target)) throw new IllegalArgumentException();
+                String prefix = target.equals("local") ? "LOCAL_DB_" : "CLOUD_DB_";
+                String host = env.getRequiredProperty(prefix + "HOST");
+                if (target.equals("local") && !Set.of("127.0.0.1", "localhost").contains(host)) throw new IllegalArgumentException();
                 String url = env.getRequiredProperty("spring.datasource.url");
                 if (!url.startsWith("jdbc:mysql://")) throw new IllegalArgumentException();
                 URI uri = URI.create(url.substring(5));
-                if (!env.getRequiredProperty("CLOUD_DB_HOST").equalsIgnoreCase(uri.getHost())
-                        || (uri.getPort() == -1 ? 3306 : uri.getPort()) != Integer.parseInt(env.getProperty("CLOUD_DB_PORT", "3306"))
+                if (!host.equalsIgnoreCase(uri.getHost())
+                        || (uri.getPort() == -1 ? 3306 : uri.getPort()) != Integer.parseInt(env.getProperty(prefix + "PORT", "3306"))
                         || !uri.getRawPath().equals("/" + database) || uri.getRawUserInfo() != null || uri.getRawFragment() != null) throw new IllegalArgumentException();
                 var options = Arrays.stream(uri.getRawQuery().split("&")).map(option -> option.split("=", 2)).toList();
                 Set<String> allowed = Set.of("useUnicode", "characterEncoding", "serverTimezone", "connectTimeout", "socketTimeout", "sslMode");
@@ -30,7 +37,7 @@ public class CloudDatabaseConfiguration {
                 if (env.getRequiredProperty("spring.datasource.username").isBlank()
                         || env.getRequiredProperty("spring.datasource.password").isBlank()) throw new IllegalArgumentException();
             } catch (RuntimeException invalid) {
-                throw new IllegalStateException("Configure cloud MySQL credentials, TLS and the dedicated " + database + " schema in .env; startup stopped before Flyway");
+                throw new IllegalStateException("Configure the selected cloud/local MySQL endpoint, credentials, TLS and the dedicated " + database + " schema in .env; startup stopped before Flyway");
             }
         };
     }

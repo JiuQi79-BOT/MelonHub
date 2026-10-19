@@ -1,97 +1,96 @@
 # MelonHub 统一权限平台
 
-Vue + TypeScript + Spring Boot + MySQL 的内部统一权限服务，按 **部门 × 软件** 隔离，严格保持 RBAC0：用户与角色、角色与权限均为多对多，没有用户直接权限、角色继承或业务逻辑。
+企业内部统一权限服务，为 20 多个业务软件提供角色、权限配置和在线授权判断。按 **部门 × 软件** 隔离，严格保持 RBAC0：用户与角色、角色与权限均为多对多，没有用户直接权限、角色继承或业务逻辑。
+
+技术栈：Spring Boot 3.5 + Spring JDBC + Flyway + MySQL（唯一数据源）+ Redis（权限缓存与全局限流），前端 Vue 3 + TypeScript + Ant Design Vue 4，业务侧提供 Java SDK。
+
+当前本机位于 `D:\MelonHub`，通过 `local` 配置复用 Docker 的 `xmudemo-mysql`，权限缓存使用本项目专用的 `melonhub-redis` 容器。原有 `cloud` 配置保留，两者显式选择。
+
+## 主要能力
+
+- **在线授权**：业务后端用 API Key 为已认证用户创建权限上下文，每次操作前批量校验权限编码；Redis 缓存加速，授权变更即时失效，Redis 故障时自动回退 MySQL。
+- **授权治理**：角色分配可设有效期并自动到期；员工经业务系统申请角色，管理员在审批中心批准或驳回；定期权限复核，关闭时回收标记的授权；即将到期列表与权限反查。
+- **变更通知**：每个软件可登记 Webhook，授权变更以事务外盒方式异步推送，带 HMAC-SHA256 签名、退避重试和投递记录。
+- **批量与迁移**：按部门跨页选人、一次追加多个角色并个别调整；用户批量导入（部分成功、逐行报错）；普通列表 CSV 导出；按软件导出、导入权限清单；跨部门复制授权配置。
+- **高峰保护**：校验路径不加锁；按软件限流（默认每秒 1000 次，可按软件单独设置），经 Redis 跨实例共享额度，Redis 不可用时回退实例内限流；连接池与锁等待快速失败并返回 `Retry-After`。
+- **企业控制台**：14 个页面，涵盖组织与软件、授权管理、审批与复核、权限诊断、审计、系统状态、管理员账号和接入指南；明暗主题、全局搜索（Ctrl/⌘+K）、分页搜索与审计导出。
+- **分级管理与登录安全**：超级管理员、平台管理员、软件管理员（只管被授权的软件）、审计员；登录锁定、空闲超时、可选 TOTP 两步验证。
+- **密钥管理**：每个软件可有多个 API Key，支持有效期、单独吊销、不停机轮换和紧急轮换。
+- **审计**：记录变更详情与来源 IP，审计记录封存为 SHA-256 哈希链，可在控制台校验。
+- **可运维**：健康检查区分数据库与缓存状态，`127.0.0.1:8081` 提供 Prometheus 指标，过期数据、到期授权、Webhook 记录和审计自动清理。
+
+## 文档
+
+- **[项目使用说明书](doc/使用说明书.md)**：启停、控制台各页面、从零建立授权链、常见问题。
+- [本地 Docker 运行说明](doc/本地Docker运行.md)：MySQL 与 Redis 容器、`.env` 配置、排查。
+- [接口说明](doc/API.md)：业务 API、Webhook、管理 API、错误码、限流和监控。
+- [架构说明](doc/ARCHITECTURE.md)：权限模型、缓存失效协议、授权治理、高峰保护、信任边界。
+- [验证记录](doc/验证记录.md)：测试、端到端、双实例、浏览器检查以及历史压测与故障演练结果。
+- [Java SDK 说明](sdk/java/README.md)：业务后端接入客户端、Spring Boot 注解与 Webhook 验签。
 
 ## 快速使用
 
-- 双击根目录 [start-all.cmd](start-all.cmd) 一键启动前后端，检查云数据库与代理后自动打开浏览器。
-- 双击 [stop-all.cmd](stop-all.cmd) 停止本项目服务，保留云端 MySQL 和其他程序。
-- 完整操作流程、各模块目的、授权示例和问题处理见 **[项目使用说明书](doc/使用说明书.md)**。
-- 接口开发见 [中文 API 说明](doc/API.md)，分层与权限原理见 [中文架构说明](doc/ARCHITECTURE.md)。
-- 实测范围和结果见 [验证记录](doc/验证记录.md)。
+1. 启动 Docker Desktop。
+2. 根据 `.env.example` 配置根目录 `.env`（数据库凭据、`ADMIN_PASSWORD` 12–100 个字符且不超过 72 字节、自行生成的 `REDIS_PASSWORD`）。不要提交、分享或打印该文件。
+3. 双击 [start-all.cmd](start-all.cmd)：拉起 MySQL 与 Redis 容器、按需构建，启动前后端并检查健康后打开浏览器。
+4. 访问 `http://127.0.0.1:5174`，用 `.env` 中的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录（初始超级管理员）。建议随后在账号菜单中启用两步验证。
+5. 双击 [stop-all.cmd](stop-all.cmd) 停止本项目服务和专用 Redis，保留共享 MySQL 和其他程序。
 
-命令行可执行 `./scripts/start-all.ps1 -NoBrowser` 和 `./scripts/stop-all.ps1`。前端固定地址为 `http://127.0.0.1:5174`，端口被其他程序占用时明确报错，不自动切换；后台日志在 `.local/logs/`。启动器会复用健康实例，源码或配置更新后先停再启；`-Rebuild` 可强制打包后端。
-
-启动后端会建立云端数据库连接，停止后端会释放连接，保存的数据保留。已实测项目库连接数为启动后 10、停止后 0、重启后 10；云端 MySQL 本身继续运行。
+命令行可执行 `./scripts/start-all.ps1 -NoBrowser` 和 `./scripts/stop-all.ps1`。前端固定 5174、后端固定 8080，端口被其他程序占用时明确报错，不自动切换。启动器会复用健康实例，源码或配置更新后先停再启；`-Rebuild` 可强制打包后端。后台日志在 `.local/logs/`。
 
 ## 在 IDEA 中运行
 
-1. 打开项目根目录 `D:\PersonalStudy\MelonHub`，导入根目录 `pom.xml`。推荐 SDK 为 `D:\jdk21`，源码编译目标为 Java 17。
-2. 根据 `.env.example` 配置根目录 `.env`。本机已保存有效的云端连接和管理员凭据；不要将该文件提交、分享或打印到日志。管理员密码至少 12 位。
-3. 首次运行执行 `npm --prefix frontend install`。
-4. 选择 **MelonHub Backend** 启动或调试后端；选择 **MelonHub Frontend** 启动前端。支持 npm 的 IDEA 可用 **MelonHub Stack** 同时启动两者。通过 Run/Debug 面板停止或重启。
-5. 打开 `http://127.0.0.1:5174`，使用 `.env` 的 `ADMIN_USERNAME` 和 `ADMIN_PASSWORD` 登录。前端固定使用 5174，被占用时先处理冲突再启动。
+1. 打开项目根目录，导入根目录 `pom.xml`，SDK 选择 Java 17（当前为 `C:\Program Files\Java\jdk-17`）。
+2. 首次运行执行 `npm --prefix frontend ci --ignore-scripts`（原因见 [本地 Docker 运行说明](doc/本地Docker运行.md)）。
+3. 确保 MySQL 与 Redis 容器在运行（可先执行一次一键启动后停止前后端，或在 Docker Desktop 中启动）。
+4. 选择 **MelonHub Backend**、**MelonHub Frontend**，或支持 npm 的 IDEA 用 **MelonHub Stack** 同时启动；在 Run/Debug 面板停止或重启。
+5. **MelonHub Tests** 使用 `TEST_DB_TARGET` 选择的独立测试库。
 
-**MelonHub Tests** 使用独立云端测试库。共享运行配置位于 `.run/`，不含密码或本地测试库 URL。应用从根目录或 backend 工作目录加载 `.env`，已有进程环境变量优先；排查时注意 IDEA 是否继承了旧变量。
+共享运行配置位于 `.run/`，不含密码。应用从根目录或 backend 工作目录加载 `.env`，已有进程环境变量优先。无法识别路径的 IDEA 实例请在 Run/Debug 面板管理，避免重复占用 8080。IDEA 图形界面启动按钮尚未实测。Java SDK `sdk/java` 是独立 Maven 工程，不在根 `pom.xml` 聚合中，需要时单独导入。
 
-命令行启动的预览可用 `./scripts/stop-all.ps1` 停止，旧 `stop-local.ps1` 兼容转到该入口。脚本只停止能够确认属于本项目的进程；无法识别路径的 IDEA 实例请在 Run/Debug 面板管理。避免重复占用 8080。
+## 数据库
 
-## 云端数据库
-
-运行环境默认使用 `cloud` 配置，连接已有华为云 Swarm 中的 MySQL **9.2.0**，强制 TLS，不依赖本机 MySQL。两台节点的发布端口指向同一个数据库实例。
-
-- 正式项目库：`melonhub_rbac`。
-- 独立测试库：`melonhub_rbac_test`。
-- 两库使用 `utf8mb4` / `utf8mb4_unicode_ci`，Flyway V1 创建 13 张业务/认证/审计表及 1 张迁移历史表。
-- 不重新初始化已有 MySQL，不执行实验初始化 SQL，不修改其他应用的数据。
-- 演示数据关闭：`SEED_DEMO=false`。空库通过控制台创建部门、软件和用户。
-
-| 字段 | 用途 |
-| --- | --- |
-| `CLOUD_DB_HOST/PORT/NAME` | 云端入口和固定项目库名 |
-| `CLOUD_DB_USERNAME/PASSWORD` | MySQL 凭据，当前按用户要求使用 root |
-| `SWARM_MANAGER_HOST/SWARM_WORKER_HOST` | 集群节点地址，仅诊断脚本使用 |
-| `SWARM_SSH_USERNAME/PASSWORD/PORT` | SSH 凭据，与数据库密码分别配置 |
-| `SWARM_CONFIG_PATH` | 已有部署配置路径 |
-| `TEST_DB_URL/USERNAME/PASSWORD` | 同一云端实例上的独立测试库，URL 必须带 TLS |
-
-`.env.example` 只有占位值。`application-cloud.yml` 不含真实地址或凭据。运行前保护会核对配置的云端主机、端口、固定库名和 TLS；错误配置会在 Flyway 前停止，不回退本地数据库。
+- 正式库 `melonhub_rbac`，独立测试库 `melonhub_rbac_test`，`utf8mb4` / `utf8mb4_unicode_ci`，连接强制 TLS。
+- 表结构由 Flyway 管理：V1 为 RBAC0、上下文、管理员和审计；V2 增加管理员角色、多 API Key、审计详情与查询索引；V3 增加角色分配有效期、软件限额、角色申请、权限复核、Webhook 与投递队列、管理员两步验证和审计哈希链；V4、V5 补齐封存顺序与锚点、治理历史快照、分配标识和会话凭据版本。
+- 不重新初始化已有 MySQL，不执行实验初始化 SQL，不修改其他应用的数据；`SEED_DEMO=false`，空库通过控制台创建数据。
+- 启动保护在 Flyway 前核对所选主机、端口、固定库名和 TLS，错误配置直接停止，不自动切换环境；`local` 只允许回环地址。
+- 选择 `cloud` 时连接已有华为云 Swarm 中的 MySQL 9.2.0，字段见 `.env.example` 的 `CLOUD_DB_*`、`SWARM_*`；`./scripts/check-cloud-database.ps1` 只读检查云端。
 
 ## 命令与验证
 
 ```powershell
-./scripts/check-cloud-database.ps1
-mvn -f backend/pom.xml package -DskipTests
-./scripts/start-backend.ps1
-```
-
-另一终端启动前端：
-
-```powershell
-npm --prefix frontend run dev
-```
-
-测试和前端构建：
-
-```powershell
 ./scripts/test-backend.ps1
 npm --prefix frontend run build
+mvn -f sdk/java/pom.xml -B -ntp test
+Invoke-RestMethod http://127.0.0.1:8080/api/health
 ```
 
-连接检查是只读操作。测试脚本与 IDEA JUnit 均只允许云端 `melonhub_rbac_test`，目标不符合要求时直接失败。16 项集成测试的业务数据随事务回滚；Flyway 和测试管理员初始化保留在测试库。
+2026-10-19 最新复验：**121 项后端测试、35 项 Java SDK 测试通过**（0 失败、0 错误、0 跳过）；前端会话竞态用例、类型检查与构建通过。批量授权、个别调整、普通列表导出与 Webhook 编辑的浏览器检查见 [验证记录](doc/验证记录.md) 第 1.0 节。本轮 Docker Desktop 的 Redis 端口转发异常，缓存测试通过临时通道连接同一个专用容器完成；正常入口仍按既有逻辑回退数据库。此前的 38 项端到端、6 项补充检查、14 页浏览器检查及更早的压测、双实例和故障演练均保留为历史记录。
 
-2026-10-18 已完成 JDK 21 后端打包、前端生产构建和云端 **25 项测试（16 项集成 + 9 项配置保护），0 失败、0 错误、0 跳过**。后端健康接口 `http://127.0.0.1:8080/api/health` 返回 `status=UP`、`database=UP`、`model=RBAC0`。浏览器新增与授权、部门切换、直接云端 SQL 回读及清理均已验证。
+测试脚本与 IDEA JUnit 只允许所选入口的 `melonhub_rbac_test`，错误目标直接失败；测试业务数据随事务回滚或在用例结束时清理。
 
-JDBC 使用 `serverTimezone=SERVER` 读取实际会话时区，修复审计显示偏移与数据库过期判断偏差，不修改 Linux 或 MySQL 全局时区。回归用例确认创建时间、上下文 1 小时及管理员会话 8 小时的实际数据库期限。
+## 目录
 
-当前 Flyway 对 MySQL 9.2 会输出已测试版本范围警告；实际 V1 迁移及本项目测试已通过，不能据此宣称其全部功能与该版本完全兼容。
-
-## 目录与行为
-
-后端根包 `com.melonhub.rbac` 仅保留启动入口，按职责分层：
-
-| 包 | 职责 |
+| 路径 | 职责 |
 | --- | --- |
-| `controller` | HTTP 参数、响应和路由 |
-| `service` | RBAC0 规则、事务、上下文失效和认证流程 |
-| `dao` | JDBC、SQL、持久化与数据库锁 |
-| `dto` | 请求类型与校验 |
-| `security` | API 守卫、凭据生成与哈希 |
-| `exception` | 错误类型与统一响应 |
-| `config` | 数据库目标保护、可选演示初始化 |
+| `backend/.../controller` | HTTP 路由：控制台、授权治理、管理员账号、登录与健康、业务 API |
+| `backend/.../service` | RBAC0 规则、事务、上下文与校验、认证与两步验证、授权治理、Webhook、审计哈希链、定时清理 |
+| `backend/.../dao` | JDBC、SQL、持久化与数据库锁 |
+| `backend/.../cache` | Redis 权限缓存与失效协议 |
+| `backend/.../security` | 统一鉴权、全局与实例内限流、TOTP、管理员权限、凭据生成与哈希 |
+| `backend/.../dto`、`exception`、`config` | 请求校验、统一错误、数据库目标保护与 Redis 配置 |
+| `backend/src/main/resources/db/migration` | Flyway 迁移 V1–V5 |
+| `frontend/src` | 控制台页面、共享组件、主题、状态与请求封装 |
+| `sdk/java` | Java 业务侧 SDK（独立 Maven 工程） |
+| `scripts` | 一键启停、Redis 容器管理、测试与云端检查 |
+| `doc` | 中文文档 |
 
-前端位于 `frontend/src`，迁移位于 `backend/src/main/resources/db/migration`，脚本位于 `scripts`。`.local`、`output`、`target`、`dist` 为忽略的工具环境、验证产物或构建产物。
+`.local`、`output`、`target`、`dist`、`node_modules` 为忽略的工具环境、验证产物或构建产物。
 
-用户的当前部门是全局状态，跨软件、跨设备共享。切换部门后，该用户旧部门上下文立即失效；切回也不会恢复旧 token。每次权限校验实时查询关联关系，业务软件必须在每次受保护操作前校验。前端 `/api` 代理到本机后端 8080，后端再通过 TLS 访问云端数据库。
+## 关键约定
 
-详见 [项目使用说明书](doc/使用说明书.md)、[架构与信任边界](doc/ARCHITECTURE.md) 和 [业务 API](doc/API.md)。
+- 用户的当前部门是全局状态，跨软件、跨设备共享。切换部门后该用户旧部门的上下文立即失效，切回也不恢复旧 token。
+- 业务软件必须在每次受保护操作前校验，不能缓存允许结果；网络错误或未知权限一律按拒绝处理。
+- API Key 只保存在业务后端，不能下发到浏览器或客户端。
+- Webhook 只用于提醒业务侧清理缓存或会话，接收方必须先验签；授权结论始终以在线校验为准。
+- Redis 只是缓存和限流计数，可以随时清空；MySQL 是唯一数据源。

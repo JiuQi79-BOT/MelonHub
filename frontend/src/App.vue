@@ -1,48 +1,173 @@
 <script setup lang="ts">
-import { ref,onMounted,onBeforeUnmount } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { LayoutDashboard,AppWindow,Building2,Users,ShieldCheck,KeyRound,ScrollText,Braces,ChevronRight,ChevronDown,LogOut,Menu,CheckCircle2,AlertCircle,ArrowRight,LoaderCircle,PanelLeftClose,LockKeyhole } from 'lucide-vue-next'
-import { api,json } from './api'
+import zhCN from 'ant-design-vue/es/locale/zh_CN'
+import {
+  ApartmentOutlined, ApiOutlined, AppstoreOutlined, AuditOutlined, DashboardOutlined, DownOutlined, ExperimentOutlined,
+  LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MonitorOutlined, ReconciliationOutlined,
+  SafetyOutlined, ScheduleOutlined, TeamOutlined, UserOutlined,
+} from '@ant-design/icons-vue'
+import { get, send, session } from './api'
 import { useHub } from './store'
-const hub=useHub(),route=useRoute(),router=useRouter()
-const authenticated=ref(false),initializing=ref(true),username=ref('admin'),password=ref(''),loginError=ref(''),loggingIn=ref(false),mobileOpen=ref(false),accountOpen=ref(false)
-const nav=[{path:'/',title:'权限概览',icon:LayoutDashboard},{path:'/applications',title:'软件管理',icon:AppWindow},{path:'/departments',title:'部门管理',icon:Building2},{path:'/users',title:'用户管理',icon:Users},{path:'/roles',title:'角色管理',icon:ShieldCheck},{path:'/permissions',title:'权限管理',icon:KeyRound},{path:'/audit',title:'审计日志',icon:ScrollText},{path:'/integration',title:'API 联调',icon:Braces}]
-async function login() {
-  loggingIn.value=true;loginError.value=''
-  try {const result=await api<{token:string;username:string}>('/auth/login',json('POST',{username:username.value,password:password.value}));sessionStorage.setItem('melonhub-token',result.token);username.value=result.username;password.value='';authenticated.value=true;await hub.load()}
-  catch(e) {loginError.value=(e as Error).message} finally {loggingIn.value=false}
-}
-async function logout() {try {await api('/auth/logout',{method:'POST'})} finally {expire();accountOpen.value=false;router.push('/')}}
-function expire() {authenticated.value=false;sessionStorage.removeItem('melonhub-token');hub.clear()}
-onMounted(async()=>{
-  window.addEventListener('session-expired',expire)
-  if(sessionStorage.getItem('melonhub-token'))try {const me=await api<{username:string}>('/auth/me');username.value=me.username;authenticated.value=true;await hub.load()}catch {expire()}
-  initializing.value=false
+import { antTheme } from './theme'
+import { cacheStatus, roleLabels } from './labels'
+import { isPhone, labelTables } from './responsive'
+import type { Principal } from './types'
+import LoginView from './components/LoginView.vue'
+import DomainPicker from './components/DomainPicker.vue'
+import PasswordModal from './components/PasswordModal.vue'
+import MfaModal from './components/MfaModal.vue'
+import GlobalSearch from './components/GlobalSearch.vue'
+import ThemeToggle from './components/ThemeToggle.vue'
+import EmptyState from './components/EmptyState.vue'
+
+const hub = useHub(), route = useRoute(), router = useRouter()
+const booting = ref(true), collapsed = ref(false), navOpen = ref(false), passwordOpen = ref(false), mfaOpen = ref(false), notice = ref('')
+let healthTimer: ReturnType<typeof setInterval> | undefined
+
+const compactEmpty = new Set(['Select', 'TreeSelect', 'Cascader', 'Transfer', 'AutoComplete', 'Mentions'])
+const renderEmpty = (name?: string) => h(EmptyState, { compact: !!name && compactEmpty.has(name) })
+const icon = (component: Component) => () => h(component)
+const menu = computed(() => {
+  const items: Record<string, unknown>[] = [
+    { key: '/', icon: icon(DashboardOutlined), label: '概览' },
+    { type: 'group', key: 'org', label: '组织与软件', children: [
+      { key: '/departments', icon: icon(ApartmentOutlined), label: '部门' },
+      { key: '/users', icon: icon(TeamOutlined), label: '用户' },
+      { key: '/applications', icon: icon(AppstoreOutlined), label: '软件接入' },
+    ] },
+    { type: 'group', key: 'grant', label: '授权治理', children: [
+      { key: '/approvals', icon: icon(ScheduleOutlined), label: '审批中心' },
+      { key: '/reviews', icon: icon(ReconciliationOutlined), label: '权限复核' },
+      { key: '/simulate', icon: icon(ExperimentOutlined), label: '权限诊断' },
+    ] },
+    { type: 'group', key: 'security', label: '安全与审计', children: [
+      { key: '/audit', icon: icon(AuditOutlined), label: '审计日志' },
+      { key: '/status', icon: icon(MonitorOutlined), label: '系统状态' },
+      ...(hub.isSuper ? [{ key: '/accounts', icon: icon(UserOutlined), label: '管理员账号' }] : []),
+    ] },
+    { type: 'group', key: 'dev', label: '开发接入', children: [{ key: '/integration', icon: icon(ApiOutlined), label: '接入指南' }] },
+  ]
+  return items
 })
-onBeforeUnmount(()=>window.removeEventListener('session-expired',expire))
+
+const healthBadge = computed(() => {
+  const h = hub.health
+  if (!h) return { status: 'default', text: '检测中' }
+  if (h.database !== 'UP') return { status: 'error', text: '数据库不可用' }
+  if (h.cache === 'DOWN' || h.cache === 'RECOVERING') return { status: 'warning', text: '缓存降级' }
+  return { status: 'success', text: '服务正常' }
+})
+const healthTip = computed(() => hub.health ? `数据库：${hub.health.database === 'UP' ? '正常' : '不可用'}；权限缓存：${cacheStatus[hub.health.cache]?.text ?? hub.health.cache}` : '')
+const initial = computed(() => (hub.me?.displayName || hub.me?.username || '?').slice(0, 1).toUpperCase())
+
+async function enter(principal: Principal) {
+  hub.signIn(principal)
+  notice.value = ''
+  await Promise.all([hub.loadLists(), hub.refreshHealth()])
+  clearInterval(healthTimer)
+  healthTimer = setInterval(() => { if (!document.hidden) hub.refreshHealth() }, 30_000)
+}
+function expire() {
+  clearInterval(healthTimer)
+  if (hub.me) notice.value = '登录已过期或已在其他位置下线，请重新登录'
+  hub.signOut()
+}
+function mfaChanged() {
+  clearInterval(healthTimer)
+  mfaOpen.value = false
+  hub.signOut()
+  notice.value = '两步验证已更新，请重新登录'
+}
+async function logout() {
+  try { await send('POST', '/auth/logout') } catch { /* the session is dropped locally either way */ }
+  clearInterval(healthTimer)
+  hub.signOut()
+  router.push('/')
+}
+function go(info: { key: string | number }) { navOpen.value = false; router.push(String(info.key)) }
+function home() { navOpen.value = false; router.push('/') }
+function toggleNav() {
+  if (isPhone.value) navOpen.value = !navOpen.value
+  else collapsed.value = !collapsed.value
+}
+watch(() => route.path, () => { navOpen.value = false })
+watch(isPhone, labelTables, { immediate: true })
+
+onMounted(async () => {
+  window.addEventListener('session-expired', expire)
+  if (session.token()) {
+    try { await enter(await get<Principal>('/auth/me')) } catch { hub.signOut() }
+  }
+  booting.value = false
+})
+onBeforeUnmount(() => { window.removeEventListener('session-expired', expire); clearInterval(healthTimer) })
 </script>
+
 <template>
-  <div v-if="initializing" class="boot"><LoaderCircle class="spin" :size="28" /><span>正在连接 MelonHub</span></div>
-  <main v-else-if="!authenticated" class="login-page">
-    <div class="login-brand"><img src="/brand.png" alt="" /><strong>MelonHub</strong><span>统一权限平台</span></div>
-    <section class="login-surface"><div class="login-emblem"><ShieldCheck :size="32" /></div><h1>登录管理控制台</h1><p class="muted">企业统一权限服务</p><form @submit.prevent="login"><label>管理员账号<input v-model="username" name="username" autocomplete="username" required maxlength="100" /></label><label>密码<input v-model="password" name="password" type="password" autocomplete="current-password" required maxlength="100" /></label><p v-if="loginError" class="inline-error" role="alert">{{loginError}}</p><button class="button primary" :disabled="loggingIn"><LoaderCircle v-if="loggingIn" :size="17" class="spin" /><span>{{loggingIn?'正在登录':'登录'}}</span><ArrowRight :size="17" /></button></form></section>
-    <footer><LockKeyhole :size="14" /> MelonHub 权限服务 · RBAC0</footer>
-  </main>
-  <div v-else class="app-layout">
-    <div v-if="mobileOpen" class="sidebar-scrim" @click="mobileOpen=false"></div>
-    <aside class="sidebar" :class="{open:mobileOpen}">
-      <RouterLink to="/" class="brand"><img src="/brand.png" alt="" /><div><strong>MelonHub</strong><span>统一权限平台</span></div><button class="icon-button mobile-only" aria-label="关闭导航" @click.prevent="mobileOpen=false"><PanelLeftClose :size="20" /></button></RouterLink>
-      <div class="workspace-label"><span class="workspace-mark">M</span><div><strong>企业工作空间</strong><span>权限管理控制台</span></div><span class="small-dot"></span></div>
-      <p class="nav-label">工作空间</p>
-      <nav aria-label="主导航"><RouterLink v-for="item in nav.slice(0,6)" :key="item.path" :to="item.path" :class="{active:route.path===item.path}" @click="mobileOpen=false"><component :is="item.icon" :size="19" /><span>{{item.title}}</span><span v-if="item.path==='/applications'" class="nav-count">{{hub.applications.length}}</span></RouterLink><p class="nav-label">开发与安全</p><RouterLink v-for="item in nav.slice(6)" :key="item.path" :to="item.path" :class="{active:route.path===item.path}" @click="mobileOpen=false"><component :is="item.icon" :size="19" /><span>{{item.title}}</span></RouterLink></nav>
-      <div class="sidebar-bottom"><div><ShieldCheck :size="18" /><strong>RBAC0</strong><span class="badge green">已启用</span></div><span>统一身份，独立权限域</span><div class="sidebar-version">MelonHub Console <span>v1.0.0</span></div></div>
-    </aside>
-    <div class="main-column">
-      <header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-only" title="打开导航" aria-label="打开导航" @click="mobileOpen=true"><Menu :size="20" /></button><span class="breadcrumb-workspace">工作空间</span><ChevronRight :size="14" /><strong>{{route.meta.title}}</strong></div><div class="topbar-right"><span class="service-status"><span class="small-dot" :class="{offline:!hub.health}"></span>{{hub.health?'服务运行正常':'服务连接异常'}}</span><span class="environment">本地环境</span><div class="account"><button class="account-button" @click="accountOpen=!accountOpen" :aria-expanded="accountOpen"><span class="avatar">A</span><span>{{username}}</span><ChevronDown :size="13" /></button><div v-if="accountOpen" class="account-menu"><span>平台管理员</span><button @click="logout"><LogOut :size="16" />退出登录</button></div></div></div></header>
-      <div class="scope-toolbar"><span class="scope-label"><Building2 :size="16" />当前隔离域</span><label class="scope-select"><span>部门</span><select v-model="hub.departmentId" aria-label="当前部门" @change="hub.loadScope"><option v-for="d in hub.departments" :key="d.id" :value="d.id">{{d.name}}</option><option v-if="!hub.departments.length" :value="0">暂无部门</option></select></label><span class="scope-separator">/</span><label class="scope-select"><span>软件</span><select v-model="hub.applicationId" aria-label="当前软件" @change="hub.loadScope"><option v-for="a in hub.applications" :key="a.id" :value="a.id">{{a.name}}</option><option v-if="!hub.applications.length" :value="0">暂无软件</option></select></label><span class="scope-lock"><LockKeyhole :size="13" />域间隔离</span><LoaderCircle v-if="hub.busy" class="spin scope-spinner" :size="16" /></div>
-      <main class="page-content"><RouterView :key="route.path" /></main>
-      <footer class="main-footer"><span>MelonHub 统一权限平台</span><span>RBAC0 <span class="footer-dot">·</span> Vue + Spring Boot</span></footer>
-    </div>
-  </div>
-  <Transition name="toast"><div v-if="hub.toast" class="toast" :class="{error:hub.toastError}" role="status"><AlertCircle v-if="hub.toastError" :size="18" /><CheckCircle2 v-else :size="18" />{{hub.toast}}</div></Transition>
+  <a-config-provider :locale="zhCN" :theme="antTheme" :render-empty="renderEmpty" :auto-insert-space-in-button="false" component-size="middle">
+    <div v-if="booting" class="boot"><a-spin /></div>
+    <LoginView v-else-if="!hub.me" :notice="notice" @signed-in="enter" />
+    <a-layout v-else class="shell">
+      <a-layout-sider v-if="!isPhone" v-model:collapsed="collapsed" :trigger="null" collapsible :width="228" :collapsed-width="64" breakpoint="lg" theme="light" class="sider">
+        <div class="logo" role="link" tabindex="0" @click="home" @keydown.enter="home">
+          <img src="/brand.png" alt="" />
+          <span v-show="!collapsed" class="logo-text">MelonHub</span>
+        </div>
+        <a-menu mode="inline" :items="menu" :selected-keys="[route.path]" class="nav" @click="go" />
+      </a-layout-sider>
+      <a-drawer v-else v-model:open="navOpen" placement="left" :width="264" :closable="false" root-class-name="nav-drawer">
+        <div class="logo" role="link" tabindex="0" @click="home" @keydown.enter="home">
+          <img src="/brand.png" alt="" />
+          <span class="logo-text">MelonHub</span>
+        </div>
+        <a-menu mode="inline" :items="menu" :selected-keys="[route.path]" class="nav" @click="go" />
+      </a-drawer>
+      <a-layout class="main">
+        <a-layout-header class="header">
+          <button type="button" class="icon-btn" :aria-label="isPhone ? '打开导航' : collapsed ? '展开导航' : '收起导航'" @click="toggleNav">
+            <MenuUnfoldOutlined v-if="isPhone || collapsed" /><MenuFoldOutlined v-else />
+          </button>
+          <img v-if="isPhone" src="/brand.png" alt="MelonHub" class="header-logo" @click="home" />
+          <a-breadcrumb class="crumb">
+            <a-breadcrumb-item v-if="route.meta.group">{{ route.meta.group }}</a-breadcrumb-item>
+            <a-breadcrumb-item>{{ route.meta.title }}</a-breadcrumb-item>
+          </a-breadcrumb>
+          <div class="header-right">
+            <GlobalSearch />
+            <DomainPicker v-if="route.meta.domain && !isPhone" />
+            <a-tooltip :title="healthTip">
+              <span class="health-pill" :class="healthBadge.status"><i />{{ healthBadge.text }}</span>
+            </a-tooltip>
+            <ThemeToggle />
+            <a-dropdown placement="bottomRight">
+              <button type="button" class="account">
+                <span class="avatar">{{ initial }}</span>
+                <span class="account-meta">
+                  <span class="account-name">{{ hub.me.displayName }}</span>
+                  <span class="account-role">{{ roleLabels[hub.me.role] }}</span>
+                </span>
+                <DownOutlined class="caret" />
+              </button>
+              <template #overlay>
+                <a-menu>
+                  <a-menu-item key="who" disabled>登录账号：{{ hub.me.username }} · {{ roleLabels[hub.me.role] }}</a-menu-item>
+                  <a-menu-divider />
+                  <a-menu-item key="mfa" @click="mfaOpen = true"><SafetyOutlined /> 两步验证{{ hub.me.mfaEnabled ? '（已启用）' : '' }}</a-menu-item>
+                  <a-menu-item key="password" @click="passwordOpen = true"><LockOutlined /> 修改密码</a-menu-item>
+                  <a-menu-item key="logout" @click="logout"><LogoutOutlined /> 退出登录</a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
+          </div>
+        </a-layout-header>
+        <div v-if="isPhone && route.meta.domain" class="domain-bar"><DomainPicker /></div>
+        <a-layout-content class="content">
+          <router-view v-slot="{ Component }"><component :is="Component" :key="route.path" /></router-view>
+        </a-layout-content>
+      </a-layout>
+    </a-layout>
+    <PasswordModal v-model:open="passwordOpen" />
+    <MfaModal v-model:open="mfaOpen" @changed="mfaChanged" />
+  </a-config-provider>
 </template>

@@ -1,21 +1,94 @@
 server:
   port: ${SERVER_PORT:8080}
   address: ${SERVER_ADDRESS:127.0.0.1}
+  shutdown: graceful
+  forward-headers-strategy: native
   error:
     include-message: never
+    whitelabel:
+      enabled: false
+  tomcat:
+    threads:
+      max: ${HTTP_MAX_THREADS:200}
+      min-spare: 20
+    accept-count: 200
+    max-connections: 8192
+    connection-timeout: 5s
 spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:cloud}
   config:
     import: "optional:file:./.env[.properties],optional:file:../.env[.properties]"
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   flyway:
     enabled: true
   jackson:
     time-zone: Asia/Shanghai
+  datasource:
+    hikari:
+      pool-name: melonhub-db
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+      minimum-idle: 5
+      # Fail fast under overload: callers get 503 + Retry-After instead of hanging for 30 s.
+      connection-timeout: 2000
+      validation-timeout: 1000
+      max-lifetime: 1500000
+      # A hot user row must not hold request threads for MySQL's default 50 s lock wait.
+      connection-init-sql: SET SESSION innodb_lock_wait_timeout=5
+  transaction:
+    default-timeout: 30s
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6380}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: 300ms
+      connect-timeout: 1s
+management:
+  server:
+    port: ${MANAGEMENT_PORT:8081}
+    address: 127.0.0.1
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  health:
+    redis:
+      enabled: ${CACHE_ENABLED:true}
 melonhub:
   admin-username: ${ADMIN_USERNAME:admin}
   admin-password: ${ADMIN_PASSWORD}
+  admin-password-reset: ${ADMIN_PASSWORD_RESET:false}
+  admin-security:
+    max-failures: 5
+    lock-minutes: 15
+    session-hours: 8
+    idle-minutes: ${ADMIN_IDLE_MINUTES:30}
   seed-demo: ${SEED_DEMO:false}
+  cache:
+    enabled: ${CACHE_ENABLED:true}
+    prefix: "melonhub:"
+  rate-limit:
+    application-per-second: ${APP_RATE_LIMIT:1000}
+    login-per-minute: 10
+    global: ${GLOBAL_RATE_LIMIT:true}
+  webhooks:
+    delivery: ${WEBHOOK_DELIVERY_ENABLED:true}
+    timeout-millis: 5000
+    max-attempts: 8
+    concurrency: 4
+  maintenance:
+    enabled: true
+  retention:
+    audit-days: ${AUDIT_RETENTION_DAYS:180}
+    webhook-days: ${WEBHOOK_RETENTION_DAYS:30}
 logging:
+  pattern:
+    level: "%5p [%X{requestId:-}]"
   level:
     org.flywaydb: WARN

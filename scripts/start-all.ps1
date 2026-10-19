@@ -28,16 +28,24 @@ try {
         if ($needsBuild) {
             $java = Get-MelonJava
             $env:JAVA_HOME = Split-Path (Split-Path $java -Parent) -Parent
-            $maven = (Get-Command mvn.cmd -ErrorAction Stop).Source
+            $maven = Get-MelonMaven
             & $maven -f (Join-Path $script:MelonRoot 'backend/pom.xml') package -DskipTests
             if ($LASTEXITCODE -ne 0) { throw 'Backend build failed; services were not started.' }
         }
     } elseif ($Rebuild) { throw 'Stop the running backend before using -Rebuild.' }
-    if (-not (Test-Path -LiteralPath (Join-Path $script:MelonRoot 'frontend/node_modules/vite/bin/vite.js'))) {
+    $frontendRoot = Join-Path $script:MelonRoot 'frontend'
+    $installed = Join-Path $frontendRoot 'node_modules/.package-lock.json'
+    $needsInstall = -not (Test-Path -LiteralPath (Join-Path $frontendRoot 'node_modules/vite/bin/vite.js')) -or -not (Test-Path -LiteralPath $installed)
+    if (-not $needsInstall) { $needsInstall = (Get-Item -LiteralPath (Join-Path $frontendRoot 'package-lock.json')).LastWriteTimeUtc -gt (Get-Item -LiteralPath $installed).LastWriteTimeUtc }
+    if ($needsInstall) {
         $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
-        & $npm --prefix (Join-Path $script:MelonRoot 'frontend') ci
+        # Lifecycle scripts run through cmd.exe, which cannot see node when PATH exceeds 8191 characters;
+        # none of the dependencies need them (esbuild ships its binary as an optional package).
+        & $npm --prefix $frontendRoot ci --ignore-scripts --no-audit --no-fund
         if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed.' }
     }
+    Start-MelonDatabase
+    Start-MelonRedis
     if (-not $backend) { $started += Start-MelonService 'backend' 8080 }
     Wait-MelonService 'http://127.0.0.1:8080/api/health' 'backend'
     if (-not $frontend) { $started += Start-MelonService 'frontend' $frontendPort }
@@ -46,7 +54,7 @@ try {
     Wait-MelonService "$url/api/health" 'backend' 15
     @{ frontendUrl = $url; backendUrl = 'http://127.0.0.1:8080'; verifiedAt = (Get-Date -Format 'o') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:MelonRoot '.local/services.json') -Encoding UTF8
     Write-Host "MelonHub ready: $url"
-    Write-Host 'Backend + cloud database + frontend proxy: UP'
+    Write-Host ("Backend + " + $env:SPRING_PROFILES_ACTIVE + ' database + cache + frontend proxy: UP')
     Write-Host 'Logs: .local/logs/backend.log and frontend.log'
     if (-not $NoBrowser) { Start-Process $url }
 } catch {
