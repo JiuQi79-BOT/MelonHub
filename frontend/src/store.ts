@@ -1,49 +1,73 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { api } from './api'
+import { computed, ref } from 'vue'
+import { get, session } from './api'
+import type { Application, Department, Health, Principal } from './types'
 
-export interface Department {id:number;name:string;code:string;memberCount:number}
-export interface Application {id:number;name:string;code:string;description:string;enabled:boolean;roleCount:number;permissionCount:number;createdAt:string}
-export interface User {id:number;name:string;externalId:string;email:string;enabled:boolean;departmentIds:number[];activeDepartmentId:number|null;contextVersion:number}
-export interface Role {id:number;name:string;code:string;description:string;enabled:boolean;memberCount:number;permissionIds:number[]}
-export interface Permission {id:number;name:string;code:string;resource:string;action:string;roleCount:number}
-export interface Audit {id:number;actor:string;action:string;target:string;createdAt:string;departmentName:string|null;applicationName:string|null}
-export interface Overview {applications:number;departments:number;users:number;roles:number;permissions:number;members:number;activeContexts:number}
-export const useHub = defineStore('hub',()=>{
-  const departments=ref<Department[]>([]), applications=ref<Application[]>([]), users=ref<User[]>([]), roles=ref<Role[]>([]), permissions=ref<Permission[]>([]), audits=ref<Audit[]>([])
-  const overview=ref<Overview>({applications:0,departments:0,users:0,roles:0,permissions:0,members:0,activeContexts:0})
-  const departmentId=ref(Number(localStorage.getItem('melonhub-department'))||0), applicationId=ref(Number(localStorage.getItem('melonhub-application'))||0)
-  const busy=ref(false),health=ref(false),toast=ref(''),toastError=ref(false),lastUpdated=ref('')
-  let toastTimer:ReturnType<typeof setTimeout>,generation=0
-  const department=computed(()=>departments.value.find(d=>d.id===departmentId.value)), application=computed(()=>applications.value.find(a=>a.id===applicationId.value))
-  const query=computed(()=>`?departmentId=${departmentId.value}&applicationId=${applicationId.value}`)
-  const domainUsers=computed(()=>users.value.filter(u=>u.departmentIds.includes(departmentId.value)))
-  function notify(message:string,error=false) {toast.value=message;toastError.value=error;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.value='',4500)}
-  async function load() {
-    busy.value=true
-    try {
-      const [d,a,u,h]=await Promise.all([api<Department[]>('/admin/departments'),api<Application[]>('/admin/applications'),api<User[]>('/admin/users'),api<{status:string}>('/health')])
-      departments.value=d;applications.value=a;users.value=u;health.value=h.status==='UP'
-      overview.value={...overview.value,applications:a.length,departments:d.length,users:u.length}
-      if(!d.some(x=>x.id===departmentId.value))departmentId.value=d[0]?.id||0
-      if(!a.some(x=>x.id===applicationId.value))applicationId.value=a[0]?.id||0
-      await loadScope()
-    } catch(e) {health.value=false;notify((e as Error).message,true);throw e} finally {busy.value=false}
+const DEPARTMENT = 'melonhub-department', APPLICATION = 'melonhub-application'
+
+export const useHub = defineStore('hub', () => {
+  const me = ref<Principal | null>(null)
+  const departments = ref<Department[]>([])
+  const applications = ref<Application[]>([])
+  const departmentId = ref(Number(localStorage.getItem(DEPARTMENT)) || 0)
+  const applicationId = ref(Number(localStorage.getItem(APPLICATION)) || 0)
+  const health = ref<Health | null>(null)
+
+  const department = computed(() => departments.value.find(d => d.id === departmentId.value))
+  const application = computed(() => applications.value.find(a => a.id === applicationId.value))
+  const hasDomain = computed(() => !!department.value && !!application.value)
+  /** Changes whenever the isolation domain changes; domain pages reload on it and drop stale responses. */
+  const domainKey = computed(() => hasDomain.value ? `${departmentId.value}:${applicationId.value}` : '')
+  const domainQuery = computed(() => ({ departmentId: departmentId.value, applicationId: applicationId.value }))
+
+  const role = computed(() => me.value?.role)
+  const isSuper = computed(() => role.value === 'SUPER_ADMIN')
+  const canPlatform = computed(() => role.value === 'SUPER_ADMIN' || role.value === 'ADMIN')
+  function canWriteApp(id: number) { return canPlatform.value || (role.value === 'APP_ADMIN' && !!me.value?.applicationIds.includes(id)) }
+  const canDomain = computed(() => hasDomain.value && canWriteApp(applicationId.value))
+
+  const departmentName = (id: number | null | undefined) => id ? departments.value.find(d => d.id === id)?.name ?? `部门 #${id}` : '—'
+  const applicationName = (id: number | null | undefined) => id ? applications.value.find(a => a.id === id)?.name ?? `软件 #${id}` : '—'
+  const departmentOptions = computed(() => departments.value.map(d => ({ value: d.id, label: d.name })))
+  const applicationOptions = computed(() => applications.value.map(a => ({ value: a.id, label: a.enabled ? a.name : `${a.name}（已停用）` })))
+
+  function persist() {
+    localStorage.setItem(DEPARTMENT, String(departmentId.value))
+    localStorage.setItem(APPLICATION, String(applicationId.value))
   }
-  async function loadScope() {
-    const current=++generation
-    roles.value=[];permissions.value=[];overview.value={...overview.value,roles:0,permissions:0,members:0}
-    if(!departmentId.value||!applicationId.value) {audits.value=await api<Audit[]>('/admin/audit');return}
-    busy.value=true
-    try {
-      const q=query.value
-      const [r,p,o,e]=await Promise.all([api<Role[]>(`/admin/roles${q}`),api<Permission[]>(`/admin/permissions${q}`),api<Overview>(`/admin/overview${q}`),api<Audit[]>('/admin/audit')])
-      if(current!==generation)return
-      roles.value=r;permissions.value=p;overview.value=o;audits.value=e
-      localStorage.setItem('melonhub-department',String(departmentId.value));localStorage.setItem('melonhub-application',String(applicationId.value))
-      lastUpdated.value=new Date().toLocaleTimeString('zh-CN',{hour12:false})
-    } catch(e) {if(current===generation)notify((e as Error).message,true)} finally {if(current===generation)busy.value=false}
+  function setDomain(dept?: number, app?: number) {
+    if (dept !== undefined) departmentId.value = dept
+    if (app !== undefined) applicationId.value = app
+    persist()
   }
-  function clear() {generation++;departments.value=[];applications.value=[];users.value=[];roles.value=[];permissions.value=[];audits.value=[]}
-  return {departments,applications,users,roles,permissions,audits,overview,departmentId,applicationId,department,application,query,domainUsers,busy,health,toast,toastError,lastUpdated,load,loadScope,notify,clear}
+  async function loadLists() {
+    const [d, a] = await Promise.all([get<Department[]>('/admin/departments'), get<Application[]>('/admin/applications')])
+    departments.value = d
+    applications.value = a
+    if (!d.some(x => x.id === departmentId.value)) departmentId.value = d[0]?.id ?? 0
+    if (!a.some(x => x.id === applicationId.value)) applicationId.value = a[0]?.id ?? 0
+    persist()
+  }
+  async function refreshHealth() {
+    // /api/health answers 503 with a JSON body when the database is down, so read the body either way.
+    try {
+      const response = await fetch('/api/health', { headers: { Accept: 'application/json' } })
+      health.value = await response.json() as Health
+    } catch {
+      health.value = { status: 'DOWN', database: 'UNKNOWN', cache: 'UNKNOWN' }
+    }
+  }
+  function signIn(principal: Principal) { me.value = principal }
+  function signOut() {
+    session.clear()
+    me.value = null
+    departments.value = []
+    applications.value = []
+  }
+
+  return {
+    me, departments, applications, departmentId, applicationId, health, department, application, hasDomain, domainKey, domainQuery,
+    role, isSuper, canPlatform, canWriteApp, canDomain, departmentName, applicationName, departmentOptions, applicationOptions,
+    setDomain, loadLists, refreshHealth, signIn, signOut,
+  }
 })
