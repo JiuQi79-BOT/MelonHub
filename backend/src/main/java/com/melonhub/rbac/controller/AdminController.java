@@ -38,6 +38,14 @@ public class AdminController {
     @DeleteMapping("/departments/{id}") Object deleteDepartment(@PathVariable long id, HttpServletRequest req) {
         r.deleteDepartment(id, AdminAccess.platformWrite(req).actor()); return ok();
     }
+    @PostMapping("/departments/{id}/members") Object addDepartmentMembers(@PathVariable long id,
+            @Valid @RequestBody Requests.Ids b, HttpServletRequest req) {
+        return r.departmentMembers(id, b.ids(), true, AdminAccess.platformWrite(req).actor());
+    }
+    @DeleteMapping("/departments/{id}/members") Object removeDepartmentMembers(@PathVariable long id,
+            @Valid @RequestBody Requests.Ids b, HttpServletRequest req) {
+        return r.departmentMembers(id, b.ids(), false, AdminAccess.platformWrite(req).actor());
+    }
 
     // ---- applications and API keys ----
     @GetMapping("/applications") Object applications(HttpServletRequest req) { return r.applications(visible(AdminAccess.of(req))); }

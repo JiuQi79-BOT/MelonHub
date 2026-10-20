@@ -258,10 +258,11 @@ function headAction(key: string) {
         </template>
       </template>
       <p class="muted">保存后立即生效：拥有该角色的用户在下一次权限校验时按新的权限集合判定。</p>
-      <a-space class="block-gap">
+      <a-space wrap class="block-gap">
         <a-button v-if="scope.canDomain" size="small" @click="permissionOpen = true">新建权限并勾选</a-button>
         <a-button size="small" :disabled="!scope.canDomain" @click="grantKeys = transferData.map(p => p.key)">全选权限</a-button>
-        <a-button size="small" :disabled="!scope.canDomain" @click="grantKeys = []">清空权限</a-button>
+        <a-button size="small" :disabled="!scope.canDomain" @click="grantKeys = []">取消全选</a-button>
+        <span class="muted">已选 {{ grantKeys.length }} 项权限</span>
       </a-space>
       <a-transfer v-model:target-keys="grantKeys" :data-source="transferData" :titles="['可选权限', '已授予']" show-search :filter-option="filterPermission"
                   :disabled="!scope.canDomain" :list-style="{ width: '360px', height: '400px' }" :locale="{ searchPlaceholder: '搜索编码或名称', itemUnit: '项', itemsUnit: '项', notFoundContent: '暂无权限' }">

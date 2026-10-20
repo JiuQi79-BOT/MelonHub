@@ -11,6 +11,7 @@ import com.melonhub.rbac.exception.ApiException;
 import com.melonhub.rbac.security.Credentials;
 import com.melonhub.rbac.service.ContextService;
 import com.melonhub.rbac.service.RbacService;
+import com.melonhub.rbac.service.WebhookService;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -37,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 @ContextConfiguration(initializers=CloudTestDatabaseGuard.class)
 class RbacIntegrationTest {
     @Autowired RbacService r;
+    @Autowired WebhookService webhooks;
     @Autowired ContextService c;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
@@ -142,6 +144,37 @@ class RbacIntegrationTest {
         r.user(new Requests.User("User",external,"",List.of(d2)),u1,"test");
         assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read","item:write"));
         assertThat(r.assignments(u1,a1).get("roleIds")).isEqualTo(List.of(r1,r2));
+    }
+    @Test void departmentMemberBatchesPreserveProfilesGrantsAndContexts() {
+        r.userRoles(u1,a1,List.of(r1,r2),7,"test");
+        String one=issue(a1),two=issue(a2);
+        var profile=db.queryForMap("SELECT * FROM users WHERE id=?",u1);
+        var grants=db.queryForList("SELECT * FROM user_roles WHERE user_id=? ORDER BY role_id",u1);
+        long hook=((Number)webhooks.create(a1,new Requests.Webhook("Membership","http://127.0.0.1:1/hook",null,List.of("user.updated"),true),"test").get("id")).longValue();
+
+        assertThat(r.departmentMembers(d1,List.of(u1,u2,u1),false,"batch-members").get("changedUsers")).isEqualTo(2);
+        assertThat(db.queryForList("SELECT department_id FROM memberships WHERE user_id=?",Long.class,u1)).containsExactly(d2);
+        assertThat(db.queryForList("SELECT department_id FROM memberships WHERE user_id=?",Long.class,u2)).isEmpty();
+        assertThat(r.departmentMembers(d1,List.of(u1,u2),false,"batch-members").get("changedUsers")).isEqualTo(0);
+        assertThat(db.queryForMap("SELECT * FROM users WHERE id=?",u1)).isEqualTo(profile);
+        assertThat(db.queryForList("SELECT * FROM user_roles WHERE user_id=? ORDER BY role_id",u1)).isEqualTo(grants);
+        assertThat(c.effective(a1,one).get("permissions")).isEqualTo(List.of("item:read","item:write"));
+        assertThat(c.effective(a2,two).get("permissions")).isEqualTo(List.of("item:read"));
+
+        assertThat(r.departmentMembers(d1,List.of(u1,u2,u2),true,"batch-members").get("changedUsers")).isEqualTo(2);
+        assertThat(r.departmentMembers(d1,List.of(u1,u2),true,"batch-members").get("changedUsers")).isEqualTo(0);
+        assertThat(db.queryForList("SELECT department_id FROM memberships WHERE user_id=? ORDER BY department_id",Long.class,u1)).containsExactly(d1,d2);
+        assertThat(r.assignments(u2,a1).get("roleIds")).isEqualTo(List.of());
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM webhook_deliveries WHERE webhook_id=? AND event_type='user.updated'",Long.class,hook)).isEqualTo(4);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM audit_events WHERE actor='batch-members' AND department_id=? AND action='USER_UPDATED'",Long.class,d1)).isEqualTo(4);
+    }
+    @Test void departmentMemberBatchRejectsMissingTargetsBeforeChangingMemberships() {
+        assertThatThrownBy(()->r.departmentMembers(d2,List.of(u2,Long.MAX_VALUE),true,"test"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("用户不存在");
+        assertThat(db.queryForList("SELECT department_id FROM memberships WHERE user_id=?",Long.class,u2)).containsExactly(d1);
+        assertThatThrownBy(()->r.departmentMembers(Long.MAX_VALUE,List.of(u2),true,"test"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("部门不存在");
+        assertThat(db.queryForList("SELECT department_id FROM memberships WHERE user_id=?",Long.class,u2)).containsExactly(d1);
     }
     @Test void deletingDepartmentOrApplicationInUseNamesWhatRemains() {
         assertThatThrownBy(()->r.deleteDepartment(d2,"test")).isInstanceOf(ApiException.class).hasMessageContaining("1 名成员");

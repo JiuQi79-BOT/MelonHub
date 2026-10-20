@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { useRoute, useRouter } from 'vue-router'
 import { get, type PageResult } from '../api'
-import { useList, usePaged } from '../composables'
+import { useList, usePaged, useUserSelection } from '../composables'
 import { expiringSoon, fmt } from '../labels'
 import { useHub } from '../store'
 import { useAuthorizationScope } from '../authorizationScope'
@@ -33,7 +33,7 @@ watch(tab, value => { if (!props.embedded) router.replace({ query: value === 'ex
 watch(() => route.query.tab, value => { if (!props.embedded) tab.value = value === 'expiring' ? 'expiring' : 'members' })
 watch(days, () => { if (scope.hasDomain) expiring.load() })
 watch(() => scope.domainKey, key => {
-  if (key) { keyword.value = ''; table.load(true); roles.load(); expiring.load() }
+  if (key) { table.load(true); roles.load(); expiring.load() }
   else { table.clear(); roles.clear(); expiring.clear() }
 }, { immediate: true })
 
@@ -54,13 +54,10 @@ const columns: TableColumnsType<Member> = [
 
 const open = ref(false), target = ref<Member | null>(null)
 const grantForm = ref<InstanceType<typeof UserRolesForm>>()
-const selected = ref<number[]>([]), bulkOpen = ref(false)
-const rowSelection = computed(() => scope.canDomain ? {
-  selectedRowKeys: selected.value,
-  preserveSelectedRowKeys: true,
-  onChange: (keys: (string | number)[]) => { selected.value = keys.map(Number) },
-} : undefined)
-watch(departmentId, () => { selected.value = []; open.value = false; bulkOpen.value = false; table.load(true) })
+const bulkOpen = ref(false)
+const selection = useUserSelection(() => ({ departmentId: departmentId.value, keyword: keyword.value.trim() }))
+const { selected, selecting } = selection
+watch(departmentId, () => { open.value = false; bulkOpen.value = false; table.load(true) })
 watch(() => scope.domainKey, () => { open.value = false; bulkOpen.value = false })
 function navigate(value: string) {
   if (props.embedded) emit('navigate', value)
@@ -94,12 +91,13 @@ async function save() {
           <a @click="navigate('members')">管理用户</a>
         </div>
         <div v-if="scope.canDomain" class="toolbar">
-          <a-button type="primary" :disabled="!selected.length" @click="bulkOpen = true">批量分配软件角色</a-button>
+          <a-button type="primary" :disabled="!selected.length || selecting" @click="bulkOpen = true">批量分配软件角色</a-button>
+          <a-button :loading="selecting" :disabled="table.loading.value" @click="selection.selectAll">{{ keyword.trim() ? '全选筛选结果' : departmentId ? '全选本部门成员' : '全选全部用户' }}</a-button>
+          <a-button :disabled="!selected.length && !selecting" @click="selection.clear">取消全选</a-button>
           <span class="muted">已选 {{ selected.length }} 名成员，可跨页勾选</span>
-          <a-button v-if="selected.length" type="link" @click="selected = []">清空选择</a-button>
           <a v-if="!roles.rows.value.length" @click="navigate('roles')">先创建角色并配置权限</a>
         </div>
-        <a-table :columns="columns" :data-source="table.rows.value" :row-selection="rowSelection" row-key="id" size="small" :loading="table.loading.value" :pagination="table.pagination.value" :scroll="{ x: 900 }" @change="table.onChange">
+        <a-table :columns="columns" :data-source="table.rows.value" :row-selection="scope.canDomain ? selection.rowSelection.value : undefined" row-key="id" size="small" :loading="table.loading.value" :pagination="table.pagination.value" :scroll="{ x: 900 }" @change="table.onChange">
           <template #emptyText><a-empty :image-style="{ height: '60px' }" :description="keyword.trim() ? '没有匹配的成员' : '没有用户，请先添加用户。'"><a-button v-if="!keyword.trim()" @click="navigate('members')">管理用户</a-button></a-empty></template>
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'externalId'"><code>{{ record.externalId }}</code></template>

@@ -93,6 +93,27 @@ class SecurityIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
     }
 
+    @Test void departmentMemberBatchesRequirePlatformWriteAndValidateIds() throws Exception {
+        long user=r.user(new Requests.User("Membership","membership-"+suffix,"",List.of()),null,"test");
+        String path="/api/admin/departments/"+d1+"/members",body=json(new Requests.Ids(List.of(user)));
+        for (String role : List.of(AdminPrincipal.APP_ADMIN,AdminPrincipal.AUDITOR)) {
+            String token="Bearer "+auth.login(new Requests.Login(account(role,List.of(a1)),PASSWORD)).get("token");
+            mvc.perform(post(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+            mvc.perform(delete(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        }
+        String token="Bearer "+auth.login(new Requests.Login(account(AdminPrincipal.ADMIN,List.of()),PASSWORD)).get("token");
+        mvc.perform(post(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.changedUsers").value(1));
+        mvc.perform(post(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.changedUsers").value(0));
+        mvc.perform(delete(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.changedUsers").value(1));
+        mvc.perform(post(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON)
+                .content(json(new Requests.Ids(java.util.Collections.nCopies(1001,user))))).andExpect(status().isBadRequest());
+        mvc.perform(delete(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON)
+                .content(json(new Requests.Ids(List.of(-1L))))).andExpect(status().isBadRequest());
+    }
+
     @Test void exportsIncludeAllFilteredUsersAndOnlyVisibleAuditRows() throws Exception {
         String manager = account(AdminPrincipal.APP_ADMIN, List.of(a1));
         String bearer = "Bearer " + auth.login(new Requests.Login(manager, PASSWORD)).get("token");

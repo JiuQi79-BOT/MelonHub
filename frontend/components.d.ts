@@ -62,6 +62,7 @@ declare module 'vue' {
     ATypographyParagraph: typeof import('ant-design-vue/es')['TypographyParagraph']
     AuthorizationDrawer: typeof import('./src/components/AuthorizationDrawer.vue')['default']
     BatchRolesModal: typeof import('./src/components/BatchRolesModal.vue')['default']
+    DepartmentMembersModal: typeof import('./src/components/DepartmentMembersModal.vue')['default']
     DomainEmpty: typeof import('./src/components/DomainEmpty.vue')['default']
     DomainPicker: typeof import('./src/components/DomainPicker.vue')['default']
     EmptyState: typeof import('./src/components/EmptyState.vue')['default']

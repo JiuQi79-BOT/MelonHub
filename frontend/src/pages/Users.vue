@@ -5,14 +5,14 @@ import { Modal, message, type FormInstance, type TableColumnsType } from 'ant-de
 import { DownOutlined, ExportOutlined, ImportOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { downloadCsv } from '../csv'
 import { errorText, get, send, type PageResult } from '../api'
-import { attempt, usePaged } from '../composables'
+import { attempt, usePaged, useUserSelection } from '../composables'
 import { fmt } from '../labels'
 import { useHub } from '../store'
 import type { User, UserImportResult } from '../types'
 import PageHead from '../components/PageHead.vue'
 import UserAccessDrawer from '../components/UserAccessDrawer.vue'
 import UserRolesDrawer from '../components/UserRolesDrawer.vue'
-import UserPicker from '../components/UserPicker.vue'
+import DepartmentMembersModal from '../components/DepartmentMembersModal.vue'
 
 const hub = useHub()
 const props = defineProps<{ embedded?: boolean; departmentId?: number }>()
@@ -40,13 +40,24 @@ const columns: TableColumnsType<User> = [
 ]
 
 const open = ref(false), saving = ref(false), editing = ref<User | null>(null), formRef = ref<FormInstance>()
-const existingOpen = ref(false), existingId = ref<number>(), existingUser = ref<User>()
-function chooseExisting() { existingId.value = undefined; existingUser.value = undefined; existingOpen.value = true }
-function joinDepartment() {
-  const user = existingUser.value!
-  existingOpen.value = false
-  edit(user)
-  if (!form.departmentIds.includes(props.departmentId!)) form.departmentIds.push(props.departmentId!)
+const existingOpen = ref(false), changingMembers = ref(false)
+const canManageMembers = computed(() => props.embedded && !!props.departmentId && hub.canPlatform)
+const memberSelection = useUserSelection(() => ({ ...filters, keyword: filters.keyword.trim() }))
+function membersChanged() { memberSelection.clear(); table.load(); hub.loadLists().catch(() => {}) }
+function removeSelectedMembers() {
+  const department = props.departmentId!, ids = [...memberSelection.selected.value]
+  Modal.confirm({
+    title: `将 ${ids.length} 名用户移出“${hub.departmentName(department)}”？`,
+    content: '只移出当前部门，保留用户资料、其他部门归属和已有软件授权。',
+    okText: '移出部门', okType: 'danger', cancelText: '取消',
+    async onOk() {
+      const ok = await attempt(changingMembers, async () => {
+        const result = await send<{ changedUsers: number }>('DELETE', `/admin/departments/${department}/members`, { ids })
+        message.success(`已将 ${result.changedUsers} 名用户移出部门`)
+      })
+      if (ok) membersChanged()
+    },
+  })
 }
 const form = reactive<{ name: string; externalId: string; email: string; departmentIds: number[] }>({ name: '', externalId: '', email: '', departmentIds: [] })
 const identityChanged = computed(() => !!editing.value && form.externalId.trim() !== editing.value.externalId)
@@ -155,7 +166,7 @@ async function runImport() {
       <a-button :loading="exporting" @click="exportUsers"><ExportOutlined />导出列表</a-button>
       <a-button :loading="table.loading.value" @click="table.load()"><ReloadOutlined />刷新</a-button>
       <template v-if="hub.canPlatform">
-        <a-button v-if="embedded" @click="chooseExisting">添加已有用户</a-button>
+        <a-button v-if="canManageMembers" @click="existingOpen = true">批量加入用户</a-button>
         <a-button @click="openImport"><ImportOutlined />批量导入</a-button>
         <a-button type="primary" @click="edit()"><PlusOutlined />新建用户</a-button>
       </template>
@@ -166,7 +177,13 @@ async function runImport() {
         <a-select v-if="!embedded" v-model:value="filters.departmentId" :options="hub.departmentOptions" placeholder="全部部门" allow-clear show-search option-filter-prop="label" class="toolbar-select" @change="table.load(true)" />
         <a-select v-model:value="filters.enabled" placeholder="全部状态" allow-clear class="toolbar-select-sm" :options="[{ value: 'true', label: '启用' }, { value: 'false', label: '停用' }]" @change="table.load(true)" />
       </div>
-      <a-table :columns="columns" :data-source="table.rows.value" row-key="id" size="small" :loading="table.loading.value" :pagination="table.pagination.value" :scroll="{ x: 1160 }" @change="table.onChange">
+      <div v-if="canManageMembers" class="toolbar">
+        <a-button :loading="memberSelection.selecting.value" :disabled="table.loading.value || changingMembers" @click="memberSelection.selectAll">{{ filters.keyword.trim() || filters.enabled ? '全选筛选结果' : '全选本部门成员' }}</a-button>
+        <a-button :disabled="changingMembers || (!memberSelection.selected.value.length && !memberSelection.selecting.value)" @click="memberSelection.clear">取消全选</a-button>
+        <a-button danger :loading="changingMembers" :disabled="!memberSelection.selected.value.length || memberSelection.selecting.value" @click="removeSelectedMembers">移出所选成员</a-button>
+        <span class="muted">已选 {{ memberSelection.selected.value.length }} 名成员，可跨页勾选</span>
+      </div>
+      <a-table :columns="columns" :data-source="table.rows.value" :row-selection="canManageMembers ? memberSelection.rowSelection.value : undefined" row-key="id" size="small" :loading="table.loading.value || changingMembers" :pagination="table.pagination.value" :scroll="{ x: 1160 }" @change="table.onChange">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'externalId'"><code>{{ record.externalId }}</code></template>
           <template v-else-if="column.key === 'email'">{{ record.email || '—' }}</template>
@@ -211,7 +228,7 @@ async function runImport() {
         </a-row>
         <a-form-item label="邮箱" name="email"><a-input v-model:value="form.email" :maxlength="150" /></a-form-item>
         <a-form-item label="所属部门" name="departmentIds">
-          <a-select v-model:value="form.departmentIds" mode="multiple" :options="hub.departmentOptions" placeholder="选择一个或多个部门" option-filter-prop="label" />
+          <a-select v-model:value="form.departmentIds" mode="multiple" :options="hub.departmentOptions" max-tag-count="responsive" placeholder="选择一个或多个部门" option-filter-prop="label" />
         </a-form-item>
         <a-alert v-if="identityChanged" type="warning" show-icon message="修改外部标识会使该用户现有的全部权限上下文失效。" class="block-gap" />
         <a-alert v-if="removedDepartments.length" type="info" show-icon class="block-gap"
@@ -232,9 +249,6 @@ async function runImport() {
     <UserAccessDrawer v-model:open="accessOpen" :user-id="accessUser" @changed="table.load()" />
     <UserRolesDrawer v-model:open="grantOpen" :user="grantUser" @changed="table.load()" />
     <AuthorizationDrawer v-if="!embedded" v-model:open="configurationOpen" :department-id="filters.departmentId" />
-    <a-modal v-model:open="existingOpen" title="添加已有用户到当前部门" ok-text="继续" :ok-button-props="{ disabled: !existingUser }" destroy-on-close @ok="joinDepartment">
-      <p class="hint">选择用户后检查资料并保存，原有部门归属保持不变。</p>
-      <UserPicker v-model:value="existingId" @pick="(user: User | undefined) => existingUser = user" style="width: 100%" />
-    </a-modal>
+    <DepartmentMembersModal v-if="canManageMembers && departmentId" v-model:open="existingOpen" :department-id="departmentId" @changed="membersChanged" />
   </div>
 </template>

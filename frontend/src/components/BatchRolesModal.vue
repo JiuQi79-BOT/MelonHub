@@ -68,7 +68,12 @@ async function save() {
     <p class="hint">可同时选择多个软件；已有有效角色及期限保持不变，新增分配使用下面的有效天数。</p>
     <a-form layout="vertical" :disabled="saving">
       <a-form-item label="软件" required>
-        <a-select v-model:value="applications" mode="multiple" :options="options" placeholder="选择一个或多个软件" option-filter-prop="label" />
+        <div class="toolbar">
+          <span class="muted">已选 {{ applications.length }} 个软件</span>
+          <a-button size="small" :disabled="saving || !options.length" @click="applications = options.map(a => a.value)">全选</a-button>
+          <a-button size="small" :disabled="saving || !applications.length" @click="applications = []">取消全选</a-button>
+        </div>
+        <a-select v-model:value="applications" mode="multiple" :options="options" max-tag-count="responsive" placeholder="选择一个或多个软件" option-filter-prop="label" />
       </a-form-item>
       <a-spin :spinning="loading">
         <section v-for="id in applications" :key="id" class="batch-role-group">
@@ -76,7 +81,7 @@ async function save() {
             <strong>{{ hub.applicationName(id) }}</strong>
             <span class="muted">已选 {{ selected[id]?.length ?? 0 }} 个角色</span>
             <a-button size="small" :disabled="saving || loading" @click="selected[id] = roles[id]?.map(r => r.id) ?? []">全选</a-button>
-            <a-button size="small" :disabled="saving || loading" @click="selected[id] = []">清空</a-button>
+            <a-button size="small" :disabled="saving || loading" @click="selected[id] = []">取消全选</a-button>
           </div>
           <a-checkbox-group v-model:value="selected[id]" :disabled="saving || loading" class="check-list"
                             :options="(roles[id] ?? []).map(r => ({ value: r.id, label: `${r.name}（${r.code}）${r.enabled ? '' : ' · 已停用'}` }))" />

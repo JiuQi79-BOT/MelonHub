@@ -201,6 +201,23 @@ public class RbacService {
         if (!dao.departmentExists(dept)) throw ApiException.missing("部门不存在");
         return dao.departmentUsers(dept);
     }
+    @Transactional public Map<String,Object> departmentMembers(long department, Collection<Long> ids, boolean add, String actor) {
+        var users = new LinkedHashMap<Long,String>();
+        for (long id : new TreeSet<>(ids))
+            users.put(id, dao.lockUser(id).orElseThrow(() -> ApiException.missing("用户不存在")));
+        String[] label = dao.lockDepartment(department).orElseThrow(() -> ApiException.missing("部门不存在"));
+        int changed = 0;
+        for (var user : users.entrySet()) {
+            long id = user.getKey();
+            if ((add ? dao.addMembership(id, department) : dao.removeMembership(id, department)) == 0) continue;
+            changed++;
+            // Memberships only organize users; application grants and contexts stay valid.
+            webhooks.emitAll("user.updated", Map.of("userId", id, "externalId", user.getValue()));
+            audit(actor, "USER_UPDATED", user.getValue(), department, null,
+                    (add ? "加入部门 " : "移出部门 ") + label[0] + "（" + label[1] + "）");
+        }
+        return Map.of("changedUsers", changed);
+    }
     @Transactional public long user(Requests.User body, Long id, String actor) {
         var departments = new LinkedHashSet<>(body.departmentIds());
         for (long dept : departments) if (!dao.departmentExists(dept)) throw ApiException.missing("部门不存在");

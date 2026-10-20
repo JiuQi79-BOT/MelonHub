@@ -163,7 +163,12 @@ function more(row: Account, key: string) {
           <a-select v-model:value="form.role" :options="roleOptions" :disabled="self" />
         </a-form-item>
         <a-form-item v-if="form.role === 'APP_ADMIN'" label="可管理的软件" name="applicationIds">
-          <a-select v-model:value="form.applicationIds" mode="multiple" :options="hub.applicationOptions" option-filter-prop="label" placeholder="选择软件" />
+          <div class="toolbar">
+            <span class="muted">已选 {{ form.applicationIds.length }} 个软件</span>
+            <a-button size="small" :disabled="saving || !hub.applicationOptions.length" @click="form.applicationIds = hub.applicationOptions.map(a => a.value)">全选</a-button>
+            <a-button size="small" :disabled="saving || !form.applicationIds.length" @click="form.applicationIds = []">取消全选</a-button>
+          </div>
+          <a-select v-model:value="form.applicationIds" mode="multiple" :options="hub.applicationOptions" max-tag-count="responsive" option-filter-prop="label" placeholder="选择软件" />
         </a-form-item>
         <template v-if="!editing">
           <a-row :gutter="16">

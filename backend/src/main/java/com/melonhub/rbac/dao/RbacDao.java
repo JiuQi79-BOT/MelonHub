@@ -73,6 +73,10 @@ public class RbacDao {
         return value.length() <= max ? value : value.substring(0, max);
     }
     public boolean departmentExists(long id) { return count("SELECT COUNT(*) FROM departments WHERE id=?", id) > 0; }
+    public Optional<String[]> lockDepartment(long id) {
+        return db.query("SELECT name,code FROM departments WHERE id=? FOR UPDATE",
+                (rs, n) -> new String[] { rs.getString(1), rs.getString(2) }, id).stream().findFirst();
+    }
     public boolean applicationExists(long id) { return count("SELECT COUNT(*) FROM applications WHERE id=?", id) > 0; }
     /** Name and code of a department or application, read before deletion so the audit record stays readable. */
     public Optional<String[]> label(String table, long id) {
@@ -203,8 +207,8 @@ public class RbacDao {
     public List<Long> lockedUserDepartments(long user) {
         return db.queryForList("SELECT department_id FROM memberships WHERE user_id=? FOR UPDATE", Long.class, user);
     }
-    public void removeMembership(long user, long dept) { db.update("DELETE FROM memberships WHERE user_id=? AND department_id=?", user, dept); }
-    public void addMembership(long user, long dept) { db.update("INSERT IGNORE INTO memberships(user_id,department_id) VALUES (?,?)", user, dept); }
+    public int removeMembership(long user, long dept) { return db.update("DELETE FROM memberships WHERE user_id=? AND department_id=?", user, dept); }
+    public int addMembership(long user, long dept) { return db.update("INSERT IGNORE INTO memberships(user_id,department_id) VALUES (?,?)", user, dept); }
     public List<Map<String,Object>> accessRoles(long user) {
         return db.queryForList("SELECT ur.application_id,a.name AS application_name,a.enabled AS application_enabled,"
                 + "r.id,r.name,r.code,r.enabled,ur.expires_at AS expires_at,ur.granted_by AS granted_by FROM user_roles ur JOIN roles r ON r.id=ur.role_id "

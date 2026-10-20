@@ -87,10 +87,10 @@ const permissionColumns: TableColumnsType<Simulation['permissions'][number]> = [
                 <a-radio value="all">全部已分配角色</a-radio>
                 <a-radio value="custom">指定角色</a-radio>
               </a-radio-group>
-              <a-select v-if="form.mode === 'custom'" v-model:value="form.activeRoleIds" mode="multiple" :options="roleOptions" placeholder="不选表示不激活任何角色" option-filter-prop="label" />
+              <a-select v-if="form.mode === 'custom'" v-model:value="form.activeRoleIds" mode="multiple" allow-clear max-tag-count="responsive" :options="roleOptions" placeholder="不选表示不激活任何角色" option-filter-prop="label" />
             </a-form-item>
             <a-form-item label="待校验权限" extra="可选。可从列表选择，也可直接输入编码后回车">
-              <a-select v-model:value="form.permissions" mode="tags" :options="permissionOptions" placeholder="例如：order:approve" :token-separators="[',', ' ']" />
+              <a-select v-model:value="form.permissions" mode="tags" allow-clear max-tag-count="responsive" :options="permissionOptions" placeholder="例如：order:approve" :token-separators="[',', ' ']" />
             </a-form-item>
             <a-button type="primary" block :loading="running" :disabled="!form.userId || !domain" @click="run"><ExperimentOutlined />开始诊断</a-button>
           </a-form>
