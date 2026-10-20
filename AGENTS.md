@@ -1,6 +1,6 @@
 # MelonHub 开发规范与任务交接
 
-最后更新：2026-10-20（Asia/Shanghai）。当前工作目录：`D:\MelonHub`。本地 Git 仓库的功能分支为 `rbac-platform`；既有改动按运行环境、控制台、鉴权、缓存限流、RBAC 授权、授权治理、Webhook、审计监控、Java SDK 和文档拆分提交。`origin` 指向个人 fork `https://github.com/xqy2006/MelonHub`，`upstream` 指向原仓库 `https://github.com/JiuQi79-BOT/MelonHub`；后续改动推送到个人 fork，通过 PR 向上游贡献。
+最后更新：2026-10-20（Asia/Shanghai）。当前工作目录：`D:\MelonHub`。当前功能分支为 `codex/software-scope-member-management`，基于此前的 `rbac-platform`；既有改动按运行环境、控制台、鉴权、缓存限流、RBAC 授权、授权治理、Webhook、审计监控、Java SDK 和文档拆分提交。`origin` 指向个人 fork `https://github.com/xqy2006/MelonHub`，`upstream` 指向原仓库 `https://github.com/JiuQi79-BOT/MelonHub`；后续改动推送到个人 fork，通过 PR 向上游贡献。
 
 上一轮完成“企业化改造”：修复鉴权绕过与监听地址缺陷，新增 Redis 权限缓存与无锁校验、限流与过载保护、多级管理员、多 API Key、审计增强、权限诊断、角色成员、跨部门复制，并用 Ant Design Vue 4 重建控制台。
 
@@ -9,6 +9,8 @@
 2026-10-19 按三批复审意见（9 + 20 + 5 项）修复：上下文创建可拒绝切换部门（`DEPARTMENT_MISMATCH`）、逐角色到期与 `grant_id`、复核只回收快照中的那次分配、治理历史名称快照、待审批唯一、批准可永久、Webhook 并行投递与按尝试次数认领、审计链按封存顺序与锚点及 v2 规范化、管理员会话绑定凭据版本、72 字节密码上限、角色成员替换的锁顺序与重试、系统状态降级时字段固定，以及对应的控制台（过时响应丢弃、抽屉状态重置、空值显示）与 SDK 改动。详细结果见 `doc/验证记录.md` 第 1 节。
 
 ## 1. 用户要求与边界
+
+2026-10-20 上游同步：当前分支 `codex/software-scope-member-management` 合入上游 `55b3fc6`。用户明确要求保留当前“软件内多角色共享权限”，不采用上游“权限只属于单角色”；保留 local/cloud 与项目专用 Redis 的运行支持。合入上游 Webhook 租约/清理、搜索竞态、SDK 父类/接口注解修复。唯一 V6 仍为 `V6__application_scope.sql`，已执行上游 `V6__role_owned_permissions.sql` 的库不能直接切换，也不能 repair 绕过，须另行设计转换迁移。最新验证：后端 130、SDK 46、前端 9 项及构建通过，见验证记录 1.0.6。
 
 2026-10-20 最新模型变更：用户明确要求角色、权限仅按软件隔离，部门只用于组织用户和批量选人。已将后端、控制台、Java SDK 与接口文档改为软件域，新增 V6；移除跨部门配置复制、当前部门与切换语义。批量授权是一次性追加，不随成员关系动态同步。下列 2026-10-19 描述与验证均为历史，当前规则以本节、第 3 节和 V6 为准。继续遵循最小修改，不添加无关防御性代码。
 

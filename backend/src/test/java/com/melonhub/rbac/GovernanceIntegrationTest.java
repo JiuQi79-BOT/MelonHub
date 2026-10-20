@@ -571,7 +571,7 @@ class GovernanceIntegrationTest {
         assertThat(webhookDao.claim(delivery, 0)).isZero();
         // The first worker's lease lapses and another worker claims the delivery again.
         db.update("UPDATE webhook_deliveries SET next_attempt_at=TIMESTAMPADD(SECOND,-1,CURRENT_TIMESTAMP) WHERE id=?", delivery);
-        webhookDao.requeueStale();
+        webhookDao.requeueStale(8);
         assertThat(webhookDao.claim(delivery, 1)).isEqualTo(1);
         assertThat(webhookDao.delivered(delivery, 1, 200)).as("the lapsed claim cannot write its result").isZero();
         assertThat(webhookDao.delivered(delivery, 2, 200)).isEqualTo(1);

@@ -3,6 +3,7 @@ package com.melonhub.client;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -64,7 +65,8 @@ public class MelonHubPermissionInterceptor implements HandlerInterceptor {
             return null;
         }
         RequirePermission onMethod = method.getMethodAnnotation(RequirePermission.class);
-        return onMethod != null ? onMethod : method.getBeanType().getAnnotation(RequirePermission.class);
+        return onMethod != null ? onMethod
+                : AnnotatedElementUtils.findMergedAnnotation(method.getBeanType(), RequirePermission.class);
     }
 
     private static void writeError(HttpServletResponse response, int status, String code, String message) throws IOException {

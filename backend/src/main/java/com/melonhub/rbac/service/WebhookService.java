@@ -158,7 +158,7 @@ public class WebhookService {
 
     private void dispatch(int limit, BiConsumer<Long, Map<String,Object>> sender) {
         try {
-            dao.requeueStale();
+            dao.requeueStale(maxAttempts);
             for (var delivery : dao.dueDeliveries(limit)) {
                 long id = number(delivery.get("id"));
                 if (dao.claim(id, ((Number) delivery.get("attempts")).intValue()) == 0) continue;

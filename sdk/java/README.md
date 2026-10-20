@@ -69,6 +69,8 @@ public List<Item> list() { ... }
 
 缺少可信身份头返回 401 `{"code":"UNAUTHORIZED"}`，无权限返回 403 `{"code":"FORBIDDEN"}`。业务网关应覆盖来自外部的同名身份头，只有经过认证的 `externalId` 才能传给平台。
 
+类级 `@RequirePermission` 支持父类及接口上的声明；当前类声明覆盖父类声明，方法声明优先于类声明。
+
 也可以注入 `MelonHubAuthorizer` 自行判断：
 
 ```java

@@ -84,8 +84,11 @@ public class WebhookDao {
         db.update("UPDATE webhook_deliveries SET status='PENDING',attempts=attempts-1,next_attempt_at=CURRENT_TIMESTAMP "
                 + "WHERE id=? AND status='SENDING' AND attempts=?", id, attempt);
     }
-    public int requeueStale() {
-        return db.update("UPDATE webhook_deliveries SET status='PENDING' WHERE status='SENDING' AND next_attempt_at<=CURRENT_TIMESTAMP");
+    /** An expired final claim is terminal too: a crashed worker must not bypass the attempt limit. */
+    public int requeueStale(int maxAttempts) {
+        return db.update("UPDATE webhook_deliveries SET status=CASE WHEN attempts>=? THEN 'FAILED' ELSE 'PENDING' END,"
+                + "last_error=CASE WHEN attempts>=? THEN 'Delivery lease expired after final attempt' ELSE last_error END "
+                + "WHERE status='SENDING' AND next_attempt_at<=CURRENT_TIMESTAMP", maxAttempts, maxAttempts);
     }
     // Results are written only by the claim that is still current: a worker whose lease expired and whose delivery
     // was claimed again finds a different attempt count and leaves the newer claim alone.
@@ -111,7 +114,8 @@ public class WebhookDao {
                 + "FROM webhook_deliveries" + where + " ORDER BY id DESC LIMIT ? OFFSET ?", args.toArray()), total);
     }
     public int purge(int days, int limit) {
-        return db.update("DELETE FROM webhook_deliveries WHERE created_at<TIMESTAMPADD(DAY,-?,CURRENT_TIMESTAMP) AND status<>'PENDING' LIMIT ?", days, limit);
+        return db.update("DELETE FROM webhook_deliveries WHERE created_at<TIMESTAMPADD(DAY,-?,CURRENT_TIMESTAMP) "
+                + "AND status IN ('DELIVERED','FAILED') LIMIT ?", days, limit);
     }
     public long backlog() {
         return db.queryForObject("SELECT COUNT(*) FROM webhook_deliveries WHERE status='PENDING'", Long.class);

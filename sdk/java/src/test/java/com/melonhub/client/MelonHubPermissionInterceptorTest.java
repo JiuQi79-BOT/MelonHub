@@ -1,11 +1,15 @@
 package com.melonhub.client;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.method.HandlerMethod;
 
 import java.lang.reflect.Method;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,6 +32,41 @@ class MelonHubPermissionInterceptorTest {
 
         public void open() {
         }
+    }
+
+    @RequirePermission("item:read")
+    static class GuardedBaseController {
+        public void guarded() {
+        }
+    }
+
+    static class InheritedController extends GuardedBaseController {
+    }
+
+    @RequirePermission("item:read")
+    interface GuardedApi {
+        void guarded();
+    }
+
+    static class InterfaceController implements GuardedApi {
+        @Override
+        public void guarded() {
+        }
+    }
+
+    @RequirePermission("item:write")
+    static class OverridingController extends InheritedController {
+        @RequirePermission("item:delete")
+        public void methodGuarded() {
+        }
+    }
+
+    private static Stream<HandlerMethod> classGuardedHandlers() throws NoSuchMethodException {
+        Method inherited = GuardedBaseController.class.getMethod("guarded");
+        return Stream.of(new HandlerMethod(new GuardedBaseController(), inherited),
+                new HandlerMethod(new InheritedController(), inherited),
+                new HandlerMethod(new InterfaceController(), "guarded"),
+                new HandlerMethod(new OverridingController(), inherited));
     }
 
     private static HandlerMethod handler(String methodName) throws NoSuchMethodException {
@@ -103,5 +142,50 @@ class MelonHubPermissionInterceptorTest {
         assertThat(interceptor.preHandle(request(), response, handler("guarded"))).isFalse();
         assertThat(response.getStatus()).isEqualTo(403);
         assertThat(response.getContentAsString()).contains("FORBIDDEN");
+    }
+
+    @ParameterizedTest
+    @MethodSource("classGuardedHandlers")
+    void classPermissionRequiresIdentityHeaders(HandlerMethod handler) throws Exception {
+        var interceptor = new MelonHubPermissionInterceptor(stubAuthorizer(true));
+        var response = new MockHttpServletResponse();
+        assertThat(interceptor.preHandle(new MockHttpServletRequest(), response, handler)).isFalse();
+        assertThat(response.getStatus()).isEqualTo(401);
+    }
+
+    @ParameterizedTest
+    @MethodSource("classGuardedHandlers")
+    void classPermissionDeniesUnauthorizedUsers(HandlerMethod handler) throws Exception {
+        var interceptor = new MelonHubPermissionInterceptor(stubAuthorizer(false));
+        var response = new MockHttpServletResponse();
+        assertThat(interceptor.preHandle(request(), response, handler)).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @ParameterizedTest
+    @MethodSource("classGuardedHandlers")
+    void classPermissionAllowsAuthorizedUsers(HandlerMethod handler) throws Exception {
+        var interceptor = new MelonHubPermissionInterceptor(stubAuthorizer(true));
+        assertThat(interceptor.preHandle(request(), new MockHttpServletResponse(), handler)).isTrue();
+    }
+
+    @Test
+    void methodPermissionOverridesClassAndClassOverridesSuperclass() throws Exception {
+        var checkedPermission = new AtomicReference<String>();
+        var authorizer = new MelonHubAuthorizer(new MelonHubClient("http://127.0.0.1:1", "mh_test")) {
+            @Override
+            public boolean hasPermission(String externalId, String permission) {
+                checkedPermission.set(permission);
+                return true;
+            }
+        };
+        var interceptor = new MelonHubPermissionInterceptor(authorizer);
+        var controller = new OverridingController();
+        assertThat(interceptor.preHandle(request(), new MockHttpServletResponse(),
+                new HandlerMethod(controller, "guarded"))).isTrue();
+        assertThat(checkedPermission.get()).isEqualTo("item:write");
+        assertThat(interceptor.preHandle(request(), new MockHttpServletResponse(),
+                new HandlerMethod(controller, "methodGuarded"))).isTrue();
+        assertThat(checkedPermission.get()).isEqualTo("item:delete");
     }
 }
