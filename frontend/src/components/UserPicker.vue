@@ -17,8 +17,7 @@ const options = computed(() => {
   return [...extra, ...results.value].filter(u => !props.exclude?.includes(u.id)).map(u => ({ value: u.id, label: label(u) }))
 })
 
-async function run(keyword: string) {
-  const current = ++sequence
+async function run(keyword: string, current = ++sequence) {
   loading.value = true
   try {
     const page = await get<PageResult<User>>('/admin/users', { keyword, departmentId: props.departmentId, size: 20 })
@@ -31,15 +30,21 @@ async function run(keyword: string) {
     if (current === sequence) loading.value = false
   }
 }
-function search(keyword: string) { clearTimeout(timer); timer = setTimeout(() => run(keyword.trim()), 250) }
+function search(keyword: string) {
+  clearTimeout(timer)
+  const current = ++sequence
+  results.value = []
+  loading.value = true
+  timer = setTimeout(() => run(keyword.trim(), current), 250)
+}
 function change(next: unknown) {
   value.value = next as number | number[] | undefined
   if (!props.multiple) emit('pick', typeof next === 'number' ? known.get(next) : undefined)
   else emit('picks', ((next as number[] | undefined) ?? []).map(id => known.get(id)).filter((u): u is User => !!u))
 }
 onMounted(() => run(''))
-watch(() => props.departmentId, () => run(''))
-onBeforeUnmount(() => clearTimeout(timer))
+watch(() => props.departmentId, () => { clearTimeout(timer); results.value = []; run('') })
+onBeforeUnmount(() => { sequence++; clearTimeout(timer) })
 </script>
 
 <template>

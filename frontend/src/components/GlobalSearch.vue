@@ -17,11 +17,13 @@ let timer: ReturnType<typeof setTimeout> | undefined, sequence = 0
 function search(value: string) {
   keyword.value = value
   clearTimeout(timer)
+  const current = ++sequence
   const q = value.trim()
-  if (!q) { options.value = []; last = null; return }
+  options.value = []
+  last = null
+  fetching.value = !!q
+  if (!q) return
   timer = setTimeout(async () => {
-    const current = ++sequence
-    fetching.value = true
     try {
       const r = await get<SearchResults>('/admin/search', { q })
       if (current !== sequence) return
@@ -47,15 +49,13 @@ async function expand() {
 }
 function collapse() {
   expanded.value = false
-  keyword.value = ''
-  options.value = []
+  search('')
 }
 function choose(value: unknown) {
   const parts = String(value).split(':')
   const id = Number(parts[1])
   const r = last
-  keyword.value = ''
-  options.value = []
+  search('')
   selectRef.value?.blur()
   expanded.value = false
   if (parts[0] === 'user') router.push({ path: '/users', query: { keyword: r?.users.find(u => u.id === id)?.externalId ?? '' } })
@@ -71,7 +71,7 @@ function onKey(e: KeyboardEvent) {
   }
 }
 onMounted(() => window.addEventListener('keydown', onKey))
-onBeforeUnmount(() => { window.removeEventListener('keydown', onKey); clearTimeout(timer) })
+onBeforeUnmount(() => { sequence++; window.removeEventListener('keydown', onKey); clearTimeout(timer) })
 </script>
 
 <template>
