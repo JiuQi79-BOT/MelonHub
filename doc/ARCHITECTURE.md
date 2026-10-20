@@ -173,6 +173,8 @@ MySQL 是唯一数据源。Redis 只缓存可以随时从 MySQL 重新算出的�
 
 所有治理写操作都写审计记录，并按第 4.2 节的协议替换代标记。申请与复核条目保存当时的用户姓名、外部标识、角色名称与编码、部门名称（V5）；删除用户、角色或部门时外键置空而不是级联删除，治理历史因此保留。
 
+Webhook 发送线程崩溃后，过期的 `SENDING` 租约只有在尝试次数未耗尽时才恢复为 `PENDING`；达到配置上限的投递转为 `FAILED`，避免恢复任务突破重试次数。保留期清理只删除 `DELIVERED`、`FAILED`，待发送和发送中的记录均保留。
+
 ## 9. 数据库、审计与定时任务
 
 Flyway 管理表结构。V1 建立 RBAC0、上下文、管理员和审计表；V2 增加管理员角色与软件授权、登录锁定与空闲会话字段、`application_keys` 多密钥表、审计详情与来源 IP，以及上下文、关联和审计的查询索引，并把每个软件原有的单个密钥迁移为“默认密钥”。V3（`V3__governance.sql`）增加角色分配到期字段、软件独立限额 `applications.rate_limit`、`access_requests`、`access_reviews`、`access_review_items`、`webhooks`、`webhook_deliveries`、管理员 TOTP 字段，以及审计哈希链字段 `prev_hash`、`chain_hash` 与单行封存表 `audit_seal`。V4（`V4__audit_seal_order.sql`）增加封存顺序号 `seal_seq` 与链尾、锚点字段。V5（`V5__governance_history.sql`）增加管理员凭据版本、分配实例标识 `grant_id`、申请与复核的名称快照（外键改为置空）、待审批申请唯一索引、复核条目的 `skipped`，以及审计规范化形式 v2 的起始位置。已应用的迁移不修改，结构变更新建版本。

@@ -69,6 +69,8 @@ melonhub:
 public List<Item> list() { ... }
 ```
 
+`@RequirePermission` 也可声明在控制器类、父类或接口上，作为该控制器的默认权限；方法上的声明优先于类级声明，当前类上的声明优先于继承的类级声明。
+
 缺少身份头返回 401 `{"code":"UNAUTHORIZED"}`，无权限返回 403 `{"code":"FORBIDDEN"}`，用户当前部门不是请求头中的部门返回 409 `{"code":"DEPARTMENT_MISMATCH"}`（由业务系统引导用户显式切换部门）。
 
 也可以注入 `MelonHubAuthorizer` 自行判断：
