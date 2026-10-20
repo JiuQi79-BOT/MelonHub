@@ -31,7 +31,6 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -88,48 +87,22 @@ class GovernanceIntegrationTest {
         key1 = (String) app.get("apiKey");
         u1 = r.user(new Requests.User("GovUser", external, "", List.of(d1, d2)), null, ACTOR);
         u2 = r.user(new Requests.User("GovSecond", external2, "", List.of(d1)), null, ACTOR);
-        r1 = r.role(new Requests.Role("Reader", "reader", ""), null, d1, a1, ACTOR);
-        r2 = r.role(new Requests.Role("Writer", "writer", ""), null, d1, a1, ACTOR);
-        long p1 = r.permission(new Requests.Permission(r1, "Read", "item:read", "item", "read"), null, d1, a1, ACTOR);
-        long p2 = r.permission(new Requests.Permission(r2, "Write", "item:write", "item", "write"), null, d1, a1, ACTOR);
-        r.rolePermissions(r1, d1, a1, List.of(p1), ACTOR);
-        r.rolePermissions(r2, d1, a1, List.of(p2), ACTOR);
-        r.userRoles(u1, d1, a1, List.of(r1), ACTOR);
+        long p1 = r.permission(new Requests.Permission("Read", "item:read", "item", "read"), null, a1, ACTOR);
+        long p2 = r.permission(new Requests.Permission("Write", "item:write", "item", "write"), null, a1, ACTOR);
+        r1 = r.role(new Requests.Role("Reader", "reader", ""), null, a1, ACTOR);
+        r2 = r.role(new Requests.Role("Writer", "writer", ""), null, a1, ACTOR);
+        r.rolePermissions(r1, a1, List.of(p1), ACTOR);
+        r.rolePermissions(r2, a1, List.of(p2), ACTOR);
+        r.userRoles(u1, a1, List.of(r1), ACTOR);
     }
 
-    private String issue() { return (String) c.issue(a1, new Requests.Context(external, d1, null), ACTOR).get("contextToken"); }
+    private String issue() { return (String) c.issue(a1, new Requests.Context(external, null), ACTOR).get("contextToken"); }
     private long requestId(Map<String,Object> request) { return ((Number) request.get("id")).longValue(); }
 
-    @Test @SuppressWarnings("unchecked") void permissionHoldersCanBeRestrictedToOwningRole() {
-        long other = r.permission(new Requests.Permission(r2, "Other read", "item:read", "item", "read"), null, 0, a1, ACTOR);
-        r.rolePermissions(r2, 0, a1, List.of(other), ACTOR);
-        r.userRoles(u2, 0, a1, List.of(r2), ACTOR);
-        assertThat(g.permissionHolders(a1, "item:read", null).get("total")).isEqualTo(2L);
-        var holders = (List<Map<String,Object>>) g.permissionHolders(a1, "item:read", 0L, r1).get("holders");
-        assertThat(holders).singleElement().satisfies(h -> assertThat(h.get("userId")).isEqualTo(u1));
-        assertThat(g.permissionHolders(a1, "item:read", d1, r2).get("total")).isEqualTo(1L);
-        assertThat(g.permissionHolders(a1, "item:read", d2, r2).get("total")).isEqualTo(0L);
-    }
-
-    @Test void requestsAndContextsWorkWithoutDepartmentMembership() throws Exception {
-        r.user(new Requests.User("GovSecond", external2, "", List.of()), u2, ACTOR);
-        mvc.perform(post("/api/v1/access-requests").header("X-API-Key", key1).contentType("application/json")
-                .content(mapper.writeValueAsString(Map.of("externalId", external2, "roleId", r2, "reason", "需要写权限"))))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("PENDING"));
-        var pending = g.myRequests(a1, external2).get(0);
-        assertThat(pending.get("departmentId")).isNull();
-        g.approve(requestId(pending), new Requests.RequestApprove(null, "同意"), "admin");
-        mvc.perform(post("/api/v1/contexts").header("X-API-Key", key1).contentType("application/json")
-                .content(mapper.writeValueAsString(Map.of("externalId", external2))))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.permissions[0]").value("item:write"));
-        mvc.perform(get("/api/v1/roles").header("X-API-Key", key1))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
-    }
-
     @Test void approvedRequestGrantsRoleUntilItsExpiry() throws Exception {
-        var submitted = g.submit(a1, new Requests.AccessRequestSubmit(external, d1, r2, "月末报表需要写权限", 30), "app:" + a1);
+        var submitted = g.submit(a1, new Requests.AccessRequestSubmit(external, r2, "月末报表需要写权限", 30), "app:" + a1);
         assertThat(submitted.get("status")).isEqualTo("PENDING");
-        assertThatThrownBy(() -> g.submit(a1, new Requests.AccessRequestSubmit(external, d1, r2, "重复", null), "app:" + a1))
+        assertThatThrownBy(() -> g.submit(a1, new Requests.AccessRequestSubmit(external, r2, "重复", null), "app:" + a1))
                 .isInstanceOf(ApiException.class).hasMessageContaining("待审批");
         long id = requestId(submitted);
         var approved = g.approve(id, new Requests.RequestApprove(null, "同意"), "admin");
@@ -141,20 +114,20 @@ class GovernanceIntegrationTest {
         // Once the assignment lapses, the next context no longer contains it.
         db.update("UPDATE user_roles SET expires_at=TIMESTAMPADD(SECOND,-10,CURRENT_TIMESTAMP) WHERE user_id=? AND role_id=?", u1, r2);
         assertThat(c.effective(a1, issue()).get("permissions")).isEqualTo(List.of("item:read"));
-        assertThat((List<Object>) g.myAccess(a1, external, d1).get("permissions")).containsExactly("item:read");
+        assertThat((List<Object>) g.myAccess(a1, external).get("permissions")).containsExactly("item:read");
     }
 
     @Test void rejectionAndEmployeeCancellation() throws Exception {
         long hook = ((Number) webhooks.create(a1, new Requests.Webhook("驳回通知", "http://127.0.0.1:1/hook", null, List.of("access.rejected"), true), ACTOR)
                 .get("id")).longValue();
-        var rejected = g.reject(requestId(g.submit(a1, new Requests.AccessRequestSubmit(external, d1, r2, "需要", null), "app:" + a1)),
+        var rejected = g.reject(requestId(g.submit(a1, new Requests.AccessRequestSubmit(external, r2, "需要", null), "app:" + a1)),
                 new Requests.RequestReject("权限过大"), "admin");
         assertThat(rejected.get("status")).isEqualTo("REJECTED");
         assertThat(rejected.get("decisionComment")).isEqualTo("权限过大");
         // The business system can show the reason without asking the console.
         String payload = db.queryForObject("SELECT payload FROM webhook_deliveries WHERE webhook_id=?", String.class, hook);
         assertThat(mapper.readTree(payload).path("data").path("comment").asText()).isEqualTo("权限过大");
-        var again = g.submit(a1, new Requests.AccessRequestSubmit(external, d1, r2, "再次申请", null), "app:" + a1);
+        var again = g.submit(a1, new Requests.AccessRequestSubmit(external, r2, "再次申请", null), "app:" + a1);
         assertThatThrownBy(() -> g.cancelOwn(a1, requestId(again), external2, "app:" + a1)).isInstanceOf(ApiException.class);
         g.cancelOwn(a1, requestId(again), external, "app:" + a1);
         assertThat(g.request(requestId(again)).get("status")).isEqualTo("CANCELLED");
@@ -162,7 +135,7 @@ class GovernanceIntegrationTest {
     }
 
     @Test void closingReviewAppliesRevokeDecisions() {
-        r.userRoles(u2, d1, a1, List.of(r2), ACTOR);
+        r.userRoles(u2, a1, List.of(r2), ACTOR);
         String token = issue();
         var review = g.createReview(new Requests.ReviewCreate("三季度复核", a1, d1, 7), "admin");
         long reviewId = requestId(review);
@@ -183,8 +156,8 @@ class GovernanceIntegrationTest {
         var closed = g.closeReview(reviewId, "admin");
         assertThat(closed.get("status")).isEqualTo("CLOSED");
         assertThat(closed.get("summary").toString()).contains("回收 1 条");
-        assertThat(r.assignments(u1, d1, a1).get("roleIds")).isEqualTo(List.of());
-        assertThat(r.assignments(u2, d1, a1).get("roleIds")).isEqualTo(List.of(r2));
+        assertThat(r.assignments(u1, a1).get("roleIds")).isEqualTo(List.of());
+        assertThat(r.assignments(u2, a1).get("roleIds")).isEqualTo(List.of(r2));
         assertThatThrownBy(() -> c.effective(a1, token)).isInstanceOf(ApiException.class);
         assertThatThrownBy(() -> g.decideReviewItem(reviewId, keep, new Requests.ReviewItemDecision("REVOKE", null), "admin"))
                 .isInstanceOf(ApiException.class).hasMessageContaining("已关闭");
@@ -209,7 +182,7 @@ class GovernanceIntegrationTest {
             String secret = "wh-test-secret-0123456789";
             webhooks.create(a1, new Requests.Webhook("测试钩子", "http://127.0.0.1:" + server.getAddress().getPort() + "/hook",
                     secret, List.of("user.roles.changed"), true), ACTOR);
-            r.userRoles(u1, d1, a1, List.of(r1, r2), ACTOR);
+            r.userRoles(u1, a1, List.of(r1, r2), ACTOR);
             webhooks.deliverNow();
             assertThat(received.await(5, TimeUnit.SECONDS)).as("webhook delivered").isTrue();
             assertThat(event.get()).isEqualTo("user.roles.changed");
@@ -224,7 +197,7 @@ class GovernanceIntegrationTest {
         }
         // A dead endpoint stays PENDING with backoff instead of being lost.
         webhooks.create(a1, new Requests.Webhook("不可用钩子", "http://127.0.0.1:1/hook", null, List.of("user.roles.changed"), true), ACTOR);
-        r.userRoles(u1, d1, a1, List.of(r1), ACTOR);
+        r.userRoles(u1, a1, List.of(r1), ACTOR);
         webhooks.deliverNow();
         var row = db.queryForMap("SELECT status,attempts,last_error FROM webhook_deliveries ORDER BY id DESC LIMIT 1");
         assertThat(row.get("status")).isEqualTo("PENDING");
@@ -341,23 +314,28 @@ class GovernanceIntegrationTest {
     private long sealSeq(long id) { return db.queryForObject("SELECT seal_seq FROM audit_events WHERE id=?", Long.class, id); }
 
     @Test void manifestExportAndImportRoundTrip() {
-        var exported = g.exportManifest(a1, d1);
-        assertThat((List<?>) exported.get("roles")).hasSize(2);
+        var exported = g.exportManifest(a1);
+        assertThat(exported.get("version")).isEqualTo(2);
+        assertThat((List<?>) exported.get("permissions")).hasSize(2);
+        assertThat(exported).doesNotContainKey("departments");
         var manifest = mapper.convertValue(exported, Requests.Manifest.class);
         db.update("UPDATE roles SET name='改名',description='漂移' WHERE id=?", r1);
         db.update("DELETE FROM role_permissions WHERE role_id=?", r2);
         var result = g.importManifest(a1, manifest, "admin");
         assertThat(((Number) result.get("rolesUpdated")).intValue()).isEqualTo(2);
         assertThat(((Number) result.get("permissionsUpdated")).intValue()).isEqualTo(2);
-        var roles = r.roles(d1, a1);
+        var roles = r.roles( a1);
         var restored = roles.stream().filter(role -> role.get("id").equals(r1) || ((Number) role.get("id")).longValue() == r1).findFirst().orElseThrow();
         assertThat(restored.get("name")).isEqualTo("Reader");
         var writer = roles.stream().filter(role -> ((Number) role.get("id")).longValue() == r2).findFirst().orElseThrow();
         assertThat((List<?>) writer.get("permissionIds")).hasSize(1);
-        // Importing into another department creates the configuration there.
+        // The same software-wide manifest can seed another software.
         var second = g.importManifest(a1, manifest, "admin");
-        assertThat(second.get("rolesCreated")).isEqualTo(0);
-        assertThat(r.roles(d2, a1)).hasSize(2);
+        long other = ((Number) r.application(new Requests.Application("Copy", "copy-" + Credentials.token().substring(0, 12), ""), ACTOR).get("id")).longValue();
+        var copied = g.importManifest(other, manifest, "admin");
+        assertThat(((Number) copied.get("permissionsCreated")).intValue()).isEqualTo(2);
+        assertThat(((Number) copied.get("rolesCreated")).intValue()).isEqualTo(2);
+        assertThat(r.roles(other)).hasSize(2);
         assertThat(second.get("rolesUpdated")).isEqualTo(2);
     }
 
@@ -391,7 +369,7 @@ class GovernanceIntegrationTest {
     }
 
     @Test void expiringAssignmentsAppearInReport() {
-        r.userRoles(u1, d1, a1, List.of(r1), 7, ACTOR);
+        r.userRoles(u1, a1, List.of(r1), 7, ACTOR);
         assertThat(g.expiringAssignments(30, null, a1)).anyMatch(row -> ((Number) row.get("userId")).longValue() == u1);
         assertThat(g.expiringAssignments(3, null, a1)).noneMatch(row -> ((Number) row.get("userId")).longValue() == u1);
         // An expired assignment is excluded from new contexts immediately.
@@ -411,19 +389,20 @@ class GovernanceIntegrationTest {
         try { return console.status(null).get("cache").toString(); } catch (RuntimeException e) { return "DOWN"; }
     }
 
-    @Test void legacyDepartmentMetadataNeverChangesApplicationAccess() throws Exception {
-        String token = (String)c.issue(a1,new Requests.Context(external,d1,null,false),ACTOR).get("contextToken");
-        mvc.perform(post("/api/v1/contexts").header("X-API-Key",key1).contentType("application/json")
-                .content(mapper.writeValueAsString(Map.of("externalId",external,"departmentId",d2,"switchDepartment",false))))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.permissions[0]").value("item:read"));
-        c.issue(a1,new Requests.Context(external,d2,null,true),ACTOR);
-        assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read"));
+    @Test void contextApiOnlyNeedsExternalIdAndKeepsExistingContexts() throws Exception {
+        String token = issue();
+        mvc.perform(post("/api/v1/contexts").header("X-API-Key", key1).contentType("application/json")
+                        .content(mapper.writeValueAsString(Map.of("externalId", external))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.applicationId").value(a1))
+                .andExpect(jsonPath("$.departmentId").doesNotExist());
+        assertThat(c.effective(a1, token).get("permissions")).isEqualTo(List.of("item:read"));
     }
 
     @Test void disabledWebhookKeepsItsQueueUntilEnabledAgain() {
         var hook = new Requests.Webhook("停用钩子", "http://127.0.0.1:1/hook", null, List.of("user.roles.changed"), true);
         long id = ((Number) webhooks.create(a1, hook, ACTOR).get("id")).longValue();
-        r.userRoles(u1, d1, a1, List.of(r1, r2), ACTOR);
+        r.userRoles(u1, a1, List.of(r1, r2), ACTOR);
         webhooks.update(id, new Requests.Webhook(hook.name(), hook.url(), null, hook.events(), false), ACTOR);
         webhooks.deliverNow();
         var queued = db.queryForMap("SELECT status,attempts FROM webhook_deliveries WHERE webhook_id=?", id);
@@ -437,44 +416,41 @@ class GovernanceIntegrationTest {
     @Test void manifestImportAnnouncesRolesItDisablesOrRegrants() {
         long hook = ((Number) webhooks.create(a1, new Requests.Webhook("清单通知", "http://127.0.0.1:1/hook", null, List.of("*"), true), ACTOR)
                 .get("id")).longValue();
-        var section = mapper.convertValue(g.exportManifest(a1, d1), Requests.Manifest.class);
+        var section = mapper.convertValue(g.exportManifest(a1), Requests.Manifest.class);
         var roles = section.roles().stream().map(role -> switch (role.code()) {
             case "reader" -> new Requests.ManifestRole(role.code(), role.name(), role.description(), false, role.permissions());
             case "writer" -> new Requests.ManifestRole(role.code(), role.name(), role.description(), true, List.of("item:read", "item:write"));
             default -> role;
         }).toList();
-        var definitions = new ArrayList<>(section.permissions());
-        definitions.add(new Requests.ManifestPermission("item:read", "Read", "item", "read", "writer"));
-        var manifest = new Requests.Manifest(2, definitions, roles);
+        var manifest = new Requests.Manifest(2, section.permissions(), roles);
         g.importManifest(a1, manifest, "admin");
         var events = db.queryForList("SELECT payload FROM webhook_deliveries WHERE webhook_id=? ORDER BY id", String.class, hook);
-        assertThat(events).anySatisfy(payload -> assertThat(payload).contains("\"permission.updated\""));
+        assertThat(events).hasSize(2);
         assertThat(events).anySatisfy(payload -> assertThat(payload).contains("\"role.disabled\"").contains("\"roleId\":" + r1));
         assertThat(events).anySatisfy(payload -> assertThat(payload).contains("\"role.permissions.changed\"").contains("\"roleId\":" + r2));
-        // Re-import preserves grants and still notifies permission definition updates.
-        long announced = events.size();
+        // Importing the same manifest again changes nothing, so nothing is announced.
         g.importManifest(a1, manifest, "admin");
-        assertThat(db.queryForObject("SELECT COUNT(*) FROM webhook_deliveries WHERE webhook_id=?", Long.class, hook)).isEqualTo(announced + definitions.size());
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM webhook_deliveries WHERE webhook_id=?", Long.class, hook)).isEqualTo(2);
     }
 
     @Test @SuppressWarnings("unchecked") void simulationReportsLapsedRolesWithoutBlocking() {
-        r.userRoles(u1, d1, a1, List.of(r1, r2), ACTOR);
+        r.userRoles(u1, a1, List.of(r1, r2), ACTOR);
         db.update("UPDATE user_roles SET expires_at=TIMESTAMPADD(SECOND,-10,CURRENT_TIMESTAMP) WHERE user_id=? AND role_id=?", u1, r2);
-        var result = r.simulate(new Requests.Simulation(u1, d1, a1, null, List.of("item:read", "item:write")));
+        var result = r.simulate(new Requests.Simulation(u1, a1, null, List.of("item:read", "item:write")));
         assertThat(result.get("eligible")).isEqualTo(true);
         assertThat((List<String>) result.get("issues")).isEmpty();
         assertThat((List<String>) result.get("notices")).singleElement().asString().contains("writer");
         assertThat((Map<String,Boolean>) result.get("decisions")).containsEntry("item:read", true).containsEntry("item:write", false);
         // Asking for the lapsed role explicitly would make context creation fail, so that stays a blocking issue.
-        var explicit = r.simulate(new Requests.Simulation(u1, d1, a1, List.of(r2), null));
+        var explicit = r.simulate(new Requests.Simulation(u1, a1, List.of(r2), null));
         assertThat(explicit.get("eligible")).isEqualTo(false);
     }
 
     @Test void ownRequestsAreFilteredByApplicationBeforeTheyAreLimited() {
         var other = r.application(new Requests.Application("Gov Other", "go-" + Credentials.token().substring(0, 12), ""), ACTOR);
         long a2 = ((Number) other.get("id")).longValue();
-        long otherRole = r.role(new Requests.Role("Other", "other", ""), null, d1, a2, ACTOR);
-        long mine = requestId(g.submit(a1, new Requests.AccessRequestSubmit(external, d1, r2, "本软件的申请", null), "app:" + a1));
+        long otherRole = r.role(new Requests.Role("Other", "other", ""), null, a2, ACTOR);
+        long mine = requestId(g.submit(a1, new Requests.AccessRequestSubmit(external, r2, "本软件的申请", null), "app:" + a1));
         for (int i = 0; i < 60; i++)
             db.update("INSERT INTO access_requests(user_id,department_id,application_id,role_id,reason,status,requested_by) VALUES (?,?,?,?,?,'CANCELLED',?)",
                     u1, d1, a2, otherRole, "其他软件 " + i, "app:" + a2);
@@ -487,66 +463,66 @@ class GovernanceIntegrationTest {
         mvc.perform(post("/api/v1/access-requests")
                         .header("X-API-Key", key1)
                         .contentType("application/json")
-                        .content(mapper.writeValueAsString(Map.of("externalId", external2, "departmentId", d1, "roleId", r2, "reason", "联调"))))
+                        .content(mapper.writeValueAsString(Map.of("externalId", external2, "roleId", r2, "reason", "联调"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("PENDING"));
         mvc.perform(get("/api/v1/access-requests").header("X-API-Key", key1).param("externalId", external2))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].status").value("PENDING"));
-        mvc.perform(get("/api/v1/users/access").header("X-API-Key", key1).param("externalId", external2).param("departmentId", String.valueOf(d1)))
+        mvc.perform(get("/api/v1/users/access").header("X-API-Key", key1).param("externalId", external2))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.permissions").isArray());
         mvc.perform(get("/api/admin/system/status")).andExpect(status().isUnauthorized());
     }
 
     @Test @SuppressWarnings("unchecked") void reassigningKeepsUntouchedExpiriesAndAcceptsPerRoleOnes() {
-        r.userRoles(u1, d1, a1, List.of(r1), 7, ACTOR);
+        r.userRoles(u1, a1, List.of(r1), 7, ACTOR);
         Instant week = expiresAt(u1, r1);
         String grant = grantId(u1, r1);
         assertThat(week).isNotNull();
         // Adding a role without saying anything about expiry leaves the existing grant exactly as it was.
-        r.userRoles(u1, d1, a1, List.of(r1, r2), ACTOR);
+        r.userRoles(u1, a1, List.of(r1, r2), ACTOR);
         assertThat(expiresAt(u1, r1)).isEqualTo(week);
         assertThat(grantId(u1, r1)).isEqualTo(grant);
         assertThat(expiresAt(u1, r2)).isNull();
         var soon = OffsetDateTime.now(ZoneOffset.UTC).plusDays(3).withNano(0);
-        r.userRoles(u1, d1, a1, List.of(r1, r2), null, List.of(new Requests.RoleExpiry(r2, soon), new Requests.RoleExpiry(r1, null)), ACTOR);
+        r.userRoles(u1, a1, List.of(r1, r2), null, List.of(new Requests.RoleExpiry(r2, soon), new Requests.RoleExpiry(r1, null)), ACTOR);
         assertThat(expiresAt(u1, r2)).isEqualTo(soon.toInstant());
         assertThat(expiresAt(u1, r1)).isNull();
         var members = (List<Map<String,Object>>) r.domainAssignments(d1, a1, null, 1, 50).get("items");
         var mine = members.stream().filter(m -> ((Number) m.get("id")).longValue() == u1).findFirst().orElseThrow();
         assertThat(((Map<Long,Object>) mine.get("roleExpiries")).keySet()).containsExactly(r2);
         // The single-user listing carries the same expiry map, keyed by role id.
-        var own = r.assignments(u1, d1, a1);
+        var own = r.assignments(u1, a1);
         assertThat((List<Long>) own.get("roleIds")).containsExactly(r1, r2);
         assertThat(((Map<Long,Object>) own.get("roleExpiries")).keySet()).containsExactly(r2);
-        assertThatThrownBy(() -> r.userRoles(u1, d1, a1, List.of(r1), null,
+        assertThatThrownBy(() -> r.userRoles(u1, a1, List.of(r1), null,
                 List.of(new Requests.RoleExpiry(r1, OffsetDateTime.now().minusMinutes(1))), ACTOR)).isInstanceOf(ApiException.class);
-        assertThatThrownBy(() -> r.userRoles(u1, d1, a1, List.of(r1), null, List.of(new Requests.RoleExpiry(r2, soon)), ACTOR))
+        assertThatThrownBy(() -> r.userRoles(u1, a1, List.of(r1), null, List.of(new Requests.RoleExpiry(r2, soon)), ACTOR))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test @SuppressWarnings("unchecked") void closingReviewOnlyRevokesTheGrantItSnapshotted() {
-        r.userRoles(u2, d1, a1, List.of(r2), ACTOR);
+        r.userRoles(u2, a1, List.of(r2), ACTOR);
         long reviewId = requestId(g.createReview(new Requests.ReviewCreate("变更跳过", a1, d1, 7), "admin"));
         for (var item : (List<Map<String,Object>>) g.reviewItems(reviewId, null, 1, 50).get("items"))
             g.decideReviewItem(reviewId, requestId(item), new Requests.ReviewItemDecision("REVOKE", null), "admin");
         // Removed and granted again after the snapshot: a newer decision the reviewer never saw.
-        r.userRoles(u1, d1, a1, List.of(), ACTOR);
-        r.userRoles(u1, d1, a1, List.of(r1), ACTOR);
+        r.userRoles(u1, a1, List.of(), ACTOR);
+        r.userRoles(u1, a1, List.of(r1), ACTOR);
         var closed = g.closeReview(reviewId, "admin");
         assertThat(closed.get("summary").toString()).contains("回收 1 条").contains("1 条在复核期间已变更");
         assertThat(((Number) closed.get("skipped")).intValue()).isEqualTo(1);
-        assertThat(r.assignments(u1, d1, a1).get("roleIds")).isEqualTo(List.of(r1));
-        assertThat(r.assignments(u2, d1, a1).get("roleIds")).isEqualTo(List.of());
+        assertThat(r.assignments(u1, a1).get("roleIds")).isEqualTo(List.of(r1));
+        assertThat(r.assignments(u2, a1).get("roleIds")).isEqualTo(List.of());
     }
 
     @Test @SuppressWarnings("unchecked") void governanceHistorySurvivesDeletingTheUserOrRole() {
-        long approved = requestId(g.submit(a1, new Requests.AccessRequestSubmit(external, d1, r2, "需要写权限", null), "app:" + a1));
+        long approved = requestId(g.submit(a1, new Requests.AccessRequestSubmit(external, r2, "需要写权限", null), "app:" + a1));
         g.approve(approved, new Requests.RequestApprove(null, "同意"), "admin");
-        long pending = requestId(g.submit(a1, new Requests.AccessRequestSubmit(external2, d1, r2, "也需要", null), "app:" + a1));
+        long pending = requestId(g.submit(a1, new Requests.AccessRequestSubmit(external2, r2, "也需要", null), "app:" + a1));
         long reviewId = requestId(g.createReview(new Requests.ReviewCreate("删除前快照", a1, d1, 7), "admin"));
-        r.deleteRole(r2, d1, a1, ACTOR);
+        r.deleteRole(r2, a1, ACTOR);
         var cancelled = g.request(pending);
         assertThat(cancelled.get("status")).isEqualTo("CANCELLED");
         assertThat(cancelled.get("roleId")).isNull();
@@ -566,18 +542,18 @@ class GovernanceIntegrationTest {
     }
 
     @Test void theDatabaseKeepsOnePendingRequestPerUserAndRole() {
-        g.submit(a1, new Requests.AccessRequestSubmit(external, d1, r2, "第一次", null), "app:" + a1);
+        g.submit(a1, new Requests.AccessRequestSubmit(external, r2, "第一次", null), "app:" + a1);
         assertThatThrownBy(() -> db.update("INSERT INTO access_requests(user_id,department_id,application_id,role_id,pending_role_id,reason,status,requested_by) "
                 + "VALUES (?,?,?,?,?,'并发提交','PENDING','test')", u1, d1, a1, r2, r2)).isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test void approverCanGrantPermanentlyOrForAnotherDuration() {
-        long first = requestId(g.submit(a1, new Requests.AccessRequestSubmit(external, d1, r2, "申请 30 天", 30), "app:" + a1));
+        long first = requestId(g.submit(a1, new Requests.AccessRequestSubmit(external, r2, "申请 30 天", 30), "app:" + a1));
         assertThatThrownBy(() -> g.approve(first, new Requests.RequestApprove(7, null, true), "admin")).isInstanceOf(ApiException.class);
         var approved = g.approve(first, new Requests.RequestApprove(null, "长期需要", true), "admin");
         assertThat(approved.get("grantExpiresAt")).isNull();
         assertThat(expiresAt(u1, r2)).isNull();
-        long second = requestId(g.submit(a1, new Requests.AccessRequestSubmit(external2, d1, r2, "申请永久", null), "app:" + a1));
+        long second = requestId(g.submit(a1, new Requests.AccessRequestSubmit(external2, r2, "申请永久", null), "app:" + a1));
         g.approve(second, new Requests.RequestApprove(7, null, false), "admin");
         assertThat(expiresAt(u2, r2)).isBetween(Instant.now().plus(6, ChronoUnit.DAYS), Instant.now().plus(8, ChronoUnit.DAYS));
     }
@@ -585,7 +561,7 @@ class GovernanceIntegrationTest {
     @Test void staleWebhookReadsCannotClaimOrFinishADelivery() {
         long hook = ((Number) webhooks.create(a1, new Requests.Webhook("认领", "http://127.0.0.1:1/hook", null, List.of("user.roles.changed"), true), ACTOR)
                 .get("id")).longValue();
-        r.userRoles(u1, d1, a1, List.of(r1, r2), ACTOR);
+        r.userRoles(u1, a1, List.of(r1, r2), ACTOR);
         long delivery = db.queryForObject("SELECT id FROM webhook_deliveries WHERE webhook_id=?", Long.class, hook);
         assertThat(webhookDao.claim(delivery, 1)).as("attempt count differs from the read").isZero();
         db.update("UPDATE webhook_deliveries SET next_attempt_at=TIMESTAMPADD(MINUTE,5,CURRENT_TIMESTAMP) WHERE id=?", delivery);
@@ -601,16 +577,17 @@ class GovernanceIntegrationTest {
         assertThat(webhookDao.delivered(delivery, 2, 200)).isEqualTo(1);
     }
 
-    @Test void permissionHoldersAreCountedPerUserAndDepartment() {
-        long read = db.queryForObject("SELECT id FROM permissions WHERE role_id=? AND application_id=? AND code='item:read'", Long.class, r1, a1);
-        long write = db.queryForObject("SELECT id FROM permissions WHERE role_id=? AND application_id=? AND code='item:write'", Long.class, r2, a1);
-        long ownRead = r.permission(new Requests.Permission(r2, "Read", "item:read", "item", "read"), null, d1, a1, ACTOR);
-        r.rolePermissions(r2, d1, a1, List.of(ownRead, write), ACTOR);
-        r.userRoles(u1, d1, a1, List.of(r1, r2), ACTOR);
-        r.userRoles(u2, d1, a1, List.of(r2), ACTOR);
+    @Test void permissionHoldersCountUsersOnceAndCanFilterMembership() {
+        long read = db.queryForObject("SELECT id FROM permissions WHERE application_id=? AND code='item:read'", Long.class, a1);
+        long write = db.queryForObject("SELECT id FROM permissions WHERE application_id=? AND code='item:write'", Long.class, a1);
+        r.rolePermissions(r2, a1, List.of(read, write), ACTOR);
+        r.userRoles(u1, a1, List.of(r1, r2), ACTOR);
+        r.userRoles(u2, a1, List.of(r2), ACTOR);
         var holders = g.permissionHolders(a1, "item:read", null);
         assertThat(((Number) holders.get("total")).longValue()).isEqualTo(2);
         assertThat(holders.get("truncated")).isEqualTo(false);
+        assertThat(((Number) g.permissionHolders(a1, "item:read", d2).get("total")).longValue()).isEqualTo(1);
+        assertThat(((Number) g.permissionHolders(a1, "item:read", d1).get("total")).longValue()).isEqualTo(2);
         assertThat((List<?>) holders.get("holders")).hasSize(2).anySatisfy(holder ->
                 assertThat((List<?>) ((Map<?,?>) holder).get("roles")).hasSize(2));
     }
@@ -636,41 +613,42 @@ class GovernanceIntegrationTest {
     }
 
     @Test void batchAddsSeveralRolesToSeveralMembersAndKeepsExistingGrants() {
-        r.userRoles(u1, d1, a1, List.of(r1), 7, ACTOR);
+        r.userRoles(u1, a1, List.of(r1), 7, ACTOR);
         Instant originalExpiry = expiresAt(u1, r1);
         String originalGrant = grantId(u1, r1);
-        var result = r.addUserRoles(d1, a1, new Requests.BatchUserRoles(List.of(u1, u2), List.of(r1, r2), 30), ACTOR);
+        var result = r.addUserRoles( a1, new Requests.BatchUserRoles(List.of(u1, u2), List.of(r1, r2), 30), ACTOR);
         assertThat(result).containsEntry("changedUsers", 2).containsEntry("grantsAdded", 3);
         assertThat(expiresAt(u1, r1)).isEqualTo(originalExpiry);
         assertThat(grantId(u1, r1)).isEqualTo(originalGrant);
         assertThat(expiresAt(u2, r1)).isBetween(Instant.now().plus(29, ChronoUnit.DAYS), Instant.now().plus(31, ChronoUnit.DAYS));
-        assertThat(r.assignments(u2, d1, a1).get("roleIds")).isEqualTo(List.of(r1, r2));
-        assertThat(r.addUserRoles(d1, a1, new Requests.BatchUserRoles(List.of(u1, u2), List.of(r1, r2), null), ACTOR))
+        assertThat(r.assignments(u2, a1).get("roleIds")).isEqualTo(List.of(r1, r2));
+        assertThat(r.addUserRoles( a1, new Requests.BatchUserRoles(List.of(u1, u2), List.of(r1, r2), null), ACTOR))
                 .containsEntry("changedUsers", 0).containsEntry("grantsAdded", 0);
         assertThat(expiresAt(u2, r1)).isNotNull();
     }
 
-    @Test void batchCannotAssignAcrossDepartmentsOrRolesOutsideTheDomain() {
-        long outsider = r.user(new Requests.User("Outside", external + "-outside", "", List.of(d2)), null, ACTOR);
-        long otherApp = ((Number)r.application(new Requests.Application("Other app", "batch-other-" + external, ""), ACTOR).get("id")).longValue();
-        long otherRole = r.role(new Requests.Role("Other", "other", ""), null, d2, otherApp, ACTOR);
-        assertThatThrownBy(() -> r.addUserRoles(d1, a1, new Requests.BatchUserRoles(List.of(u2, outsider), List.of(r1), null), ACTOR))
+    @Test void batchSelectsUsersAcrossDepartmentsButRejectsForeignSoftwareRoles() {
+        long outsider = r.user(new Requests.User("Outside", external + "-outside", "", List.of()), null, ACTOR);
+        long otherApp = ((Number) r.application(new Requests.Application("Other", "other-" + Credentials.token().substring(0, 12), ""), ACTOR).get("id")).longValue();
+        long otherRole = r.role(new Requests.Role("Other", "other", ""), null, otherApp, ACTOR);
+        assertThatThrownBy(() -> r.addUserRoles(a1, new Requests.BatchUserRoles(List.of(u2, outsider), List.of(r1, otherRole), null), ACTOR))
                 .isInstanceOf(ApiException.class);
-        assertThatThrownBy(() -> r.addUserRoles(d1, a1, new Requests.BatchUserRoles(List.of(u2), List.of(r1, otherRole), null), ACTOR))
-                .isInstanceOf(ApiException.class);
-        assertThat(r.assignments(u2, d1, a1).get("roleIds")).isEqualTo(List.of());
+        assertThat(r.assignments(u2, a1).get("roleIds")).isEqualTo(List.of());
+        assertThat(r.addUserRoles(a1, new Requests.BatchUserRoles(List.of(u2, outsider), List.of(r1), null), ACTOR))
+                .containsEntry("changedUsers", 2).containsEntry("grantsAdded", 2);
+        assertThat(r.assignments(outsider, a1).get("roleIds")).isEqualTo(List.of(r1));
     }
 
     @Test void staleTimedFormCannotRecreateAPurgedGrantPermanently() {
         var expired = OffsetDateTime.now().minusMinutes(1);
         db.update("DELETE FROM user_roles WHERE user_id=? AND role_id=?", u1, r1);
-        assertThatThrownBy(() -> r.userRoles(u1, d1, a1, List.of(r1), null, List.of(new Requests.RoleExpiry(r1, expired)), ACTOR))
+        assertThatThrownBy(() -> r.userRoles(u1, a1, List.of(r1), null, List.of(new Requests.RoleExpiry(r1, expired)), ACTOR))
                 .isInstanceOf(ApiException.class).hasMessageContaining("到期时间");
-        assertThat(r.assignments(u1, d1, a1).get("roleIds")).isEqualTo(List.of());
+        assertThat(r.assignments(u1, a1).get("roleIds")).isEqualTo(List.of());
     }
 
     @Test void roleMemberAdditionRecordsWhoGrantedWhichMember() {
-        r.roleMembers(r2, d1, a1, List.of(u2), ACTOR);
+        r.roleMembers(r2, a1, List.of(u2), ACTOR);
         assertThat(db.queryForObject("SELECT granted_by FROM user_roles WHERE user_id=? AND role_id=?", String.class, u2, r2)).isEqualTo(ACTOR);
         assertThat(db.queryForList("SELECT detail FROM audit_events WHERE actor=? AND action='ROLE_MEMBERS_UPDATED' AND target=?", String.class, ACTOR, "user:" + u2))
                 .anySatisfy(detail -> assertThat(detail).contains("writer"));
@@ -681,11 +659,11 @@ class GovernanceIntegrationTest {
         assertThat(webhooks.webhooks(a1).get(0).get("events")).isEqualTo(List.of("*"));
         webhooks.update(hook, new Requests.Webhook("变更", "http://127.0.0.1:1/hook", null, List.of("permission.updated", "permission.deleted", "role.enabled", "role.deleted", "user.contexts.revoked"), true), ACTOR);
         assertThat((List<?>) webhooks.webhooks(a1).get(0).get("events")).hasSize(5);
-        long permission = db.queryForObject("SELECT id FROM permissions WHERE role_id=? AND application_id=? AND code='item:write'", Long.class, r2, a1);
-        r.permission(new Requests.Permission(r2, "Write", "item:edit", "item", "edit"), permission, d1, a1, ACTOR);
-        r.deletePermission(permission, d1, a1, ACTOR);
-        r.roleStatus(r2, d1, a1, true, ACTOR);
-        r.deleteRole(r2, d1, a1, ACTOR);
+        long permission = db.queryForObject("SELECT id FROM permissions WHERE application_id=? AND code='item:write'", Long.class, a1);
+        r.permission(new Requests.Permission("Write", "item:edit", "item", "edit"), permission, a1, ACTOR);
+        r.deletePermission(permission, a1, ACTOR);
+        r.roleStatus(r2, a1, true, ACTOR);
+        r.deleteRole(r2, a1, ACTOR);
         r.revokeUserContexts(u1, ACTOR);
         assertThat(db.queryForList("SELECT event_type FROM webhook_deliveries WHERE webhook_id=? ORDER BY id", String.class, hook))
                 .containsExactly("permission.updated", "permission.deleted", "role.enabled", "role.deleted", "user.contexts.revoked");

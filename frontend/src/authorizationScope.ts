@@ -2,7 +2,7 @@ import { inject, type InjectionKey } from 'vue'
 import { useHub } from './store'
 
 export type AuthorizationScope = Pick<ReturnType<typeof useHub>,
-  'departmentId' | 'applicationId' | 'department' | 'application' | 'hasDomain' | 'domainKey' | 'domainQuery' | 'canDomain'>
+  'applicationId' | 'application' | 'hasDomain' | 'domainKey' | 'domainQuery' | 'canDomain'>
 
 export const authorizationScopeKey: InjectionKey<AuthorizationScope> = Symbol('authorization-scope')
 

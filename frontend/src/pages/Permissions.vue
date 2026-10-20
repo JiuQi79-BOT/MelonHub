@@ -19,19 +19,18 @@ defineProps<{ embedded?: boolean }>()
 const list = useList<Permission>(() => get<Permission[]>('/admin/permissions', scope.domainQuery))
 watch(() => scope.domainKey, key => { if (key) list.load(); else list.clear() }, { immediate: true })
 
-const keyword = ref(''), resource = ref<string>(), roleId = ref<number>()
-const roleOptions = computed(() => [...new Map(list.rows.value.map(p => [p.roleId, { value: p.roleId, label: p.roleName }])).values()])
+const keyword = ref(''), resource = ref<string>()
 const resources = computed(() => [...new Set(list.rows.value.map(p => p.resource))].sort().map(r => ({ value: r, label: r })))
 const rows = computed(() => {
   const k = keyword.value.trim().toLowerCase()
-  return list.rows.value.filter(p => (!roleId.value || p.roleId === roleId.value) && (!k || p.code.toLowerCase().includes(k) || p.name.toLowerCase().includes(k)) && (!resource.value || p.resource === resource.value))
+  return list.rows.value.filter(p => (!k || p.code.toLowerCase().includes(k) || p.name.toLowerCase().includes(k)) && (!resource.value || p.resource === resource.value))
 })
 const columns: TableColumnsType<Permission> = [
   { title: '权限编码', dataIndex: 'code', key: 'code', width: 220, ellipsis: true, sorter: (a, b) => a.code.localeCompare(b.code) },
   { title: '名称', dataIndex: 'name', ellipsis: true },
   { title: '资源', dataIndex: 'resource', width: 150, ellipsis: true },
   { title: '动作', dataIndex: 'action', width: 110, ellipsis: true },
-  { title: '所属角色', dataIndex: 'roleName', width: 150, ellipsis: true },
+  { title: '关联角色', dataIndex: 'roleCount', width: 90, align: 'right' },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 165 },
   { title: '操作', key: 'actions', width: 170, fixed: 'right' },
 ]
@@ -46,8 +45,8 @@ async function remove(row: Permission) {
 const holdersOpen = ref(false), holdersTarget = ref<Permission>()
 function showHolders(row: Permission) { holdersTarget.value = row; holdersOpen.value = true }
 function exportRows() {
-  downloadCsv('permissions', ['软件', '权限编码', '名称', '资源', '操作', '所属角色'],
-    rows.value.map(p => [scope.application?.name, p.code, p.name, p.resource, p.action, p.roleName]))
+  downloadCsv('permissions', ['软件', '权限编码', '名称', '资源', '操作', '关联角色数'],
+    rows.value.map(p => [scope.application?.name, p.code, p.name, p.resource, p.action, p.roleCount]))
 }
 </script>
 
@@ -64,7 +63,6 @@ function exportRows() {
       <a-card :bordered="false">
         <div class="toolbar">
           <a-input-search v-model:value="keyword" placeholder="搜索编码或名称" allow-clear class="toolbar-search" />
-          <a-select v-model:value="roleId" :options="roleOptions" placeholder="全部角色" allow-clear show-search option-filter-prop="label" class="toolbar-select" />
           <a-select v-model:value="resource" :options="resources" placeholder="全部资源" allow-clear show-search class="toolbar-select" />
         </div>
         <a-table :columns="columns" :data-source="rows" row-key="id" size="small" :loading="list.loading.value" :scroll="{ x: 1000 }"
@@ -80,7 +78,7 @@ function exportRows() {
                 <a-divider type="vertical" />
                 <a @click="edit(record)">编辑</a>
                 <a-divider type="vertical" />
-                <a-popconfirm :title="record.roleCount ? `角色「${record.roleName}」将失去该权限。确定删除？` : '确定删除该权限？'"
+                <a-popconfirm :title="record.roleCount ? `有 ${record.roleCount} 个角色包含该权限，删除后它们立即失去该权限。确定删除？` : '确定删除该权限？'"
                               ok-text="删除" cancel-text="取消" :ok-button-props="{ danger: true }" @confirm="remove(record)">
                   <a class="danger-link">删除</a>
                 </a-popconfirm>
@@ -91,7 +89,7 @@ function exportRows() {
       </a-card>
     </template>
 
-    <PermissionHoldersDrawer v-model:open="holdersOpen" :permission="holdersTarget" :application-id="scope.applicationId" :department-id="scope.departmentId" />
+    <PermissionHoldersDrawer v-model:open="holdersOpen" :permission="holdersTarget" :application-id="scope.applicationId" />
 
     <PermissionEditor v-model:open="open" :permission="editing" @saved="saved" />
   </div>

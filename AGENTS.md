@@ -1,17 +1,6 @@
 # MelonHub 开发规范与任务交接
 
-## 2026-10-20 当前规则（覆盖下文历史描述）
-
-用户确认“角色 × 软件”：软件隔离角色，权限归属角色且编码在角色内唯一。部门仅用于成员管理、筛选、批量设置软件角色；无部门用户也可申请和授权。部门变化不撤销软件角色或上下文。分配期限、grant_id、复核保护保留。
-
-V1–V5 不修改，V6 拆分共享权限、保留同编码旧角色并改名、移除角色/权限部门字段、建立复合外键、清除旧上下文。清单为软件级 v2，跨部门复制取消。详见 [数据库设计](doc/数据库设计.md)。
-
-仅使用云 MySQL，正式/测试库分别为 melonhub_rbac/melonhub_rbac_test。本地 MySQL/Redis 容器管理代码和 application-local.yml 已移除，Redis 默认关闭，服务器部署后配置启用。脚本只管理项目 Java/Vite，不根据历史记录启动本地容器。当前工作目录为 D:/PersonalStudy/MelonHub。
-
-下文保留历史交接信息，其中“部门 × 软件”、全局部门切换失效、本地 Docker、TEST_DB_TARGET 的描述已过时；其他安全和工程规则继续有效。最新证据见 doc/验证记录.md。
-
-
-最后更新：2026-10-19（Asia/Shanghai）。当前工作目录：`D:\MelonHub`。本地 Git 仓库的功能分支为 `rbac-platform`；既有改动按运行环境、控制台、鉴权、缓存限流、RBAC 授权、授权治理、Webhook、审计监控、Java SDK 和文档拆分提交。`origin` 指向个人 fork `https://github.com/xqy2006/MelonHub`，`upstream` 指向原仓库 `https://github.com/JiuQi79-BOT/MelonHub`；后续改动推送到个人 fork，通过 PR 向上游贡献。
+最后更新：2026-10-20（Asia/Shanghai）。当前工作目录：`D:\MelonHub`。当前功能分支为 `codex/software-scope-member-management`，基于此前的 `rbac-platform`；既有改动按运行环境、控制台、鉴权、缓存限流、RBAC 授权、授权治理、Webhook、审计监控、Java SDK 和文档拆分提交。`origin` 指向个人 fork `https://github.com/xqy2006/MelonHub`，`upstream` 指向原仓库 `https://github.com/JiuQi79-BOT/MelonHub`；后续改动推送到个人 fork，通过 PR 向上游贡献。
 
 上一轮完成“企业化改造”：修复鉴权绕过与监听地址缺陷，新增 Redis 权限缓存与无锁校验、限流与过载保护、多级管理员、多 API Key、审计增强、权限诊断、角色成员、跨部门复制，并用 Ant Design Vue 4 重建控制台。
 
@@ -21,13 +10,19 @@ V1–V5 不修改，V6 拆分共享权限、保留同编码旧角色并改名、
 
 ## 1. 用户要求与边界
 
+2026-10-20 上游同步：当前分支 `codex/software-scope-member-management` 合入上游 `55b3fc6`。用户明确要求保留当前“软件内多角色共享权限”，不采用上游“权限只属于单角色”；保留 local/cloud 与项目专用 Redis 的运行支持。合入上游 Webhook 租约/清理、搜索竞态、SDK 父类/接口注解修复。唯一 V6 仍为 `V6__application_scope.sql`，已执行上游 `V6__role_owned_permissions.sql` 的库不能直接切换，也不能 repair 绕过，须另行设计转换迁移。最新验证：后端 130、SDK 46、前端 9 项及构建通过，见验证记录 1.0.6。
+
+2026-10-20 最新模型变更：用户明确要求角色、权限仅按软件隔离，部门只用于组织用户和批量选人。已将后端、控制台、Java SDK 与接口文档改为软件域，新增 V6；移除跨部门配置复制、当前部门与切换语义。批量授权是一次性追加，不随成员关系动态同步。下列 2026-10-19 描述与验证均为历史，当前规则以本节、第 3 节和 V6 为准。继续遵循最小修改，不添加无关防御性代码。
+
+2026-10-20 选择操作补充：用户明确“全选”指部门管理所属用户、软件角色/权限选择，不是给用户全选所属部门；已撤回用户表单中的部门全选按钮。部门成员和成员授权提供跨页全选当前筛选结果、取消及个别排除（每批最多 1000 人）。部门成员新增批量加入、移出；后端 POST/DELETE `/api/admin/departments/{id}/members` 仅超级/平台管理员可用，按用户 ID 顺序加锁后锁部门，每批事务提交，只修改成员关系并对实际变更写审计及 user.updated 事件，不改变资料、其他部门、软件授权或上下文。未新增迁移，验证见 `doc/验证记录.md` 第 1.0.5 节。
+
 2026-10-19 最新补修：全量审查保留的 15 项问题已作最小修复；用户授权新增跨页选人、多角色批量追加与同页个别调整，保留已有有效分配及期限。普通列表 CSV、软件状态筛选、角色全选/清空恢复。MFA 变更结束旧会话、完整响应超时、导出快照、Webhook 数组契约及通知、旧 401 竞态等修复见 `doc/验证记录.md` 第 1.0 节；未增加迁移。用户要求最小修改，不添加无关防御性分支或抽象。
 
 随后按用户要求优化对象内配置流程：选定部门/软件后打开配置抽屉，角色/权限/成员授权复用原页面内容，移除三个独立侧栏入口并保留旧地址。新建部门→维护成员，接入软件→保存密钥→配置角色，新建角色→创建权限并勾选→保存并分配成员均连续完成。多部门复制、多软件配置、多软件批量授权组合现有 API，各项独立提交并保留成功结果；不增加部门与软件准入关系或模板同步。仅修改前端与说明文档，后端和迁移未动。
 
 手机完整流程复验补修：仅改 4 个前端文件。手机日期/时间及双月份面板纵向排列、固定在屏幕内且可滚动；权限元数据列改“动作”、审计列改“事件”，避免被手机样式误当成“操作”按钮列；诊断的跨部门警告只在已有其他当前部门时显示。详情见 `doc/验证记录.md` 第 1.0.2 节。
 
-- 用户定位：公司内部统一权限平台，为 20+ 业务软件通过 API 提供 RBAC 授权；隔离域为 部门 × 软件；切换部门使旧上下文失效。
+- 用户定位：公司内部统一权限平台，为 20+ 业务软件通过 API 提供 RBAC 授权；隔离域为软件；部门只组织用户和批量选人，成员关系变化不影响分配及上下文。
 - 用户确认的方向：企业级 RBAC 授权平台（**不做** OAuth/OIDC/IdP/SSO），前端 Ant Design Vue 4 的高密度表格控制台，高峰用 Redis 权限缓存并保证失效正确。
 - 说明文档统一中文，放在 `doc/`，README 链接；保留一键启动和一键停止脚本；IDEA 可维护运行，但图形界面启动未实测，不能描述为已验证。
 - 当前复用本机 Docker 的已有 MySQL `xmudemo-mysql`（8.3.0，卷 `xmudemo_db_data`），只使用 `melonhub_rbac` 和 `melonhub_rbac_test`。不得修改其他应用的数据库、数据或容器，不重建 Swarm、不删除持久化目录、不执行实验初始化 SQL。名为 backend 的 Compose 项目是 PostgreSQL，与本项目无关。
@@ -42,7 +37,7 @@ V1–V5 不修改，V6 拆分共享权限、保留同编码旧角色并改名、
 | 后端 | Spring Boot 3.5.7、Spring JDBC、Spring Data Redis（Lettuce）、Bean Validation、Flyway、MySQL Connector/J、Actuator + Micrometer Prometheus、spring-security-crypto |
 | Java | 源码目标 Java 17；当前使用 `C:\Program Files\Java\jdk-17` |
 | 前端 | Vue 3.5.22、TypeScript 5.9.3、Pinia 3.0.3、Vue Router 4.5.1（hash 路由）、Vite 6.4.1、ant-design-vue 4.2.6、@ant-design/icons-vue 7、dayjs |
-| Java SDK | `sdk/java`，`com.melonhub:melonhub-client:1.0.0`，独立 Maven 工程（不在根 `pom.xml` 聚合中），基于 JDK HttpClient，Spring Boot 自动装配可选；未发布到远程仓库，需 `mvn -f sdk/java/pom.xml install` |
+| Java SDK | `sdk/java`，`com.melonhub:melonhub-client:2.0.0`，独立 Maven 工程（不在根 `pom.xml` 聚合中），基于 JDK HttpClient，Spring Boot 自动装配可选；未发布到远程仓库，需 `mvn -f sdk/java/pom.xml install` |
 | Maven | 根 `pom.xml` 聚合 `backend`，后端 `backend/pom.xml`；启动器可发现 PATH、MAVEN_HOME/M2_HOME 或 `.m2/wrapper/dists` |
 | IDEA | `C:\Program Files\JetBrains\IntelliJ IDEA 2024.2.1`；图形启动未实测 |
 | Shell | PowerShell 7；优先 rg 搜索。PowerShell 别名会遮蔽同名函数（例如 `Del`），临时脚本的函数名要避开内置别名 |
@@ -60,33 +55,34 @@ V1–V5 不修改，V6 拆分共享权限、保留同编码旧角色并改名、
 | exception | `ApiException`、`ApiErrors`：结构化错误（含 requestId） |
 | config | `CloudDatabaseConfiguration`（保留历史类名）、`RedisConfiguration`、`DemoData` |
 
-迁移：`V1__rbac.sql`、`V2__enterprise.sql`、`V3__governance.sql`（`user_roles` 到期/授予人、`applications.rate_limit`、`access_requests`、`access_reviews`、`access_review_items`、`webhooks`、`webhook_deliveries`、`admin_accounts` MFA 字段、`audit_events.prev_hash/chain_hash`、`audit_seal`）、`V4__audit_seal_order.sql`（`audit_events.seal_seq`，`audit_seal` 的 `last_seq`、`anchor_seq/anchor_hash`）、`V5__governance_history.sql`（`admin_accounts/admin_sessions.credential_version`、`user_roles.grant_id`、申请与复核条目的名称快照且外键改为 `ON DELETE SET NULL`、`access_requests.pending_role_id` 唯一索引、复核条目 `grant_id/skipped`、`audit_seal.v2_from_seq`）。已应用的迁移不得修改，结构变更新建 V6。
+迁移：`V1__rbac.sql`、`V2__enterprise.sql`、`V3__governance.sql`（`user_roles` 到期/授予人、`applications.rate_limit`、`access_requests`、`access_reviews`、`access_review_items`、`webhooks`、`webhook_deliveries`、`admin_accounts` MFA 字段、`audit_events.prev_hash/chain_hash`、`audit_seal`）、`V4__audit_seal_order.sql`（`audit_events.seal_seq`，`audit_seal` 的 `last_seq`、`anchor_seq/anchor_hash`）、`V5__governance_history.sql`（`admin_accounts/admin_sessions.credential_version`、`user_roles.grant_id`、申请与复核条目的名称快照且外键改为 `ON DELETE SET NULL`、`access_requests.pending_role_id` 唯一索引、复核条目 `grant_id/skipped`、`audit_seal.v2_from_seq`）。V6__application_scope.sql 将角色、权限、关联和上下文改为按软件隔离，移除 users.active_department_id，允许复核条目无部门。保留全部角色 ID 与原权限集合、用户分配期限和 grant_id、治理历史及审计原文；同软件同编码权限合并，冲突角色编码加 :legacy: 后缀，角色不合并。旧上下文清除，缓存元数据改用 ctx:v2:。升级前备份项目库、停止旧实例，不混跑旧模型。已应用迁移不得修改，之后结构变更新建 V7。
 
 Controller、Service 不直接使用 JdbcTemplate，不把 SQL 搬回服务层。不新增无意义抽象。
 
-前端 `frontend/src`：`main.ts` 路由与权限守卫（`superOnly` 页面仅超级管理员；`domain` 标记的页面显示授权域选择），`App.vue` 布局（侧栏、面包屑、全局搜索、授权域选择、健康徽标、主题切换、账号菜单含两步验证与修改密码；手机上侧栏改为左侧抽屉、授权域移到顶栏下方整行、全局搜索收成图标），`store.ts` 身份与授权域，`api.ts` 请求与会话（token 在 sessionStorage），`theme.ts` 明暗主题与 antd 主题令牌（默认跟随系统，选择存 localStorage `melonhub-theme`，颜色需与 `style.css` 变量同步），`responsive.ts` 手机断点（≤768px，与 `style.css` 的媒体查询同步）：`isPhone`，以及给表格单元格写 `data-label`（列标题）和 `data-empty`（只有“—”或空）供手机卡片布局使用，“操作”列按标题识别，`composables.ts` 带请求序号的分页/列表（丢弃过时响应），`labels.ts` 中文标签，`types.ts` 类型。`pages/` 14 个页面：Overview、Departments、Users（含批量导入）、Applications（API Key/Webhook 抽屉，“更多”中限流）、Roles（“清单与复制”下拉：导出本部门清单/导出全部部门清单/导入清单/从其他部门复制）、Permissions（使用者反查）、Assignments（逐角色到期、统一有效天数、即将到期标签）、Approvals、Reviews、Simulate、Audit（校验链条）、Status、Accounts、Integration。`components/`：DomainPicker、DomainEmpty、GlobalSearch（Ctrl/⌘+K）、ThemeToggle、PageHead、EmptyState、ReadonlyHint、LoginView（MFA 口令步骤）、MfaModal、PasswordModal、KeysDrawer、WebhooksDrawer、ReviewDrawer、PermissionHoldersDrawer、UserAccessDrawer、RoleMembersDrawer、UserPicker、SecretModal。样式在 `style.css`，覆盖 antd 默认样式时要提高选择器优先级（如 `.shell .ant-layout-header.header`），深色模式需同时检查。
+前端 `frontend/src`：`main.ts` 路由与权限守卫（`superOnly` 页面仅超级管理员；`domain` 标记的页面显示软件选择），`App.vue` 布局（侧栏、面包屑、全局搜索、软件选择、健康徽标、主题切换、账号菜单含两步验证与修改密码；手机上侧栏改为左侧抽屉、授权域移到顶栏下方整行、全局搜索收成图标），`store.ts` 身份与软件范围，`api.ts` 请求与会话（token 在 sessionStorage），`theme.ts` 明暗主题与 antd 主题令牌（默认跟随系统，选择存 localStorage `melonhub-theme`，颜色需与 `style.css` 变量同步），`responsive.ts` 手机断点（≤768px，与 `style.css` 的媒体查询同步）：`isPhone`，以及给表格单元格写 `data-label`（列标题）和 `data-empty`（只有“—”或空）供手机卡片布局使用，“操作”列按标题识别，`composables.ts` 带请求序号的分页/列表（丢弃过时响应），`labels.ts` 中文标签，`types.ts` 类型。`pages/` 14 个页面：Overview、Departments、Users（含批量导入）、Applications（API Key/Webhook 抽屉，“更多”中限流）、Roles（“权限清单”下拉：导出软件清单/导入清单，version 2 平铺结构）、Permissions（使用者反查）、Assignments（逐角色到期、统一有效天数、即将到期标签）、Approvals、Reviews、Simulate、Audit（校验链条）、Status、Accounts、Integration。`components/`：DomainPicker、DomainEmpty、GlobalSearch（Ctrl/⌘+K）、ThemeToggle、PageHead、EmptyState、ReadonlyHint、LoginView（MFA 口令步骤）、MfaModal、PasswordModal、KeysDrawer、WebhooksDrawer、ReviewDrawer、PermissionHoldersDrawer、UserAccessDrawer、RoleMembersDrawer、UserPicker、SecretModal。样式在 `style.css`，覆盖 antd 默认样式时要提高选择器优先级（如 `.shell .ant-layout-header.header`），深色模式需同时检查。
 
-对象内配置新增：`authorizationScope.ts` 提供局部授权域，默认回退全局 store；`AuthorizationDrawer` 内复用 Roles/Permissions/Assignments/Users，Users 总表异步引用该抽屉以避免模块循环初始化。`PermissionEditor` 是原权限表单的共用实现；`DomainCopyModal` 逐目标调用现有复制接口；`BatchRolesModal` 逐软件调用现有批量追加接口。抽屉内切换软件保留本部门选人，切换部门清空；已有配置、有效分配与期限保留。各页面的旧 URL 仍可使用。
+对象内配置：`authorizationScope.ts` 提供局部软件范围，默认回退全局 store。`AuthorizationDrawer` 在软件内复用 Roles/Permissions/Assignments；部门内复用 Users/Assignments，部门仅作为人员筛选，角色定义在软件中维护。Users 总表异步引用抽屉以避免循环初始化。`PermissionEditor` 共用权限表单；`BatchRolesModal` 按软件逐项追加。移除 `DomainCopyModal`；跨软件配置迁移用 version 2 清单。切换软件保留选人，切换部门筛选清空；已有有效分配与期限保留。旧页面 URL 仍可用。
 
 文档：`doc/使用说明书.md`、`API.md`、`ARCHITECTURE.md`、`本地Docker运行.md`、`验证记录.md`；SDK 文档 `sdk/java/README.md`。
 
 ## 3. 核心权限模型
 
-RBAC0，隔离域 `(department_id, application_id)`。用户与角色、角色与权限多对多，没有用户直接权限；不引入角色继承、ABAC、职责分离、通配权限或业务规则。权限编码区分大小写，resource/action 仅为元数据。角色分配可带 `expires_at`，所有查询只计入未到期分配；到期是分配的属性，不是新规则。
+RBAC0，隔离域为 `application_id`。角色和权限编码在软件内唯一。用户与角色、角色与权限多对多，没有用户直接权限；不引入角色继承、ABAC、职责分离、通配权限或业务规则。resource/action 仅为元数据。角色分配可带 expires_at，所有有效授权查询只计入未到期分配。
 
-**用户全局当前部门**，跨软件、跨设备共享。在另一部门创建上下文使旧部门全部软件上下文失效，切回不恢复。设备独立切换属于需求变更。
+部门只维护组织成员关系。角色直接分配给用户，无部门用户也可授权；加入、移出部门及删除空部门不改变分配、不使上下文失效。批量追加只作用于提交时选中的用户，没有持续同步。权限复核的 departmentId 仅在创建快照时筛选成员，权限反查按用户去重。
 
-- `ContextService.issue()` 对用户行 `SELECT ... FOR UPDATE`，验证成员、用户/软件启用及激活角色为已分配角色子集；省略 activeRoleIds 为全部，空数组为无。跨部门切换增加 context_version、更新 active_department_id、清理旧版本。`switchDepartment:false` 时用户已有其他当前部门则返回 409 `DEPARTMENT_MISMATCH`，不切换；SDK 的 `hasPermission`/`token` 都这样调用，只有 `switchDepartment` 方法切换。
-- 校验（`effective`/`check`）**不加锁**：先查 Redis；未命中则在只读事务中读一致性快照（`ContextDao.state`）。语义：变更提交后开始的校验一定看到新状态，与提交并发的校验可能返回旧结果。
-- 失效：修改外部标识、移出当前部门、停用/删除用户、强制下线 → 上下文失效；用户在某域角色重分配、角色成员调整、批准申请、复核关闭回收 → 该域上下文失效；软件停用/删除 → 清除上下文；删除部门 → 清除前成员遗留上下文；角色停用、权限调整、清单导入 → 下一次校验生效；分配到期 → 不失效上下文，到期角色从到期时刻起不再计入（缓存结果带 `refreshAt`，见下）。
-- 删除部门/软件有依赖时返回 409 并在 message 中列出剩余数量（`RbacService.remaining`）；审计对象为名称，详情“编码 xxx”。
-- 写路径行锁顺序统一为“用户 → 角色 → 角色分配”。`RbacService.roleMembers` 先按 ID 顺序锁全部相关用户，再锁角色与分配；加锁读取若发现等锁期间新加入的成员，不在持有角色锁时再去锁该用户，而是回滚本次尝试，下一次把这些用户放在最前面，最多 3 次，仍冲突返回 503 `SERVICE_BUSY`。每次尝试用 `PROPAGATION_NESTED`：从控制器调用时没有外层事务，每次尝试是独立事务，回滚即释放全部锁；在调用方事务内（集成测试）只回滚到保存点，InnoDB 锁保留到外层事务结束。新建 API Key 先锁软件行（`lockApplication`），保证并发下最多 10 个有效密钥。新增写路径要遵守同一顺序。
+- `ContextService.issue()` 锁用户行，验证用户/软件启用及激活角色为该软件中已分配、启用、未到期角色的子集。请求只有 externalId、activeRoleIds；省略角色为全部，空数组为无。没有当前部门或切换语义；新上下文不影响旧上下文。
+- 校验 `effective/check` 不加锁：先查 Redis，未命中在只读事务中读取一致性快照。变更提交后开始的校验一定看到新状态，与提交并发的校验可能返回旧结果。
+- 修改外部标识、停用/删除用户、强制下线使用户全部上下文失效；角色重分配、角色成员变动、批准申请、复核回收使受影响用户在该软件的上下文失效；停用/删除软件清除软件全部上下文。角色/权限变更和清单导入在下一次校验生效；到期靠 refreshAt 即时移除角色，不要求重建上下文。
+- 部门删除只检查成员数，软件删除检查角色与权限数，冲突返回 409 并列明数量。审计对象为名称，详情记录编码。
+- 行锁顺序“用户 → 角色 → 角色分配”。角色成员替换先按 ID 锁相关用户，再锁角色与分配；发现等锁期间新增成员时回滚再重试，最多 3 次，仍冲突为 503 SERVICE_BUSY。每次尝试使用 PROPAGATION_NESTED：无外层事务时是独立事务；有外层事务时回滚保存点，InnoDB 锁保留到外层结束。创建 API Key 先锁软件，最多 10 个有效密钥。
+- 业务角色/权限路径为 `/api/v1/roles`、`/permissions`、`/users/{id}/roles`，不再含部门。管理授权接口只要求 applicationId；GET assignments 可选 departmentId 筛选用户。SDK 2.0.0 的 hasPermission(externalId,permission)、token(externalId)、issueContext(externalId,activeRoleIds) 均不含部门。旧 SDK 与 version 1 清单不兼容此模型。
 
 ### Redis 缓存协议（改动前必须理解）
 
-MySQL 是唯一数据源，Redis 无持久化。缓存键带随机“代标记”：用户 `gen:u`、软件 `gen:a`、密钥 `gen:k`、域 `gen:d:{dept}:{app}`，外加全局 `epoch`。改变授权状态的写操作必须在事务内调用 `PermissionCache.touchUser/touchApplication/touchKeys/touchDomain`：提交前替换代标记并 INCR busy，提交后再替换，完成后 DECR。读取方 Lua 原子读代标记与 busy，busy 时不回写；结果键由读取时的代标记组成。结果 TTL 60 秒，且不超过结果中最早到期的角色分配（`ContextService.Payload.refreshAt`，命中时已过该时刻也重新查库）。
+MySQL 是唯一数据源，Redis 无持久化。角色/权限/成员/清单变更复用 touchApplication；ctx:v2: 元数据和有效结果都不含部门。缓存键带随机“代标记”：用户 `gen:u`、软件 `gen:a`、密钥 `gen:k`，外加全局 `epoch`。改变授权状态的写操作必须在事务内调用 `PermissionCache.touchUser/touchApplication/touchKeys`：提交前替换代标记并 INCR busy，提交后再替换，完成后 DECR。读取方 Lua 原子读代标记与 busy，busy 时不回写；结果键由读取时的代标记组成。结果 TTL 60 秒，且不超过结果中最早到期的角色分配（`ContextService.Payload.refreshAt`，命中时已过该时刻也重新查库）。
 
-- 当前治理写路径的 touch：`RbacService.userRoles`（`ids` 为完整集合；`expiries` 逐角色到期、`expiresInDays` 作用于其余提交的角色，两者都未涉及的已有角色保留原期限；每次授予或改期限换新 `grant_id`）→ `touchUser`；`GovernanceService.approve` → `touchUser`；`closeReview`（只删除 `grant_id` 仍与快照相同的分配，其余条目记 `skipped`）→ 对每个被回收用户 `touchUser`；`importManifest` → 每个涉及部门 `touchDomain`。`importUsers` 只建/改用户资料并补充成员关系，不调用 touch；软件限额修改不涉及授权结果。分配到期在到期时刻没有写操作，靠 `refreshAt` 保证即时；`MaintenanceService.expireAssignments` 每 60 秒调用 `GovernanceService.expireAssignments`（每批 500）：按主键条件删除仍已到期的行（多实例只有一个删除成功），对受影响用户 `touchUser`，发 `user.roles.expired`（data 含 userId/externalId/departmentId/roleIds），审计 `USER_ROLES_EXPIRED`（actor `system`）。
+- 当前治理写路径的 touch：`RbacService.userRoles`（`ids` 为完整集合；`expiries` 逐角色到期、`expiresInDays` 作用于其余提交的角色，两者都未涉及的已有角色保留原期限；每次授予或改期限换新 `grant_id`）→ `touchUser`；`GovernanceService.approve` → `touchUser`；`closeReview`（只删除 `grant_id` 仍与快照相同的分配，其余条目记 `skipped`）→ 对每个被回收用户 `touchUser`；`importManifest` → `touchApplication`。`importUsers` 只建/改用户资料并补充成员关系，不调用 touch；软件限额修改不涉及授权结果。分配到期在到期时刻没有写操作，靠 `refreshAt` 保证即时；`MaintenanceService.expireAssignments` 每 60 秒调用 `GovernanceService.expireAssignments`（每批 500）：按主键条件删除仍已到期的行（多实例只有一个删除成功），对受影响用户 `touchUser`，发 `user.roles.expired`（data 含 userId/externalId/roleIds），审计 `USER_ROLES_EXPIRED`（actor `system`）。
 - 新增任何影响授权结果的写路径时，必须调用对应 touch，并在 `PermissionCacheIntegrationTest` 补用例。touch 要求处于事务中，否则抛异常。
 - 改变授权状态的写路径还应在同一事务中调用 `WebhookService.emit/emitAll`（事务外盒），事件名限 `WebhookService.EVENT_TYPES`；新增事件时同步更新该列表、前端 `labels.ts` 和 SDK `MelonHubAuthorizer.EVICT_EVENTS`（如需清缓存）。
 - Redis 异常触发 5 秒熔断走 MySQL；无法标记的写记为遗漏，本实例在推进 epoch 前绕过 Redis，`recover()` 每 2 秒尝试推进。Lua 内拼接键名，只支持单节点 Redis。
@@ -128,7 +124,13 @@ Webhook：头 `MelonHub-Event`、`MelonHub-Delivery`、`MelonHub-Signature: t=<�
 
 `.run/` 含 Backend、Frontend、Stack、Tests 配置。
 
-## 5. 验证证据（2026-10-19 本机，复审修复后）
+## 5. 验证证据
+
+2026-10-20 软件域改造：后端 package **122 项**、SDK **33 项**、前端会话测试 **1 项**及类型检查/构建通过。迁移专项用例在独立测试库的临时前缀表验证 V1–V5→V6；本机正式项目库备份后通过 Flyway 升至 V6，回读原有资料、分配、期限、治理历史和已封存审计不变。真实 API 17 项验证部门变更保留授权及双软件上下文、无部门授权/申请、部门筛选复核与跨软件隔离。界面验证软件内建角色/权限、无部门选人、跨页多软件追加及原期限、手机个别调整；详情见 doc/验证记录.md 第 1.0.3 节。
+
+当前正常 Redis 入口 127.0.0.1:6380 已恢复，health database/cache 均 UP；本次缓存测试直接使用专用 Redis，不依赖临时转发。以下 2026-10-19 的端口故障描述只作历史记录。
+
+### 2026-10-19 本机复审修复历史
 
 最新手机复验：实际 375×812 走通创建部门/软件/角色/权限/成员、两类复制、跨页跨软件追加、个别调整、部分失败后继续、审批与复核关闭、全局搜索、诊断、导出和审计链校验。四类管理员入口符合权限范围；接口回读确认分配、期限、回收与首次上下文语义。14 页手机明暗无横向溢出，320×640 日期/时间及范围选择可用，1280×720 日期布局保持原样。前端 1 项测试、最终类型检查与构建通过；仅 4 个前端文件及文档改动，未重跑后端/SDK。临时数据已清理，原有 2 部门、2 软件、1 用户、1 管理员保留，审计与治理历史保留。未做实体手机、触屏手势与软键盘验收。见 `doc/验证记录.md` 第 1.0.2 节。
 

@@ -140,7 +140,7 @@ const deliveryColumns: TableColumnsType<WebhookDelivery> = [
           <a-input v-model:value="form.url" :maxlength="500" placeholder="https://example.com/hooks/melonhub" />
         </a-form-item>
         <a-form-item label="订阅事件" name="events">
-          <a-select :value="form.events" mode="multiple" :options="webhookEventOptions" option-filter-prop="label" placeholder="选择事件类型" @change="onEventsChange" />
+          <a-select :value="form.events" mode="multiple" allow-clear max-tag-count="responsive" :options="webhookEventOptions" option-filter-prop="label" placeholder="选择事件类型" @change="onEventsChange" />
         </a-form-item>
         <a-form-item v-if="!editing" label="签名密钥" name="secret" extra="用于校验推送请求的签名。选择自动生成时，密钥只在创建成功后显示一次；手动填写需 16-100 位可见 ASCII 字符。">
           <a-radio-group v-model:value="form.secretMode" :options="[{ value: 'auto', label: '自动生成' }, { value: 'manual', label: '手动填写' }]" option-type="button" button-style="solid" />

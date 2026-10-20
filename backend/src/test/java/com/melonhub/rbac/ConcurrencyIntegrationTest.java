@@ -92,21 +92,21 @@ class ConcurrencyIntegrationTest {
             app = ((Number) r.application(new Requests.Application("Race App", "race-a-" + suffix, ""), ACTOR).get("id")).longValue();
             stay = r.user(new Requests.User("Stays", "race-stay-" + suffix, "", List.of(dept)), null, ACTOR);
             late = r.user(new Requests.User("Joins late", "race-late-" + suffix, "", List.of(dept)), null, ACTOR);
-            long role = r.role(new Requests.Role("Race", "race", ""), null, dept, app, ACTOR);
-            long d = dept, a = app, member = stay, joiner = late;
+            long role = r.role(new Requests.Role("Race", "race", ""), null, app, ACTOR);
+            long a = app, member = stay, joiner = late;
             var joined = new CountDownLatch(1);
             var commit = new CountDownLatch(1);
             var tx = new TransactionTemplate(transactions);
             Future<?> joining = pool.submit(() -> tx.executeWithoutResult(status -> {
                 db.queryForObject("SELECT id FROM roles WHERE id=? FOR UPDATE", Long.class, role);
-                db.update("INSERT INTO user_roles(user_id,role_id,department_id,application_id) VALUES (?,?,?,?)", joiner, role, d, a);
+                db.update("INSERT INTO user_roles(user_id,role_id,application_id) VALUES (?,?,?)", joiner, role, a);
                 joined.countDown();
                 try { commit.await(30, TimeUnit.SECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             }));
             assertThat(joined.await(10, TimeUnit.SECONDS)).isTrue();
-            Future<?> replacing = pool.submit(() -> r.roleMembers(role, d, a, List.of(member), ACTOR));
+            Future<?> replacing = pool.submit(() -> r.roleMembers(role, a, List.of(member), ACTOR));
             Thread.sleep(500);
-            Future<?> changing = pool.submit(() -> r.userRoles(joiner, d, a, List.of(role), ACTOR));
+            Future<?> changing = pool.submit(() -> r.userRoles(joiner, a, List.of(role), ACTOR));
             Thread.sleep(500);
             assertThat(replacing.isDone()).as("the replacement waits for the role").isFalse();
             assertThat(changing.isDone()).as("the change to the late member waits for its assignments").isFalse();

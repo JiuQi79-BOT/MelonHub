@@ -73,7 +73,7 @@ async function save() {
 const grantOpen = ref(false), grantRole = ref<Role | null>(null), grantKeys = ref<string[]>([]), granting = ref(false)
 const permissionOpen = ref(false)
 async function permissionCreated(id: number) { await permissions.load(); grantKeys.value.push(String(id)) }
-const transferData = computed(() => permissions.rows.value.filter(p => p.roleId === grantRole.value?.id).map(p => ({ key: String(p.id), title: p.code, description: p.name })))
+const transferData = computed(() => permissions.rows.value.map(p => ({ key: String(p.id), title: p.code, description: p.name })))
 function grant(row: Role) { grantRole.value = row; grantKeys.value = row.permissionIds.map(String); grantOpen.value = true }
 async function saveGrant(assignMembers = false) {
   const ok = await attempt(granting, () => send('PUT', `/admin/roles/${grantRole.value!.id}/permissions`, { ids: grantKeys.value.map(Number) }, scope.domainQuery), '角色权限已更新')
@@ -133,7 +133,7 @@ async function exportManifest() {
     link.download = `manifest-${manifest.application.code}-${new Date().toISOString().slice(0, 10)}.json`
     link.click()
     URL.revokeObjectURL(link.href)
-    message.success('软件角色权限清单已导出')
+    message.success(`已导出「${manifest.application.name}」的清单`)
   } catch (e) {
     message.error(errorText(e))
   } finally {
@@ -159,7 +159,7 @@ async function importManifest() {
   importOpen.value = false
   Modal.success({
     title: '权限清单已导入',
-    content: `新建权限 ${result.permissionsCreated} 个、更新权限 ${result.permissionsUpdated} 个；新建角色 ${result.rolesCreated} 个、更新角色 ${result.rolesUpdated} 个。角色按软件内编码匹配，权限按角色内编码匹配，不会删除任何已有配置。`,
+    content: `新建权限 ${result.permissionsCreated} 个、更新权限 ${result.permissionsUpdated} 个；新建角色 ${result.rolesCreated} 个、更新角色 ${result.rolesUpdated} 个。同编码按编码合并，不会删除任何已有配置。`,
   })
   reload()
 }
@@ -258,10 +258,11 @@ function headAction(key: string) {
         </template>
       </template>
       <p class="muted">保存后立即生效：拥有该角色的用户在下一次权限校验时按新的权限集合判定。</p>
-      <a-space class="block-gap">
+      <a-space wrap class="block-gap">
         <a-button v-if="scope.canDomain" size="small" @click="permissionOpen = true">新建权限并勾选</a-button>
         <a-button size="small" :disabled="!scope.canDomain" @click="grantKeys = transferData.map(p => p.key)">全选权限</a-button>
-        <a-button size="small" :disabled="!scope.canDomain" @click="grantKeys = []">清空权限</a-button>
+        <a-button size="small" :disabled="!scope.canDomain" @click="grantKeys = []">取消全选</a-button>
+        <span class="muted">已选 {{ grantKeys.length }} 项权限</span>
       </a-space>
       <a-transfer v-model:target-keys="grantKeys" :data-source="transferData" :titles="['可选权限', '已授予']" show-search :filter-option="filterPermission"
                   :disabled="!scope.canDomain" :list-style="{ width: '360px', height: '400px' }" :locale="{ searchPlaceholder: '搜索编码或名称', itemUnit: '项', itemsUnit: '项', notFoundContent: '暂无权限' }">
@@ -269,13 +270,13 @@ function headAction(key: string) {
       </a-transfer>
     </a-modal>
 
-    <PermissionEditor v-model:open="permissionOpen" :role-id="grantRole?.id" @saved="permissionCreated" />
+    <PermissionEditor v-model:open="permissionOpen" @saved="permissionCreated" />
 
     <a-modal v-model:open="importOpen" title="导入权限清单" :confirm-loading="importing" ok-text="导入" width="720px" destroy-on-close :mask-closable="false" @ok="importManifest">
       <p class="hint">导入到 {{ scope.application?.name }}。粘贴导出的清单 JSON，按编码创建或更新权限与角色，清单里没有的配置保持不变。</p>
-      <a-textarea v-model:value="importText" :rows="12" placeholder='{"version":2,"permissions":[],"roles":[]}' class="import-json" />
+      <a-textarea v-model:value="importText" :rows="12" placeholder='{"version":2,"application":{"code":"oa","name":"OA"},"permissions":[],"roles":[]}' class="import-json" />
     </a-modal>
 
-    <RoleMembersDrawer v-model:open="membersOpen" :role="membersRole" :department-id="scope.departmentId" :application-id="scope.applicationId" :embedded="embedded" @changed="roles.load()" @navigate="navigate" />
+    <RoleMembersDrawer v-model:open="membersOpen" :role="membersRole" :application-id="scope.applicationId" :embedded="embedded" @changed="roles.load()" @navigate="navigate" />
   </div>
 </template>

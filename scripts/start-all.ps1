@@ -44,6 +44,8 @@ try {
         & $npm --prefix $frontendRoot ci --ignore-scripts --no-audit --no-fund
         if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed.' }
     }
+    Start-MelonDatabase
+    Start-MelonRedis
     if (-not $backend) { $started += Start-MelonService 'backend' 8080 }
     Wait-MelonService 'http://127.0.0.1:8080/api/health' 'backend'
     if (-not $frontend) { $started += Start-MelonService 'frontend' $frontendPort }
@@ -52,7 +54,7 @@ try {
     Wait-MelonService "$url/api/health" 'backend' 15
     @{ frontendUrl = $url; backendUrl = 'http://127.0.0.1:8080'; verifiedAt = (Get-Date -Format 'o') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:MelonRoot '.local/services.json') -Encoding UTF8
     Write-Host "MelonHub ready: $url"
-    Write-Host 'Backend + cloud MySQL + frontend proxy: UP (Redis status is reported separately by health)'
+    Write-Host ("Backend + " + $env:SPRING_PROFILES_ACTIVE + ' database + cache + frontend proxy: UP')
     Write-Host 'Logs: .local/logs/backend.log and frontend.log'
     if (-not $NoBrowser) { Start-Process $url }
 } catch {

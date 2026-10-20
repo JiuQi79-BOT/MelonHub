@@ -11,6 +11,7 @@ import com.melonhub.rbac.exception.ApiException;
 import com.melonhub.rbac.security.Credentials;
 import com.melonhub.rbac.service.ContextService;
 import com.melonhub.rbac.service.RbacService;
+import com.melonhub.rbac.service.WebhookService;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -37,13 +38,14 @@ import org.springframework.transaction.annotation.Transactional;
 @ContextConfiguration(initializers=CloudTestDatabaseGuard.class)
 class RbacIntegrationTest {
     @Autowired RbacService r;
+    @Autowired WebhookService webhooks;
     @Autowired ContextService c;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate db;
     @Autowired AuthDao authDao;
     @Value("${melonhub.admin-username}") String adminUser;
-    long d1,d2,a1,a2,u1,u2,r1,r2,rOther,rOtherApp,p1,p2,pOther,pOtherApp;
+    long d1,d2,a1,a2,u1,u2,r1,r2,rOtherApp,p1,p2,pOtherApp;
     String external,key1,key2;
     @BeforeEach void fixture() {
         String suffix=Credentials.token().substring(0,12);external="user-"+suffix;
@@ -53,158 +55,187 @@ class RbacIntegrationTest {
         var app2=r.application(new Requests.Application("Two","a2-"+suffix,""),"test");a2=((Number)app2.get("id")).longValue();key2=(String)app2.get("apiKey");
         u1=r.user(new Requests.User("User",external,"",List.of(d1,d2)),null,"test");
         u2=r.user(new Requests.User("Other",external+"-other","",List.of(d1)),null,"test");
-        r1=r.role(new Requests.Role("Reader","reader",""),null,d1,a1,"test");
-        r2=r.role(new Requests.Role("Writer","writer",""),null,d1,a1,"test");
-        rOther=r.role(new Requests.Role("Reader","reader-other",""),null,d2,a1,"test");
-        rOtherApp=r.role(new Requests.Role("Reader","reader",""),null,d1,a2,"test");
-        p1=r.permission(new Requests.Permission(r1,"Read","item:read","item","read"),null,d1,a1,"test");
-        p2=r.permission(new Requests.Permission(r2,"Write","item:write","item","write"),null,d1,a1,"test");
-        pOther=r.permission(new Requests.Permission(rOther,"Read","item:read","item","read"),null,d2,a1,"test");
-        pOtherApp=r.permission(new Requests.Permission(rOtherApp,"Read","item:read","item","read"),null,d1,a2,"test");
-        r.rolePermissions(r1,d1,a1,List.of(p1),"test");r.rolePermissions(r2,d1,a1,List.of(p2),"test");
-        r.rolePermissions(rOther,d2,a1,List.of(pOther),"test");r.rolePermissions(rOtherApp,d1,a2,List.of(pOtherApp),"test");
-        r.userRoles(u1,d1,a1,List.of(r1,r2,rOther),"test");r.userRoles(u1,d1,a2,List.of(rOtherApp),"test");
+        p1=r.permission(new Requests.Permission("Read","item:read","item","read"),null,a1,"test");
+        p2=r.permission(new Requests.Permission("Write","item:write","item","write"),null,a1,"test");
+        pOtherApp=r.permission(new Requests.Permission("Read","item:read","item","read"),null,a2,"test");
+        r1=r.role(new Requests.Role("Reader","reader",""),null,a1,"test");
+        r2=r.role(new Requests.Role("Writer","writer",""),null,a1,"test");
+        rOtherApp=r.role(new Requests.Role("Reader","reader",""),null,a2,"test");
+        r.rolePermissions(r1,a1,List.of(p1),"test");r.rolePermissions(r2,a1,List.of(p2),"test");
+        r.rolePermissions(rOtherApp,a2,List.of(pOtherApp),"test");
+        r.userRoles(u1,a1,List.of(r1,r2),"test");r.userRoles(u1,a2,List.of(rOtherApp),"test");
     }
-    String issue(long app,long dept) {return (String)c.issue(app,new Requests.Context(external,dept,null),"test").get("contextToken");}
+    String issue(long app) {return (String)c.issue(app,new Requests.Context(external,null),"test").get("contextToken");}
     @Test void timestampsAndDatabaseExpiryUseTheSameClock() {
         Instant created = db.queryForObject("SELECT created_at FROM departments WHERE id=?", Timestamp.class, d1).toInstant();
         assertThat(created).isAfter(Instant.now().minusSeconds(30)).isBefore(Instant.now().plusSeconds(5));
-        String context = issue(a1,d1);
+        String context = issue(a1);
         assertThat(db.queryForObject("SELECT TIMESTAMPDIFF(SECOND,CURRENT_TIMESTAMP,expires_at) FROM permission_contexts WHERE id=?", Long.class, Credentials.hash(context))).isBetween(3570L,3600L);
         String session = Credentials.hash(Credentials.token());
         authDao.createSession(session,authDao.account(adminUser).orElseThrow(),Instant.now().truncatedTo(ChronoUnit.SECONDS).plusSeconds(28800),"127.0.0.1");
         assertThat(db.queryForObject("SELECT TIMESTAMPDIFF(SECOND,CURRENT_TIMESTAMP,expires_at) FROM admin_sessions WHERE token_hash=?", Long.class, session)).isBetween(28770L,28800L);
     }
     @Test void effectivePermissionsAreUnionOfAssignedRolesOnly() {
-        String token=issue(a1,d1);
+        String token=issue(a1);
         assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read","item:write"));
         assertThat(c.check(a1,token,List.of("item:read","not:assigned")).get("allowed")).isEqualTo(false);
-        String noRoles=(String)c.issue(a1,new Requests.Context(external+"-other",d1,null),"test").get("contextToken");
+        String noRoles=(String)c.issue(a1,new Requests.Context(external+"-other",null),"test").get("contextToken");
         assertThat((List<?>)c.effective(a1,noRoles).get("permissions")).isEmpty();
     }
-    @Test void departmentSelectionKeepsContextsAndApplicationRoleSet() {
-        String first=issue(a1,d1), otherApp=issue(a2,d1), next=issue(a1,d2);
-        assertThat(c.effective(a1,first).get("permissions")).isEqualTo(List.of("item:read","item:write"));
+    @Test void creatingAnotherContextKeepsEarlierContextsInBothApplications() {
+        String old=issue(a1),other=issue(a2),next=issue(a1);
+        assertThat(c.effective(a1,old).get("permissions")).isEqualTo(List.of("item:read","item:write"));
+        assertThat(c.effective(a2,other).get("permissions")).isEqualTo(List.of("item:read"));
         assertThat(c.effective(a1,next).get("permissions")).isEqualTo(List.of("item:read","item:write"));
-        assertThat(c.effective(a2,otherApp).get("permissions")).isEqualTo(List.of("item:read"));
-        assertThat(c.effective(a1,issue(a1,0)).get("permissions")).isEqualTo(List.of("item:read","item:write"));
     }
-    @Test void sameDepartmentInDifferentApplicationsKeepsBothContextsValid() {
-        String one=issue(a1,d1),two=issue(a2,d1);
+    @Test void differentApplicationsKeepBothContextsValid() {
+        String one=issue(a1),two=issue(a2);
         assertThat(c.effective(a1,one).get("permissions")).isEqualTo(List.of("item:read","item:write"));
         assertThat(c.effective(a2,two).get("permissions")).isEqualTo(List.of("item:read"));
     }
     @Test void activeRolesMustBeAssignedSubset() {
-        String token=(String)c.issue(a1,new Requests.Context(external,d1,List.of(r1)),"test").get("contextToken");
+        String token=(String)c.issue(a1,new Requests.Context(external,List.of(r1)),"test").get("contextToken");
         assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read"));
-        assertThatThrownBy(()->c.issue(a1,new Requests.Context(external,d1,List.of(rOtherApp)),"test")).isInstanceOf(ApiException.class);
-        String empty=(String)c.issue(a1,new Requests.Context(external,d1,List.of()),"test").get("contextToken");
+        assertThatThrownBy(()->c.issue(a1,new Requests.Context(external,List.of(rOtherApp)),"test")).isInstanceOf(ApiException.class);
+        String empty=(String)c.issue(a1,new Requests.Context(external,List.of()),"test").get("contextToken");
         assertThat((List<?>)c.effective(a1,empty).get("permissions")).isEmpty();
     }
-    @Test void crossDomainRolePermissionAssignmentsAreRejectedAtomically() {
-        assertThatThrownBy(()->r.rolePermissions(r1,d1,a1,List.of(p1,pOther),"test")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->r.rolePermissions(r1,d1,a1,List.of(pOtherApp),"test")).isInstanceOf(ApiException.class);
-        assertThat(r.roles(d1,a1).get(0).get("permissionIds")).isEqualTo(List.of(p1));
+    @Test void crossApplicationRolePermissionAssignmentsAreRejectedAtomically() {
+        assertThatThrownBy(()->r.rolePermissions(r1,a1,List.of(p1,pOtherApp),"test")).isInstanceOf(ApiException.class);
+        assertThat(r.roles(a1).get(0).get("permissionIds")).isEqualTo(List.of(p1));
     }
-    @Test void databaseForeignKeysRejectCrossRoleAndCrossApplicationLinks() {
-        assertThatThrownBy(()->db.update("INSERT INTO role_permissions(role_id,permission_id,application_id) VALUES (?,?,?)",r1,pOther,a1)).isInstanceOf(DataIntegrityViolationException.class);
-        assertThatThrownBy(()->db.update("INSERT INTO user_roles(user_id,role_id,department_id,application_id) VALUES (?,?,?,?)",u2,rOtherApp,d1,a1)).isInstanceOf(DataIntegrityViolationException.class);
+    @Test void databaseForeignKeysAlsoRejectCrossApplicationRelationships() {
+        assertThatThrownBy(()->db.update("INSERT INTO role_permissions(role_id,permission_id,application_id) VALUES (?,?,?)",r1,pOtherApp,a1)).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(()->db.update("INSERT INTO user_roles(user_id,role_id,application_id) VALUES (?,?,?)",u2,rOtherApp,a1)).isInstanceOf(DataIntegrityViolationException.class);
     }
     @Test void permissionRevocationIsVisibleInExistingContext() {
-        String token=issue(a1,d1);r.rolePermissions(r2,d1,a1,List.of(),"test");
+        String token=issue(a1);r.rolePermissions(r2,a1,List.of(),"test");
         assertThat(c.check(a1,token,List.of("item:write")).get("allowed")).isEqualTo(false);
         assertThat(c.check(a1,token,List.of("item:read")).get("allowed")).isEqualTo(true);
     }
     @Test void removingUserRoleInvalidatesContext() {
-        String token=issue(a1,d1);r.userRoles(u1,d1,a1,List.of(r1),"test");
+        String token=issue(a1);r.userRoles(u1,a1,List.of(r1),"test");
         assertThatThrownBy(()->c.effective(a1,token)).isInstanceOf(ApiException.class);
-        assertThat(c.effective(a1,issue(a1,d1)).get("permissions")).isEqualTo(List.of("item:read"));
+        assertThat(c.effective(a1,issue(a1)).get("permissions")).isEqualTo(List.of("item:read"));
     }
     @Test void reassigningRolesInOneApplicationKeepsContextsOfOtherApplications() {
-        String one=issue(a1,d1),two=issue(a2,d1);
-        r.userRoles(u1,d1,a1,List.of(r1),"test");
+        String one=issue(a1),two=issue(a2);
+        r.userRoles(u1,a1,List.of(r1),"test");
         assertThatThrownBy(()->c.effective(a1,one)).isInstanceOf(ApiException.class);
         assertThat(c.effective(a2,two).get("permissions")).isEqualTo(List.of("item:read"));
     }
     @Test void disabledUserCannotReuseOldContextAfterReactivation() {
-        String token=issue(a1,d1);r.userStatus(u1,false,"test");
+        String token=issue(a1);r.userStatus(u1,false,"test");
         assertThatThrownBy(()->c.effective(a1,token)).isInstanceOf(ApiException.class);
         r.userStatus(u1,true,"test");assertThatThrownBy(()->c.effective(a1,token)).isInstanceOf(ApiException.class);
     }
     @Test void editingDisplayFieldsKeepsContextsButChangingExternalIdEndsThem() {
-        String token=issue(a1,d1);
+        String token=issue(a1);
         r.user(new Requests.User("Renamed",external,"renamed@example.com",List.of(d1,d2)),u1,"test");
         assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read","item:write"));
         r.user(new Requests.User("Renamed",external+"-moved","",List.of(d1,d2)),u1,"test");
         assertThatThrownBy(()->c.effective(a1,token)).isInstanceOf(ApiException.class);
     }
-    @Test void removingMembershipPreservesSoftwareRolesAndContexts() {
-        String token=issue(a1,d1);
+    @Test void membershipChangesKeepAssignmentsAndContexts() {
+        String token=issue(a1);
         r.user(new Requests.User("User",external,"",List.of()),u1,"test");
         assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read","item:write"));
-        assertThat(r.assignments(u1,0,a1).get("roleIds")).isEqualTo(List.of(r1,r2,rOther));
+        assertThat(r.assignments(u1,a1).get("roleIds")).isEqualTo(List.of(r1,r2));
+        r.user(new Requests.User("User",external,"",List.of(d2)),u1,"test");
+        assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read","item:write"));
+        assertThat(r.assignments(u1,a1).get("roleIds")).isEqualTo(List.of(r1,r2));
     }
-    @Test void deletingDepartmentPreservesSoftwareConfigurationAndApplicationDeletionChecksDependencies() {
+    @Test void departmentMemberBatchesPreserveProfilesGrantsAndContexts() {
+        r.userRoles(u1,a1,List.of(r1,r2),7,"test");
+        String one=issue(a1),two=issue(a2);
+        var profile=db.queryForMap("SELECT * FROM users WHERE id=?",u1);
+        var grants=db.queryForList("SELECT * FROM user_roles WHERE user_id=? ORDER BY role_id",u1);
+        long hook=((Number)webhooks.create(a1,new Requests.Webhook("Membership","http://127.0.0.1:1/hook",null,List.of("user.updated"),true),"test").get("id")).longValue();
+
+        assertThat(r.departmentMembers(d1,List.of(u1,u2,u1),false,"batch-members").get("changedUsers")).isEqualTo(2);
+        assertThat(db.queryForList("SELECT department_id FROM memberships WHERE user_id=?",Long.class,u1)).containsExactly(d2);
+        assertThat(db.queryForList("SELECT department_id FROM memberships WHERE user_id=?",Long.class,u2)).isEmpty();
+        assertThat(r.departmentMembers(d1,List.of(u1,u2),false,"batch-members").get("changedUsers")).isEqualTo(0);
+        assertThat(db.queryForMap("SELECT * FROM users WHERE id=?",u1)).isEqualTo(profile);
+        assertThat(db.queryForList("SELECT * FROM user_roles WHERE user_id=? ORDER BY role_id",u1)).isEqualTo(grants);
+        assertThat(c.effective(a1,one).get("permissions")).isEqualTo(List.of("item:read","item:write"));
+        assertThat(c.effective(a2,two).get("permissions")).isEqualTo(List.of("item:read"));
+
+        assertThat(r.departmentMembers(d1,List.of(u1,u2,u2),true,"batch-members").get("changedUsers")).isEqualTo(2);
+        assertThat(r.departmentMembers(d1,List.of(u1,u2),true,"batch-members").get("changedUsers")).isEqualTo(0);
+        assertThat(db.queryForList("SELECT department_id FROM memberships WHERE user_id=? ORDER BY department_id",Long.class,u1)).containsExactly(d1,d2);
+        assertThat(r.assignments(u2,a1).get("roleIds")).isEqualTo(List.of());
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM webhook_deliveries WHERE webhook_id=? AND event_type='user.updated'",Long.class,hook)).isEqualTo(4);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM audit_events WHERE actor='batch-members' AND department_id=? AND action='USER_UPDATED'",Long.class,d1)).isEqualTo(4);
+    }
+    @Test void departmentMemberBatchRejectsMissingTargetsBeforeChangingMemberships() {
+        assertThatThrownBy(()->r.departmentMembers(d2,List.of(u2,Long.MAX_VALUE),true,"test"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("用户不存在");
+        assertThat(db.queryForList("SELECT department_id FROM memberships WHERE user_id=?",Long.class,u2)).containsExactly(d1);
+        assertThatThrownBy(()->r.departmentMembers(Long.MAX_VALUE,List.of(u2),true,"test"))
+                .isInstanceOf(ApiException.class).hasMessageContaining("部门不存在");
+        assertThat(db.queryForList("SELECT department_id FROM memberships WHERE user_id=?",Long.class,u2)).containsExactly(d1);
+    }
+    @Test void deletingDepartmentOrApplicationInUseNamesWhatRemains() {
         assertThatThrownBy(()->r.deleteDepartment(d2,"test")).isInstanceOf(ApiException.class).hasMessageContaining("1 名成员");
         assertThatThrownBy(()->r.deleteApplication(a2,"test")).isInstanceOf(ApiException.class).hasMessageContaining("1 个角色").hasMessageContaining("1 个权限");
-        String token=issue(a1,d2);
+        issue(a1);
         r.user(new Requests.User("User",external,"",List.of(d1)),u1,"test");
         r.deleteDepartment(d2,"test");
-        assertThat(r.roles(0,a1)).hasSize(3);
-        assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read","item:write"));
-        r.deleteRole(rOtherApp,d1,a2,"test");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM departments WHERE id=?",Long.class,d2)).isZero();
+        assertThat(db.queryForObject("SELECT target FROM audit_events WHERE action='DEPARTMENT_DELETED' ORDER BY id DESC LIMIT 1",String.class)).isEqualTo("Second");
+        r.deleteRole(rOtherApp,a2,"test");
+        r.deletePermission(pOtherApp,a2,"test");
         r.deleteApplication(a2,"test");
         assertThat(db.queryForObject("SELECT COUNT(*) FROM applications WHERE id=?",Long.class,a2)).isZero();
+        assertThat(db.queryForObject("SELECT target FROM audit_events WHERE action='APPLICATION_DELETED' ORDER BY id DESC LIMIT 1",String.class)).isEqualTo("Two");
     }
-    @Test void usersCanReceiveSoftwareRolesWithoutDepartmentMembership() {
-        r.userRoles(u2,0,a1,List.of(rOther),"test");
-        String token=(String)c.issue(a1,new Requests.Context(external+"-other",0,null),"test").get("contextToken");
+    @Test void usersWithoutDepartmentsCanReceiveRolesAndCreateContexts() {
+        long user=r.user(new Requests.User("No department",external+"-none","",List.of()),null,"test");
+        r.userRoles(user,a1,List.of(r1),"test");
+        String token=(String)c.issue(a1,new Requests.Context(external+"-none",null),"test").get("contextToken");
         assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read"));
     }
     @Test void expiredAndRevokedContextsAreRejected() {
-        String token=issue(a1,d1);db.update("UPDATE permission_contexts SET expires_at=DATE_SUB(CURRENT_TIMESTAMP,INTERVAL 1 SECOND) WHERE id=?",Credentials.hash(token));
+        String token=issue(a1);db.update("UPDATE permission_contexts SET expires_at=DATE_SUB(CURRENT_TIMESTAMP,INTERVAL 1 SECOND) WHERE id=?",Credentials.hash(token));
         assertThatThrownBy(()->c.effective(a1,token)).isInstanceOf(ApiException.class);
-        String fresh=issue(a1,d1);c.revoke(a1,fresh,"test");assertThatThrownBy(()->c.effective(a1,fresh)).isInstanceOf(ApiException.class);
+        String fresh=issue(a1);c.revoke(a1,fresh,"test");assertThatThrownBy(()->c.effective(a1,fresh)).isInstanceOf(ApiException.class);
     }
     @Test void forcedSignOutEndsEveryContextOfTheUser() {
-        String one=issue(a1,d1),two=issue(a2,d1);
+        String one=issue(a1),two=issue(a2);
         assertThat(r.revokeUserContexts(u1,"test")).isEqualTo(2);
         assertThatThrownBy(()->c.effective(a1,one)).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->c.effective(a2,two)).isInstanceOf(ApiException.class);
-        assertThat(c.effective(a1,issue(a1,d1)).get("permissions")).isEqualTo(List.of("item:read","item:write"));
+        assertThat(c.effective(a1,issue(a1)).get("permissions")).isEqualTo(List.of("item:read","item:write"));
     }
-    @Test void simulationExplainsApplicationAccessWithoutChangingDepartmentState() {
-        String token=issue(a1,d1);
-        var result=r.simulate(new Requests.Simulation(u1,d2,a1,null,List.of("item:read","item:write")));
+    @Test void simulationExplainsSoftwareAccessWithoutCreatingContexts() {
+        String token=issue(a1);
+        var result=r.simulate(new Requests.Simulation(u1,a1,null,List.of("item:read","item:write")));
         assertThat(result.get("eligible")).isEqualTo(true);
-        assertThat(result.get("switchesDepartment")).isEqualTo(false);
         assertThat(result.get("decisions")).isEqualTo(Map.of("item:read",true,"item:write",true));
         assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read","item:write"));
-        assertThat(r.simulate(new Requests.Simulation(u2,d2,a1,null,List.of("item:read"))).get("eligible")).isEqualTo(true);
-        assertThat(r.simulate(new Requests.Simulation(u1,d1,a1,List.of(rOtherApp),null)).get("eligible")).isEqualTo(false);
+        var unassigned=r.simulate(new Requests.Simulation(u2,a1,null,List.of("item:read")));
+        assertThat(unassigned.get("eligible")).isEqualTo(true);
+        assertThat(unassigned.get("allowed")).isEqualTo(false);
+        var foreignRole=r.simulate(new Requests.Simulation(u1,a1,List.of(rOtherApp),null));
+        assertThat(foreignRole.get("eligible")).isEqualTo(false);
     }
     @Test void roleMembersCanBeManagedFromTheRoleSide() {
-        r.roleMembers(r1,d1,a1,List.of(u1,u2),"test");
-        assertThat(r.roleMembers(r1,d1,a1)).extracting(m->((Number)m.get("id")).longValue()).containsExactly(u1,u2);
-        String token=(String)c.issue(a1,new Requests.Context(external+"-other",d1,null),"test").get("contextToken");
+        r.roleMembers(r1,a1,List.of(u1,u2),"test");
+        assertThat(r.roleMembers(r1,a1)).extracting(m->((Number)m.get("id")).longValue()).containsExactly(u1,u2);
+        String token=(String)c.issue(a1,new Requests.Context(external+"-other",null),"test").get("contextToken");
         assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read"));
         long outsider=r.user(new Requests.User("Outsider",external+"-out","",List.of(d2)),null,"test");
-        r.roleMembers(r1,d1,a1,List.of(u1,outsider),"test");
-        assertThat(r.roleMembers(r1,d2,a1)).extracting(m->((Number)m.get("id")).longValue()).containsExactly(u1,outsider);
-        r.roleMembers(r1,d1,a1,List.of(u1),"test");
+        r.roleMembers(r1,a1,List.of(u1,u2,outsider),"test");
+        assertThat(r.roleMembers(r1,a1)).hasSize(3);
+        r.roleMembers(r1,a1,List.of(u1),"test");
         assertThatThrownBy(()->c.effective(a1,token)).isInstanceOf(ApiException.class);
     }
-    @Test void sameApplicationSharesRolesAcrossDepartmentsAndRejectsObsoleteCopy() {
-        assertThat(r.roles(d1,a1)).isEqualTo(r.roles(d2,a1));
-        assertThatThrownBy(()->r.copyDomain(new Requests.DomainCopy(a1,d1,d2),"test")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->r.role(new Requests.Role("Duplicate","reader",""),null,d2,a1,"test")).isInstanceOf(DataIntegrityViolationException.class);
-    }
-    @Test void identicalPermissionCodesRemainIndependentBetweenRoles() {
-        long other=r.permission(new Requests.Permission(r2,"Other read","item:read","other","read"),null,d2,a1,"test");
-        r.rolePermissions(r2,d2,a1,List.of(p2,other),"test");
-        r.permission(new Requests.Permission(r2,"Other edit","item:edit","other","edit"),other,d1,a1,"test");
-        assertThat(r.permissions(d2,a1)).anySatisfy(p->assertThat(p).containsEntry("id",p1).containsEntry("code","item:read"));
-        assertThatThrownBy(()->r.permission(new Requests.Permission(r1,"Wrong owner","item:edit","item","edit"),other,d1,a1,"test")).isInstanceOf(ApiException.class);
+    @Test void roleAndPermissionCodesAreUniqueWithinSoftware() {
+        assertThatThrownBy(()->r.role(new Requests.Role("Duplicate","reader",""),null,a1,"test")).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(()->r.permission(new Requests.Permission("Duplicate","item:read","item","read"),null,a1,"test")).isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(r.roles(a2)).hasSize(1);
+        assertThat(r.permissions(a2)).hasSize(1);
     }
     @Test void usersArePagedAndSearchable() {
         var page=r.users(external,null,null,1,1);
@@ -217,16 +248,16 @@ class RbacIntegrationTest {
         assertThat(assignments.get("total")).isEqualTo(2L);
     }
     @SuppressWarnings("unchecked")
-    @Test void auditRecordsDomainIdsAndChangeDetails() {
-        var events=r.events(d1,a1,null,null,"ROLE_PERMISSIONS_UPDATED",null,null,null,1,20);
+    @Test void auditRecordsApplicationIdsAndChangeDetails() {
+        var events=r.events(null,a1,null,null,"ROLE_PERMISSIONS_UPDATED",null,null,null,1,20);
         assertThat(events.get("total")).isEqualTo(2L);
         assertThat((List<Map<String,Object>>)events.get("items")).allSatisfy(e->assertThat((String)e.get("detail")).startsWith("新增 item:"));
         assertThat(r.events(null,null,List.of(a2),null,"ROLE_PERMISSIONS_UPDATED",null,null,null,1,20).get("total")).isEqualTo(1L);
     }
     @Test void apiKeyIsBoundToApplicationAndCannotAssignForeignRoles() throws Exception {
-        mvc.perform(get("/api/v1/departments/"+d1+"/roles").param("applicationId",String.valueOf(a2)).header("X-API-Key",key1)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(3));
-        mvc.perform(put("/api/v1/departments/"+d1+"/users/"+u1+"/roles").header("X-API-Key",key1).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(Map.of("ids",List.of(rOtherApp))))).andExpect(status().isForbidden());
-        String token=issue(a1,d1);
+        mvc.perform(get("/api/v1/roles").param("applicationId",String.valueOf(a2)).header("X-API-Key",key1)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
+        mvc.perform(put("/api/v1/users/"+u1+"/roles").header("X-API-Key",key1).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(Map.of("ids",List.of(rOtherApp))))).andExpect(status().isForbidden());
+        String token=issue(a1);
         mvc.perform(get("/api/v1/contexts/effective").header("X-API-Key",key2).header("X-Context-Token",token)).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("CONTEXT_INVALID"));
     }
     @Test void adminAndBusinessEndpointsRequireDistinctCredentials() throws Exception {
@@ -255,18 +286,18 @@ class RbacIntegrationTest {
         mvc.perform(get("/api/v1/departments").header("X-API-Key",key)).andExpect(status().isUnauthorized());
     }
     @Test void disabledApplicationLosesKeysAndContexts() throws Exception {
-        String token=issue(a1,d1);
+        String token=issue(a1);
         r.applicationStatus(a1,false,"test");
         mvc.perform(get("/api/v1/departments").header("X-API-Key",key1)).andExpect(status().isUnauthorized());
         assertThatThrownBy(()->c.effective(a1,token)).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->c.issue(a1,new Requests.Context(external,d1,null),"test")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->c.issue(a1,new Requests.Context(external,null),"test")).isInstanceOf(ApiException.class);
     }
-    @Test void businessCrudCannotEditOrDeleteRolesInAnotherDomain() throws Exception {
-        mvc.perform(put("/api/v1/departments/"+d1+"/roles/"+rOtherApp).header("X-API-Key",key1).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Malicious\",\"code\":\"bad\"}")).andExpect(status().isForbidden());
-        mvc.perform(delete("/api/v1/departments/"+d1+"/roles/"+rOtherApp).header("X-API-Key",key1)).andExpect(status().isForbidden());
-        mvc.perform(patch("/api/v1/departments/"+d1+"/roles/"+rOtherApp+"/status").header("X-API-Key",key1).contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":false}")).andExpect(status().isForbidden());
-        assertThat(r.roles(d1,a2).get(0).get("name")).isEqualTo("Reader");
-        assertThat(r.roles(d1,a2).get(0).get("enabled")).isEqualTo(true);
+    @Test void businessCrudCannotEditOrDeleteRolesInAnotherApplication() throws Exception {
+        mvc.perform(put("/api/v1/roles/"+rOtherApp).header("X-API-Key",key1).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Malicious\",\"code\":\"bad\"}")).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/v1/roles/"+rOtherApp).header("X-API-Key",key1)).andExpect(status().isForbidden());
+        mvc.perform(patch("/api/v1/roles/"+rOtherApp+"/status").header("X-API-Key",key1).contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":false}")).andExpect(status().isForbidden());
+        assertThat(r.roles(a2).get(0).get("name")).isEqualTo("Reader");
+        assertThat(r.roles(a2).get(0).get("enabled")).isEqualTo(true);
     }
     @Test void healthReportsDatabaseAndCache() throws Exception {
         mvc.perform(get("/api/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP"))

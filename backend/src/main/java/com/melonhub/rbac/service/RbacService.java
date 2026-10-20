@@ -67,15 +67,14 @@ public class RbacService {
 
     public void audit(String actor, String action, String target, Long department, Long app) { audit(actor, action, target, department, app, ""); }
     public void audit(String actor, String action, String target, Long department, Long app, String detail) {
-        dao.audit(actor, action, target, department != null && department == 0 ? null : department, app, detail, ClientAddress.current());
+        dao.audit(actor, action, target, department, app, detail, ClientAddress.current());
     }
 
-    public void domain(long dept, long app) {
-        if (dept > 0 && !dao.departmentExists(dept)) throw ApiException.missing("部门不存在");
+    public void domain(long app) {
         if (!dao.applicationExists(app)) throw ApiException.missing("软件不存在");
     }
-    public void scoped(String table, long id, long dept, long app) {
-        if (!dao.scopedExists(table, id, dept, app)) throw ApiException.forbidden("关联记录不属于当前软件");
+    public void scoped(String table, long id, long app) {
+        if (!dao.scopedExists(table, id, app)) throw ApiException.forbidden("关联记录不属于当前软件");
     }
 
     public static Map<String,Object> page(RbacDao.Page page, int number, int size) {
@@ -101,8 +100,8 @@ public class RbacService {
     }
     @Transactional public void deleteDepartment(long id, String actor) {
         String[] label = dao.label("departments", id).orElseThrow(() -> ApiException.missing("部门不存在"));
-        long[] used = dao.departmentUsage(id);
-        String left = remaining(used[0], "名成员", used[1], "个角色", used[2], "个权限");
+        long members = dao.departmentUsage(id);
+        String left = remaining(members, "名成员");
         if (!left.isEmpty()) throw ApiException.conflict("部门下还有 " + left + "，请先移除后再删除");
         dao.deleteDepartment(id);
         audit(actor, "DEPARTMENT_DELETED", label[0], null, null, "编码 " + label[1]);
@@ -202,6 +201,23 @@ public class RbacService {
         if (!dao.departmentExists(dept)) throw ApiException.missing("部门不存在");
         return dao.departmentUsers(dept);
     }
+    @Transactional public Map<String,Object> departmentMembers(long department, Collection<Long> ids, boolean add, String actor) {
+        var users = new LinkedHashMap<Long,String>();
+        for (long id : new TreeSet<>(ids))
+            users.put(id, dao.lockUser(id).orElseThrow(() -> ApiException.missing("用户不存在")));
+        String[] label = dao.lockDepartment(department).orElseThrow(() -> ApiException.missing("部门不存在"));
+        int changed = 0;
+        for (var user : users.entrySet()) {
+            long id = user.getKey();
+            if ((add ? dao.addMembership(id, department) : dao.removeMembership(id, department)) == 0) continue;
+            changed++;
+            // Memberships only organize users; application grants and contexts stay valid.
+            webhooks.emitAll("user.updated", Map.of("userId", id, "externalId", user.getValue()));
+            audit(actor, "USER_UPDATED", user.getValue(), department, null,
+                    (add ? "加入部门 " : "移出部门 ") + label[0] + "（" + label[1] + "）");
+        }
+        return Map.of("changedUsers", changed);
+    }
     @Transactional public long user(Requests.User body, Long id, String actor) {
         var departments = new LinkedHashSet<>(body.departmentIds());
         for (long dept : departments) if (!dao.departmentExists(dept)) throw ApiException.missing("部门不存在");
@@ -220,12 +236,11 @@ public class RbacService {
         var removed = dao.lockedUserDepartments(id).stream().filter(d -> !departments.contains(d)).toList();
         for (long dept : removed) dao.removeMembership(id, dept);
         for (long dept : departments) dao.addMembership(id, dept);
-        dao.clearInactiveDepartment(id);
         cache.touchUser(id);
         webhooks.emitAll("user.updated", Map.of("userId", id, "externalId", body.externalId()));
         var detail = new ArrayList<String>();
         if (identityChanged) detail.add("外部标识由 " + previous + " 变更，原有上下文已失效");
-        if (!removed.isEmpty()) detail.add("移出部门 " + removed.size() + " 个，软件角色保持不变");
+        if (!removed.isEmpty()) detail.add("移出部门 " + removed.size() + " 个");
         audit(actor, "USER_UPDATED", label, null, null, String.join("；", detail));
         return id;
     }
@@ -247,14 +262,12 @@ public class RbacService {
     public Map<String,Object> userAccess(long id, Collection<Long> visible) {
         var user = dao.user(id).orElseThrow(() -> ApiException.missing("用户不存在"));
         user.put("departmentIds", dao.userDepartments(id));
-        var domains = new LinkedHashMap<String,Map<String,Object>>();
+        var domains = new LinkedHashMap<Long,Map<String,Object>>();
         for (var row : dao.accessRoles(id)) {
             long app = number(row.get("application_id"));
             if (visible != null && !visible.contains(app)) continue;
-            var domain = domains.computeIfAbsent(row.get("department_id") + ":" + app, k -> {
+            var domain = domains.computeIfAbsent(app, k -> {
                 var d = new LinkedHashMap<String,Object>();
-                d.put("departmentId", number(row.get("department_id")));
-                d.put("departmentName", row.get("department_name"));
                 d.put("applicationId", app);
                 d.put("applicationName", row.get("application_name"));
                 d.put("applicationEnabled", row.get("application_enabled"));
@@ -272,7 +285,7 @@ public class RbacService {
             rows(domain.get("roles")).add(role);
         }
         for (var row : dao.accessPermissions(id)) {
-            var domain = domains.get(row.get("department_id") + ":" + number(row.get("application_id")));
+            var domain = domains.get(number(row.get("application_id")));
             if (domain != null) strings(domain.get("permissions")).add((String) row.get("code"));
         }
         var result = new LinkedHashMap<String,Object>();
@@ -292,83 +305,79 @@ public class RbacService {
         return revoked;
     }
 
-    // ---- roles and permissions in one isolation domain ----
-    public List<Map<String,Object>> roles(long dept, long app) {
-        domain(dept, app);
-        var roles = dao.roles(dept, app);
-        attach(roles, dao.rolePermissions(dept, app), "role_id", "permission_id", "permissionIds");
+    // ---- roles and permissions in one application ----
+    public List<Map<String,Object>> roles(long app) {
+        domain(app);
+        var roles = dao.roles(app);
+        attach(roles, dao.rolePermissions(app), "role_id", "permission_id", "permissionIds");
         return roles;
     }
-    @Transactional public long role(Requests.Role body, Long id, long dept, long app, String actor) {
-        domain(dept, app);
+    @Transactional public long role(Requests.Role body, Long id, long app, String actor) {
+        domain(app);
         String description = text(body.description());
         if (id == null) {
-            id = dao.createRole(dept, app, body.name(), body.code(), description);
-            audit(actor, "ROLE_CREATED", body.name() + " (" + body.code() + ")", dept, app);
+            id = dao.createRole(app, body.name(), body.code(), description);
+            audit(actor, "ROLE_CREATED", body.name() + " (" + body.code() + ")", null, app);
         } else {
-            scoped("roles", id, dept, app);
+            scoped("roles", id, app);
             dao.updateRole(id, body.name(), body.code(), description);
             cache.touchApplication(app);
-            audit(actor, "ROLE_UPDATED", body.name() + " (" + body.code() + ")", dept, app);
+            audit(actor, "ROLE_UPDATED", body.name() + " (" + body.code() + ")", null, app);
         }
         return id;
     }
-    @Transactional public void roleStatus(long id, long dept, long app, boolean enabled, String actor) {
-        scoped("roles", id, dept, app);
+    @Transactional public void roleStatus(long id, long app, boolean enabled, String actor) {
+        scoped("roles", id, app);
         dao.roleStatus(id, enabled);
         cache.touchApplication(app);
-        webhooks.emit(app, enabled ? "role.enabled" : "role.disabled", Map.of("roleId", id, "departmentId", dept));
-        audit(actor, enabled ? "ROLE_ENABLED" : "ROLE_DISABLED", code("roles", id), dept, app);
+        webhooks.emit(app, enabled ? "role.enabled" : "role.disabled", Map.of("roleId", id));
+        audit(actor, enabled ? "ROLE_ENABLED" : "ROLE_DISABLED", code("roles", id), null, app);
     }
-    @Transactional public void deleteRole(long id, long dept, long app, String actor) {
-        scoped("roles", id, dept, app);
+    @Transactional public void deleteRole(long id, long app, String actor) {
+        scoped("roles", id, app);
         String code = code("roles", id);
         int cancelled = governance.cancelPending("role_id", id, "角色已删除");
         dao.deleteRole(id);
         cache.touchApplication(app);
-        webhooks.emit(app, "role.deleted", Map.of("roleId", id, "departmentId", dept));
-        audit(actor, "ROLE_DELETED", code, dept, app, cancelled == 0 ? "" : "撤回待审批申请 " + cancelled + " 个");
+        webhooks.emit(app, "role.deleted", Map.of("roleId", id));
+        audit(actor, "ROLE_DELETED", code, null, app, cancelled == 0 ? "" : "撤回待审批申请 " + cancelled + " 个");
     }
-    public List<Map<String,Object>> permissions(long dept, long app) { domain(dept, app); return dao.permissions(dept, app); }
-    @Transactional public long permission(Requests.Permission body, Long id, long dept, long app, String actor) {
-        domain(dept, app);
-        if (body.roleId() == null) throw ApiException.bad("请选择权限所属角色");
-        scoped("roles", body.roleId(), dept, app);
-        if (!dao.lockRole(body.roleId())) throw ApiException.missing("角色不存在");
+    public List<Map<String,Object>> permissions(long app) { domain(app); return dao.permissions(app); }
+    @Transactional public long permission(Requests.Permission body, Long id, long app, String actor) {
+        domain(app);
         if (id == null) {
-            id = dao.createPermission(body.roleId(), dept, app, body.name(), body.code(), body.resource(), body.action());
-            audit(actor, "PERMISSION_CREATED", body.name() + " (" + body.code() + ")", dept, app);
+            id = dao.createPermission(app, body.name(), body.code(), body.resource(), body.action());
+            audit(actor, "PERMISSION_CREATED", body.name() + " (" + body.code() + ")", null, app);
         } else {
-            scoped("permissions", id, dept, app);
-            if (!dao.permissionOwnedBy(id, body.roleId())) throw ApiException.forbidden("权限不属于当前角色，不能跨角色修改");
+            scoped("permissions", id, app);
             dao.updatePermission(id, body.name(), body.code(), body.resource(), body.action());
             cache.touchApplication(app);
-            webhooks.emit(app, "permission.updated", Map.of("permissionId", id, "departmentId", dept));
-            audit(actor, "PERMISSION_UPDATED", body.name() + " (" + body.code() + ")", dept, app);
+            webhooks.emit(app, "permission.updated", Map.of("permissionId", id));
+            audit(actor, "PERMISSION_UPDATED", body.name() + " (" + body.code() + ")", null, app);
         }
         return id;
     }
-    @Transactional public void deletePermission(long id, long dept, long app, String actor) {
-        scoped("permissions", id, dept, app);
+    @Transactional public void deletePermission(long id, long app, String actor) {
+        scoped("permissions", id, app);
         String code = code("permissions", id);
         dao.deletePermission(id);
         cache.touchApplication(app);
-        webhooks.emit(app, "permission.deleted", Map.of("permissionId", id, "departmentId", dept));
-        audit(actor, "PERMISSION_DELETED", code, dept, app);
+        webhooks.emit(app, "permission.deleted", Map.of("permissionId", id));
+        audit(actor, "PERMISSION_DELETED", code, null, app);
     }
-    @Transactional public void rolePermissions(long role, long dept, long app, List<Long> permissions, String actor) {
-        scoped("roles", role, dept, app);
+    @Transactional public void rolePermissions(long role, long app, List<Long> permissions, String actor) {
+        scoped("roles", role, app);
         var wanted = new LinkedHashSet<>(permissions);
+        if (dao.scopedCount("permissions", wanted, app) != wanted.size()) throw ApiException.forbidden("关联记录不属于当前软件");
         if (!dao.lockRole(role)) throw ApiException.missing("角色不存在");
-        if (dao.ownedPermissionCount(role, wanted) != wanted.size()) throw ApiException.forbidden("权限不属于当前角色");
         var before = new HashSet<>(dao.lockedRolePermissionIds(role));
-        dao.replaceRolePermissions(role, dept, app, wanted);
+        dao.replaceRolePermissions(role, app, wanted);
         cache.touchApplication(app);
-        webhooks.emit(app, "role.permissions.changed", Map.of("roleId", role, "departmentId", dept));
-        audit(actor, "ROLE_PERMISSIONS_UPDATED", code("roles", role), dept, app, diff("permissions", before, wanted));
+        webhooks.emit(app, "role.permissions.changed", Map.of("roleId", role));
+        audit(actor, "ROLE_PERMISSIONS_UPDATED", code("roles", role), null, app, diff("permissions", before, wanted));
     }
-    public List<Map<String,Object>> roleMembers(long role, long dept, long app) {
-        scoped("roles", role, dept, app);
+    public List<Map<String,Object>> roleMembers(long role, long app) {
+        scoped("roles", role, app);
         return dao.roleMembers(role);
     }
     /**
@@ -379,11 +388,11 @@ public class RbacService {
      * locking that user then would reverse the order and could deadlock with a change to that user; instead the
      * attempt rolls back, releasing every lock, and the next attempt locks that user up front.
      */
-    public void roleMembers(long role, long dept, long app, List<Long> users, String actor) {
+    public void roleMembers(long role, long app, List<Long> users, String actor) {
         var late = new TreeSet<Long>();
         for (int attempt = 1; ; attempt++) {
             try {
-                memberAttempt.executeWithoutResult(status -> replaceRoleMembers(role, dept, app, users, late, actor));
+                memberAttempt.executeWithoutResult(status -> replaceRoleMembers(role, app, users, late, actor));
                 return;
             } catch (LateMembers e) {
                 if (attempt >= MEMBER_ATTEMPTS) throw ApiException.busy("SERVICE_BUSY", "角色成员正在被同时修改，请稍后重试");
@@ -396,8 +405,8 @@ public class RbacService {
         final Set<Long> users;
         LateMembers(Set<Long> users) { super(null, null, false, false); this.users = users; }
     }
-    private void replaceRoleMembers(long role, long dept, long app, List<Long> users, Set<Long> known, String actor) {
-        scoped("roles", role, dept, app);
+    private void replaceRoleMembers(long role, long app, List<Long> users, Set<Long> known, String actor) {
+        scoped("roles", role, app);
         var wanted = new LinkedHashSet<>(users);
         var affected = new TreeSet<Long>(wanted);
         affected.addAll(known);
@@ -411,27 +420,27 @@ public class RbacService {
         var added = wanted.stream().filter(u -> !before.contains(u)).toList();
         var removed = before.stream().filter(u -> !wanted.contains(u)).toList();
         dao.removeRoleMembers(role, removed);
-        dao.addRoleMembers(role, dept, app, added, actor);
+        dao.addRoleMembers(role, app, added, actor);
         var changed = new ArrayList<>(added);
         changed.addAll(removed);
-        contexts.revokeDomain(changed, dept, app);
+        contexts.revokeApplication(changed, app);
         cache.touchApplication(app);
-        webhooks.emit(app, "user.roles.changed", Map.of("roleId", role, "departmentId", dept, "added", added.size(), "removed", removed.size()));
+        webhooks.emit(app, "user.roles.changed", Map.of("roleId", role, "added", added.size(), "removed", removed.size()));
         String roleCode = code("roles", role);
-        for (long user : added) audit(actor, "ROLE_MEMBERS_UPDATED", "user:" + user, dept, app, "新增角色 " + roleCode);
-        for (long user : removed) audit(actor, "ROLE_MEMBERS_UPDATED", "user:" + user, dept, app, "移除角色 " + roleCode);
+        for (long user : added) audit(actor, "ROLE_MEMBERS_UPDATED", "user:" + user, null, app, "新增角色 " + roleCode);
+        for (long user : removed) audit(actor, "ROLE_MEMBERS_UPDATED", "user:" + user, null, app, "移除角色 " + roleCode);
     }
-    public Map<String,Object> assignments(long user, long dept, long app) {
-        domain(dept, app);
-        var current = dao.assignmentExpiries(user, dept, app);
+    public Map<String,Object> assignments(long user, long app) {
+        domain(app);
+        var current = dao.assignmentExpiries(user, app);
         var timed = new LinkedHashMap<Long,Object>();
         current.forEach((role, at) -> { if (at != null) timed.put(role, at); });
         return Map.of("roleIds", List.copyOf(current.keySet()), "roleExpiries", timed);
     }
-    public Map<String,Object> domainAssignments(long dept, long app, String keyword, int page, int size) {
-        domain(dept, app);
-        var result = dao.departmentMembers(dept, keyword, page, size);
-        var pairs = dao.domainRolePairs(dept, app, ids(result.items()));
+    public Map<String,Object> domainAssignments(Long department, long app, String keyword, int page, int size) {
+        domain(app);
+        var result = dao.users(keyword, department, null, page, size);
+        var pairs = dao.domainRolePairs(app, ids(result.items()));
         attach(result.items(), pairs, "user_id", "role_id", "roleIds");
         var expiries = new HashMap<Long,Map<Long,Object>>();
         for (var pair : pairs) {
@@ -441,59 +450,58 @@ public class RbacService {
         for (var item : result.items()) item.put("roleExpiries", expiries.getOrDefault(number(item.get("id")), Map.of()));
         return page(result, page, size);
     }
-    /** Adds selected roles to department members, keeping every existing active grant and its expiry. */
-    @Transactional public Map<String,Object> addUserRoles(long dept, long app, Requests.BatchUserRoles body, String actor) {
-        domain(dept, app);
+    /** Adds selected roles to users, keeping every existing active grant and its expiry. */
+    @Transactional public Map<String,Object> addUserRoles(long app, Requests.BatchUserRoles body, String actor) {
+        domain(app);
         var users = new TreeSet<>(body.userIds());
         var roles = new TreeSet<>(body.roleIds());
         if (dao.lockUsers(users).size() != users.size()) throw ApiException.missing("用户不存在");
-        if (dept > 0 && dao.lockedMembers(users, dept) != users.size()) throw ApiException.forbidden("用户不属于当前部门");
         for (long role : roles) {
             if (!dao.lockRole(role)) throw ApiException.missing("角色不存在");
-            scoped("roles", role, dept, app);
+            scoped("roles", role, app);
         }
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         Timestamp expires = body.expiresInDays() == null ? null : Timestamp.from(now.plus(body.expiresInDays(), ChronoUnit.DAYS));
         int changedUsers = 0, grants = 0;
         for (long user : users) {
-            var current = dao.lockedAssignments(user, dept, app);
+            var current = dao.lockedAssignments(user, app);
             var added = new ArrayList<Long>();
             for (long role : roles) {
                 Timestamp held = current.get(role);
                 if (current.containsKey(role) && (held == null || held.toInstant().isAfter(now))) continue;
-                dao.grantRole(user, dept, app, role, expires, actor);
+                dao.grantRole(user, app, role, expires, actor);
                 added.add(role);
             }
             if (added.isEmpty()) continue;
             String external = (String) dao.user(user).orElseThrow().get("externalId");
-            contexts.revokeDomain(user, dept, app);
+            contexts.revokeApplication(user, app);
             cache.touchUser(user);
-            webhooks.emit(app, "user.roles.changed", Map.of("userId", user, "externalId", external, "departmentId", dept));
-            audit(actor, "USER_ROLES_UPDATED", external, dept, app, "批量追加 " + String.join(", ", dao.codes("roles", added)));
+            webhooks.emit(app, "user.roles.changed", Map.of("userId", user, "externalId", external));
+            audit(actor, "USER_ROLES_UPDATED", external, null, app, "批量追加 " + String.join(", ", dao.codes("roles", added)));
             changedUsers++;
             grants += added.size();
         }
         return Map.of("users", users.size(), "changedUsers", changedUsers, "grantsAdded", grants);
     }
 
-    /** Replaces a user's roles in one domain and ends that user's contexts there; other domains are untouched. */
-    @Transactional public void userRoles(long user, long dept, long app, List<Long> roles, String actor) {
-        userRoles(user, dept, app, roles, null, null, actor);
+    /** Replaces a user's roles in one application and ends that user's contexts there; other applications are untouched. */
+    @Transactional public void userRoles(long user, long app, List<Long> roles, String actor) {
+        userRoles(user, app, roles, null, null, actor);
     }
-    @Transactional public void userRoles(long user, long dept, long app, List<Long> roles, Integer expiresInDays, String actor) {
-        userRoles(user, dept, app, roles, expiresInDays, null, actor);
+    @Transactional public void userRoles(long user, long app, List<Long> roles, Integer expiresInDays, String actor) {
+        userRoles(user, app, roles, expiresInDays, null, actor);
     }
     /**
-     * Sets the complete role set of a user in one domain. An entry in expiries sets that role's expiry (null for
+     * Sets the complete role set of a user in one application. An entry in expiries sets that role's expiry (null for
      * permanent); otherwise expiresInDays, when given, applies to the role. A role with neither keeps the expiry
      * and grant it already has, and a newly added one is permanent. Removed roles are revoked.
      */
-    @Transactional public void userRoles(long user, long dept, long app, List<Long> roles, Integer expiresInDays,
+    @Transactional public void userRoles(long user, long app, List<Long> roles, Integer expiresInDays,
                                          List<Requests.RoleExpiry> expiries, String actor) {
-        domain(dept, app);
+        domain(app);
         String external = dao.lockUser(user).orElseThrow(() -> ApiException.missing("用户不存在"));
         var wanted = new LinkedHashSet<>(roles);
-        if (dao.scopedCount("roles", wanted, dept, app) != wanted.size()) throw ApiException.forbidden("关联记录不属于当前隔离域");
+        if (dao.scopedCount("roles", wanted, app) != wanted.size()) throw ApiException.forbidden("关联记录不属于当前软件");
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         var explicit = new HashMap<Long,Instant>();
         for (var entry : expiries == null ? List.<Requests.RoleExpiry>of() : expiries) {
@@ -501,7 +509,7 @@ public class RbacService {
             explicit.put(entry.roleId(), expiry(entry.expiresAt(), now));
         }
         Instant uniform = expiresInDays == null ? null : now.plus(expiresInDays, ChronoUnit.DAYS);
-        var current = dao.lockedAssignments(user, dept, app);
+        var current = dao.lockedAssignments(user, app);
         var removed = current.keySet().stream().filter(role -> !wanted.contains(role)).toList();
         dao.removeUserRoles(user, removed);
         int expiryChanges = 0;
@@ -514,16 +522,16 @@ public class RbacService {
             else target = null;
             Timestamp was = current.get(role);
             if (held && Objects.equals(was == null ? null : was.toInstant(), target)) continue;
-            dao.grantRole(user, dept, app, role, target == null ? null : Timestamp.from(target), actor);
+            dao.grantRole(user, app, role, target == null ? null : Timestamp.from(target), actor);
             if (held) expiryChanges++;
         }
-        contexts.revokeDomain(user, dept, app);
+        contexts.revokeApplication(user, app);
         cache.touchUser(user);
-        webhooks.emit(app, "user.roles.changed", Map.of("userId", user, "externalId", external, "departmentId", dept));
+        webhooks.emit(app, "user.roles.changed", Map.of("userId", user, "externalId", external));
         String detail = diff("roles", current.keySet(), wanted);
         if (expiryChanges > 0) detail += "；调整到期时间 " + expiryChanges + " 个";
         if (uniform != null) detail += "，" + expiresInDays + " 天后到期";
-        audit(actor, "USER_ROLES_UPDATED", external, dept, app, detail);
+        audit(actor, "USER_ROLES_UPDATED", external, null, app, detail);
     }
     private static Instant expiry(OffsetDateTime value, Instant now) {
         if (value == null) return null;
@@ -539,25 +547,21 @@ public class RbacService {
                 perSecond == null ? "恢复平台默认" : perSecond == 0 ? "不限制" : perSecond + " 次/秒");
     }
 
-    @Transactional public Map<String,Object> copyDomain(Requests.DomainCopy body, String actor) {
-        throw ApiException.bad("角色已按软件统一管理，无需跨部门复制；请直接为目标部门成员分配软件角色");
-    }
 
     /**
-     * Explains what a context for this user would contain, without issuing it or switching departments. issues
+     * Explains what a context for this user would contain, without issuing it. issues
      * would make context creation fail; notices only explain why a role does not count.
      */
     public Map<String,Object> simulate(Requests.Simulation body) {
-        long dept = body.departmentId(), app = body.applicationId();
-        domain(dept, app);
+        long app = body.applicationId();
+        domain(app);
         var user = dao.user(body.userId()).orElseThrow(() -> ApiException.missing("用户不存在"));
         var issues = new ArrayList<String>();
         var notices = new ArrayList<String>();
         if (!Boolean.TRUE.equals(user.get("enabled"))) issues.add("用户已停用");
         boolean applicationEnabled = dao.applicationEnabled(app);
         if (!applicationEnabled) issues.add("软件已停用");
-        boolean member = dao.member(body.userId(), dept);
-        var assigned = dao.userRolesInDomain(body.userId(), dept, app);
+        var assigned = dao.userRolesInApplication(body.userId(), app);
         var usable = new LinkedHashSet<Long>();
         for (var role : assigned) {
             boolean expired = role.get("expiresAt") != null && ((Timestamp) role.get("expiresAt")).toInstant().isBefore(Instant.now());
@@ -590,15 +594,12 @@ public class RbacService {
             longs(permission.get("grantedBy")).add(number(grant.get("role_id")));
         }
         boolean eligible = issues.isEmpty();
-        Object currentDepartment = user.get("activeDepartmentId");
         var result = new LinkedHashMap<String,Object>();
         result.put("eligible", eligible);
         result.put("issues", issues);
         result.put("notices", notices);
         result.put("user", user);
-        result.put("member", member);
         result.put("applicationEnabled", applicationEnabled);
-        result.put("switchesDepartment", false);
         result.put("roles", assigned);
         result.put("permissions", eligible ? new ArrayList<>(permissions.values()) : List.of());
         if (body.permissions() != null && !body.permissions().isEmpty()) {
@@ -618,7 +619,7 @@ public class RbacService {
         var filter = new RbacDao.AuditFilter(dept, app, visible, actor, action, keyword, start, end);
         return page(dao.events(filter, page, size), page, size);
     }
-    public Map<String,Object> overview(long dept, long app) { domain(dept, app); return dao.overview(dept, app); }
+    public Map<String,Object> overview(long app) { domain(app); return dao.overview(app); }
 
     // ---- helpers ----
     private String code(String table, long id) { return dao.codes(table, List.of(id)).stream().findFirst().orElse(table + ":" + id); }

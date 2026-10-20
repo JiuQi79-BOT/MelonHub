@@ -1,6 +1,7 @@
-import { computed, ref, shallowRef, type Ref } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue'
 import { message } from 'ant-design-vue'
-import { errorText, type PageResult } from './api'
+import { errorText, get, type PageResult, type Query } from './api'
+import type { User } from './types'
 
 /** Server-side paged table state. Responses that arrive after a newer request are dropped. */
 export function usePaged<T>(fetcher: (page: number, size: number) => Promise<PageResult<T>>, initialSize = 20) {
@@ -76,6 +77,38 @@ export async function attempt(busy: Ref<boolean>, action: () => Promise<unknown>
   } finally {
     busy.value = false
   }
+}
+
+/** User selection shared by department membership and software authorization tables. */
+export function useUserSelection(query: () => Query, selectable: (user: User) => boolean = () => true) {
+  const selected = ref<number[]>([]), selecting = ref(false)
+  let sequence = 0
+  function clear() { sequence++; selecting.value = false; selected.value = [] }
+  function change(keys: (string | number)[]) {
+    if (keys.length > 1000) { message.warning('单次最多选择 1000 名用户，请缩小筛选范围'); return }
+    selected.value = keys.map(Number)
+  }
+  async function selectAll() {
+    const current = ++sequence
+    selecting.value = true
+    try {
+      const result = await get<PageResult<User>>('/admin/users/export', query())
+      if (current !== sequence) return
+      change(result.items.filter(selectable).map(user => user.id))
+    } catch (e) {
+      if (current === sequence) message.error(errorText(e))
+    } finally {
+      if (current === sequence) selecting.value = false
+    }
+  }
+  const rowSelection = computed(() => ({
+    selectedRowKeys: selected.value, preserveSelectedRowKeys: true,
+    getCheckboxProps: (user: User) => ({ disabled: selecting.value || !selectable(user) }),
+    onChange: change,
+  }))
+  watch(query, clear, { deep: true })
+  onBeforeUnmount(clear)
+  return { selected, selecting, rowSelection, selectAll, clear }
 }
 
 /**

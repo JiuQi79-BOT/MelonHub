@@ -10,8 +10,11 @@ import org.springframework.context.ConfigurableApplicationContext;
 public class CloudTestDatabaseGuard implements ApplicationContextInitializer<ConfigurableApplicationContext> {
     @Override public void initialize(ConfigurableApplicationContext context) {
         var env = context.getEnvironment();
-        String prefix = "CLOUD_DB_";
+        String target = env.getProperty("TEST_DB_TARGET", "cloud");
+        if (!Set.of("cloud", "local").contains(target)) throw new IllegalStateException("TEST_DB_TARGET must be cloud or local");
+        String prefix = target.equals("local") ? "LOCAL_DB_" : "CLOUD_DB_";
         String host = env.getProperty(prefix + "HOST", "");
+        if (target.equals("local") && !Set.of("127.0.0.1", "localhost").contains(host)) throw new IllegalStateException("Local tests require a loopback MySQL endpoint");
         validate(env.getProperty("spring.datasource.url", ""), host, env.getProperty(prefix + "PORT", "3306"));
         for (String key : new String[]{"TEST_DB_USERNAME", "TEST_DB_PASSWORD"}) {
             if (env.getProperty(key, "").isBlank()) throw new IllegalStateException(key + " must be configured for integration tests");

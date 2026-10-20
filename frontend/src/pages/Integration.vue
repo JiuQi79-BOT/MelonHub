@@ -1,15 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { message, type TableColumnsType } from 'ant-design-vue'
-import { useHub } from '../store'
 import PageHead from '../components/PageHead.vue'
 
-const hub = useHub()
 const tab = ref('flow')
 
 type Endpoint = { method: string; path: string; description: string }
 const endpoints: Endpoint[] = [
-  { method: 'POST', path: '/api/v1/contexts', description: '按当前软件的用户角色创建权限上下文；部门不影响授权' },
+  { method: 'POST', path: '/api/v1/contexts', description: '为用户创建当前软件的权限上下文，软件由 API Key 确定' },
   { method: 'POST', path: '/api/v1/contexts/check', description: '批量校验权限，返回每个权限编码的允许/拒绝结果和总体 allowed' },
   { method: 'GET', path: '/api/v1/contexts/effective', description: '查询上下文当前的有效角色与权限，用于前端菜单或按钮展示' },
   { method: 'DELETE', path: '/api/v1/contexts', description: '用户退出登录时注销上下文' },
@@ -47,11 +45,11 @@ const curl = computed(() => `# 业务系统后端调用，API Key 不要下发�
 MELONHUB=http://127.0.0.1:8080
 API_KEY='<在“软件接入”中创建的 API Key>'
 
-# 1. 用户登录时创建软件上下文（省略 activeRoleIds 表示激活全部已分配角色）
+# 1. 用户登录时创建上下文（省略 activeRoleIds 表示激活全部已分配角色）
 curl -s -X POST "$MELONHUB/api/v1/contexts" \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: $API_KEY" \\
-  -d '{"externalId":"zhangsan","departmentId":${hub.departmentId || 1}}'
+  -d '{"externalId":"zhangsan"}'
 
 # 2. 每次受保护操作前校验
 curl -s -X POST "$MELONHUB/api/v1/contexts/check" \\
@@ -96,8 +94,8 @@ async function copy(text: string) {
 }
 
 // ---- live debugging against /api/v1 ----
-const debug = reactive<{ apiKey: string; externalId: string; departmentId?: number; permissions: string[]; token: string }>({
-  apiKey: '', externalId: '', departmentId: hub.departmentId || undefined, permissions: [], token: '',
+const debug = reactive<{ apiKey: string; externalId: string; permissions: string[]; token: string }>({
+  apiKey: '', externalId: '', permissions: [], token: '',
 })
 const response = ref<{ label: string; status: number; duration: number; requestId: string | null; body: unknown } | null>(null), calling = ref(false)
 const formatted = computed(() => response.value ? JSON.stringify(response.value.body, null, 2) : '')
@@ -125,7 +123,7 @@ async function call(label: string, method: string, path: string, body?: unknown)
 }
 async function issue() {
   if (!debug.externalId.trim()) { message.warning('请填写外部标识'); return }
-  const data = await call('创建上下文', 'POST', '/contexts', { externalId: debug.externalId.trim(), departmentId: debug.departmentId ?? 0 })
+  const data = await call('创建上下文', 'POST', '/contexts', { externalId: debug.externalId.trim() })
   if (data?.contextToken) debug.token = String(data.contextToken)
 }
 function needToken() { if (!debug.token.trim()) { message.warning('请先创建上下文或填写 Context Token'); return false } return true }
@@ -148,8 +146,8 @@ async function revoke() { if (needToken() && await call('注销上下文', 'DELE
             <a-col :xs="24" :lg="13">
               <a-timeline class="flow">
                 <a-timeline-item><b>接入软件，保存 API Key</b><p>在“软件接入”创建软件，把一次性显示的 API Key 保存到业务后端的密钥配置中。</p></a-timeline-item>
-                <a-timeline-item><b>同步用户与部门</b><p>用户的“外部标识”应与业务系统的用户 ID 一致，可按管理需要加入部门。</p></a-timeline-item>
-                <a-timeline-item><b>定义权限和角色</b><p>在软件中创建角色，在角色内定义权限，再为用户分配软件角色。部门用于成员筛选和批量授权。</p></a-timeline-item>
+                <a-timeline-item><b>同步用户与部门</b><p>用户的“外部标识”应与业务系统的用户 ID 一致。部门用于组织用户和批量选人。</p></a-timeline-item>
+                <a-timeline-item><b>定义权限和角色</b><p>在软件中定义权限编码、组合为角色，再为用户分配角色。可按部门筛选成员批量分配。</p></a-timeline-item>
                 <a-timeline-item><b>登录时创建上下文</b><p>业务后端完成自身登录认证后，调用 <code>POST /api/v1/contexts</code>，把返回的 <code>contextToken</code> 存入业务会话。</p></a-timeline-item>
                 <a-timeline-item><b>操作前校验</b><p>每次受保护操作前调用 <code>POST /api/v1/contexts/check</code>，<code>allowed</code> 为 true 才执行。</p></a-timeline-item>
                 <a-timeline-item><b>退出时注销</b><p>用户退出时调用 <code>DELETE /api/v1/contexts</code>。</p></a-timeline-item>
@@ -158,7 +156,7 @@ async function revoke() { if (needToken() && await call('注销上下文', 'DELE
             <a-col :xs="24" :lg="11">
               <div class="section-title flush">注意事项</div>
               <ul class="notes">
-                <li><b>软件隔离角色。</b>权限归属角色，部门仅用于成员管理与批量授权。创建上下文可以省略部门，部门变化不影响已有授权。</li>
+                <li><b>授权按软件隔离。</b>角色直接分配给用户。部门只用于组织和选人，加入或移出部门不会自动增减角色，也不会使上下文失效。</li>
                 <li><b>每次受保护操作前实时校验。</b>角色停用、权限移除、重新分配或用户停用后，下一次校验即返回新结果，不要在业务侧长期缓存结果。</li>
                 <li><b>只按权限编码匹配。</b>编码区分大小写；平台不解析资源、操作或业务规则，也不会撤回已执行的业务操作。</li>
               </ul>
@@ -190,15 +188,12 @@ async function revoke() { if (needToken() && await call('注销上下文', 'DELE
 
         <a-tab-pane key="debug" tab="在线调试">
           <a-alert type="warning" show-icon class="block-gap" message="这里发出的是真实请求"
-                   description="创建当前软件的上下文，来源部门可选。API Key 只保存在本页面内存中，请使用测试密钥。" />
+                   description="只想查看授权结果请使用“权限诊断”。API Key 只保存在本页面内存中，请只使用测试密钥。" />
           <a-row :gutter="16">
             <a-col :xs="24" :lg="10">
               <a-form layout="vertical">
                 <a-form-item label="X-API-Key" required><a-input-password v-model:value="debug.apiKey" autocomplete="off" placeholder="mh_…" /></a-form-item>
-                <a-row :gutter="12">
-                  <a-col :span="12"><a-form-item label="外部标识" required><a-input v-model:value="debug.externalId" placeholder="用户的 externalId" /></a-form-item></a-col>
-                  <a-col :span="12"><a-form-item label="来源部门"><a-select v-model:value="debug.departmentId" :options="hub.departmentOptions" allow-clear show-search option-filter-prop="label" /></a-form-item></a-col>
-                </a-row>
+                <a-form-item label="外部标识" required><a-input v-model:value="debug.externalId" placeholder="用户的 externalId" /></a-form-item>
                 <a-button type="primary" block :loading="calling" class="block-gap" @click="issue">创建上下文</a-button>
                 <a-form-item label="X-Context-Token"><a-input v-model:value="debug.token" placeholder="创建后自动填入" autocomplete="off" /></a-form-item>
                 <a-form-item label="待校验权限"><a-select v-model:value="debug.permissions" mode="tags" placeholder="输入编码后回车" :token-separators="[',', ' ']" /></a-form-item>

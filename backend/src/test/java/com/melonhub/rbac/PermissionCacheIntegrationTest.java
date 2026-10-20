@@ -58,17 +58,13 @@ class PermissionCacheIntegrationTest {
         a1 = ((Number) app.get("id")).longValue();
         key = (String) app.get("apiKey");
         u1 = r.user(new Requests.User("Cache User", external, "", List.of(d1, d2)), null, ACTOR);
-        long r1 = r.role(new Requests.Role("Reader", "reader", ""), null, d1, a1, ACTOR);
-        r2 = r.role(new Requests.Role("Writer", "writer", ""), null, d1, a1, ACTOR);
-        long rOther = r.role(new Requests.Role("Reader", "reader-other", ""), null, d2, a1, ACTOR);
-        long p1 = r.permission(new Requests.Permission(r1, "Read", "item:read", "item", "read"), null, d1, a1, ACTOR);
-        long p2 = r.permission(new Requests.Permission(r2, "Write", "item:write", "item", "write"), null, d1, a1, ACTOR);
-        long pOther = r.permission(new Requests.Permission(rOther, "Read", "item:read", "item", "read"), null, d2, a1, ACTOR);
-        r.rolePermissions(r1, d1, a1, List.of(p1), ACTOR);
-        r.rolePermissions(r2, d1, a1, List.of(p2), ACTOR);
-        r.rolePermissions(rOther, d2, a1, List.of(pOther), ACTOR);
-        r.userRoles(u1, d1, a1, List.of(r1, r2, rOther), ACTOR);
-
+        long p1 = r.permission(new Requests.Permission("Read", "item:read", "item", "read"), null, a1, ACTOR);
+        long p2 = r.permission(new Requests.Permission("Write", "item:write", "item", "write"), null, a1, ACTOR);
+        long r1 = r.role(new Requests.Role("Reader", "reader", ""), null, a1, ACTOR);
+        r2 = r.role(new Requests.Role("Writer", "writer", ""), null, a1, ACTOR);
+        r.rolePermissions(r1, a1, List.of(p1), ACTOR);
+        r.rolePermissions(r2, a1, List.of(p2), ACTOR);
+        r.userRoles(u1, a1, List.of(r1, r2), ACTOR);
     }
 
     @AfterEach void cleanup() {
@@ -81,45 +77,44 @@ class PermissionCacheIntegrationTest {
         db.update("DELETE FROM audit_events WHERE actor=? OR application_id=?", ACTOR, a1);
     }
 
-    private String issue(long dept) { return (String) c.issue(a1, new Requests.Context(external, dept, null), ACTOR).get("contextToken"); }
+    private String issue() { return (String) c.issue(a1, new Requests.Context(external, null), ACTOR).get("contextToken"); }
     private double count(String kind, String result) {
         Counter counter = metrics.find("melonhub.cache.lookups").tags("kind", kind, "result", result).counter();
         return counter == null ? 0 : counter.count();
     }
 
     @Test void repeatedChecksAreServedFromRedisAndRevocationIsImmediate() {
-        String token = issue(d1);
+        String token = issue();
         double hits = count("context", "hit");
         for (int i = 0; i < 3; i++) assertThat(c.check(a1, token, List.of("item:write")).get("allowed")).isEqualTo(true);
         assertThat(count("context", "hit") - hits).isGreaterThanOrEqualTo(2);
-        r.rolePermissions(r2, d1, a1, List.of(), ACTOR);
+        r.rolePermissions(r2, a1, List.of(), ACTOR);
         assertThat(c.check(a1, token, List.of("item:write")).get("allowed")).isEqualTo(false);
         assertThat(c.check(a1, token, List.of("item:read")).get("allowed")).isEqualTo(true);
     }
 
-    @Test void departmentFilterPreservesCachedContextsAndRoleChangesInvalidateAcrossFilters() {
-        String token = issue(d1);
+    @Test void membershipChangesKeepCachedAccessWhileUserDisableStillRevokesIt() {
+        String token = issue();
         c.effective(a1, token);
         c.effective(a1, token);
-        String next = issue(d2);
+        r.user(new Requests.User("Cache User", external, "", List.of()), u1, ACTOR);
         assertThat(c.effective(a1, token).get("permissions")).isEqualTo(List.of("item:read", "item:write"));
-        assertThat(c.effective(a1, next).get("permissions")).isEqualTo(List.of("item:read", "item:write"));
-        r.rolePermissions(r2, d1, a1, List.of(), ACTOR);
-        assertThat(c.check(a1, next, List.of("item:write")).get("allowed")).isEqualTo(false);
-        assertThat(c.check(a1, token, List.of("item:write")).get("allowed")).isEqualTo(false);
+        String next = issue();
+        assertThat(c.effective(a1, token).get("permissions")).isEqualTo(List.of("item:read", "item:write"));
         double hits = count("context", "hit");
         c.effective(a1, next);
         c.effective(a1, next);
         assertThat(count("context", "hit") - hits).isGreaterThanOrEqualTo(1);
         r.userStatus(u1, false, ACTOR);
         assertThatThrownBy(() -> c.effective(a1, next)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> c.effective(a1, token)).isInstanceOf(ApiException.class);
     }
 
     @Test void lapsedAssignmentEndsCachedDecisionsOnTimeAndIsAnnounced() throws Exception {
         webhooks.create(a1, new Requests.Webhook("expiry", "http://127.0.0.1:1/hook", null, List.of("user.roles.expired"), true), ACTOR);
         db.update("UPDATE user_roles SET expires_at=TIMESTAMPADD(SECOND,3,CURRENT_TIMESTAMP) WHERE user_id=? AND role_id=?", u1, r2);
         Instant lapse = db.queryForObject("SELECT expires_at FROM user_roles WHERE user_id=? AND role_id=?", Timestamp.class, u1, r2).toInstant();
-        String token = issue(d1);
+        String token = issue();
         double hits = count("context", "hit");
         assertThat(c.check(a1, token, List.of("item:write")).get("allowed")).isEqualTo(true);
         assertThat(c.check(a1, token, List.of("item:write")).get("allowed")).isEqualTo(true);
@@ -140,13 +135,13 @@ class PermissionCacheIntegrationTest {
     }
 
     @Test void batchGrantInvalidatesCachedContextAndNewContextIncludesTheRole() {
-        r.userRoles(u1, d1, a1, List.of(), ACTOR);
-        String token = issue(d1);
+        r.userRoles(u1, a1, List.of(), ACTOR);
+        String token = issue();
         assertThat(c.check(a1, token, List.of("item:write")).get("allowed")).isEqualTo(false);
         c.effective(a1, token);
-        r.addUserRoles(d1, a1, new Requests.BatchUserRoles(List.of(u1), List.of(r2), null), ACTOR);
+        r.addUserRoles( a1, new Requests.BatchUserRoles(List.of(u1), List.of(r2), null), ACTOR);
         assertThatThrownBy(() -> c.effective(a1, token)).isInstanceOf(ApiException.class);
-        assertThat(c.check(a1, issue(d1), List.of("item:write")).get("allowed")).isEqualTo(true);
+        assertThat(c.check(a1, issue(), List.of("item:write")).get("allowed")).isEqualTo(true);
     }
 
     @Test void revokedOrDisabledApiKeysStopWorkingImmediately() {

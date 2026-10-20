@@ -59,15 +59,15 @@ public class GovernanceService {
     /** Business systems submit requests on behalf of an employee; approval happens in the console. */
     @Transactional public Map<String,Object> submit(long app, Requests.AccessRequestSubmit body, String actor) {
         long user = dao.lockUserByExternal(body.externalId()).orElseThrow(() -> ApiException.missing("用户不存在"));
-        if (!dao.scopedExists("roles", body.roleId(), body.departmentId(), app)) throw ApiException.missing("角色不属于当前软件");
+        if (!dao.scopedExists("roles", body.roleId(), app)) throw ApiException.missing("角色不存在于该软件");
         if (gov.pendingExists(user, body.roleId())) throw ApiException.conflict("该用户已有此角色的待审批申请");
         long id;
         try {
-            id = gov.createRequest(user, body.departmentId(), app, body.roleId(), body.reason().strip(), body.durationDays(), actor);
+            id = gov.createRequest(user, app, body.roleId(), body.reason().strip(), body.durationDays(), actor);
         } catch (DuplicateKeyException e) {
             throw ApiException.conflict("该用户已有此角色的待审批申请");
         }
-        rbac.audit(actor, "ACCESS_REQUESTED", body.externalId(), body.departmentId(), app, "角色 #" + body.roleId());
+        rbac.audit(actor, "ACCESS_REQUESTED", body.externalId(), null, app, "角色 #" + body.roleId());
         return request(id);
     }
 
@@ -76,7 +76,7 @@ public class GovernanceService {
         if (!"PENDING".equals(request.get("status"))) throw ApiException.conflict("申请已被处理");
         if (request.get("userId") == null || request.get("roleId") == null)
             throw ApiException.conflict("申请涉及的用户或角色已删除");
-        long user = number(request.get("userId")), dept = number(request.get("departmentId"));
+        long user = number(request.get("userId"));
         long app = number(request.get("applicationId")), role = number(request.get("roleId"));
         if (!Boolean.TRUE.equals(request.get("roleEnabled"))) throw ApiException.conflict("角色已停用，无法授权");
         boolean permanent = Boolean.TRUE.equals(body.permanent());
@@ -85,13 +85,13 @@ public class GovernanceService {
                 : request.get("durationDays") == null ? null : ((Number) request.get("durationDays")).intValue();
         Instant expires = days == null ? null : Instant.now().truncatedTo(ChronoUnit.SECONDS).plus(days, ChronoUnit.DAYS);
         dao.lockUser(user).orElseThrow(() -> ApiException.missing("用户不存在"));
-        dao.grantRole(user, dept, app, role, expires == null ? null : Timestamp.from(expires), actor);
+        dao.grantRole(user, app, role, expires == null ? null : Timestamp.from(expires), actor);
         if (gov.decide(id, "APPROVED", actor, text(body.comment()), expires == null ? null : Timestamp.from(expires)) == 0)
             throw ApiException.conflict("申请已被并发处理");
-        contexts.revokeDomain(user, dept, app);
+        contexts.revokeApplication(user, app);
         cache.touchUser(user);
-        webhooks.emit(app, "access.approved", Map.of("userId", user, "externalId", request.get("externalId"), "departmentId", dept, "roleId", role));
-        rbac.audit(actor, "ACCESS_REQUEST_APPROVED", (String) request.get("externalId"), dept, app,
+        webhooks.emit(app, "access.approved", Map.of("userId", user, "externalId", request.get("externalId"), "roleId", role));
+        rbac.audit(actor, "ACCESS_REQUEST_APPROVED", (String) request.get("externalId"), null, app,
                 "角色 " + request.get("roleCode") + (days == null ? "，永久授权" : "，" + days + " 天有效"));
         return request(id);
     }
@@ -104,7 +104,6 @@ public class GovernanceService {
         var data = new LinkedHashMap<String,Object>();
         data.put("userId", request.get("userId"));
         data.put("externalId", request.get("externalId"));
-        data.put("departmentId", request.get("departmentId"));
         data.put("roleId", request.get("roleId"));
         data.put("comment", text(body.comment()));
         webhooks.emit(app, "access.rejected", data);
@@ -127,11 +126,11 @@ public class GovernanceService {
         return gov.requestsOfUser(user, app);
     }
 
-    /** Read-only view of what a user currently holds in one domain, without creating a context. */
-    public Map<String,Object> myAccess(long app, String externalId, long dept) {
+    /** Read-only view of what a user currently holds in one application, without creating a context. */
+    public Map<String,Object> myAccess(long app, String externalId) {
         long user = dao.userIdByExternal(externalId).orElseThrow(() -> ApiException.missing("用户不存在"));
-        rbac.domain(dept, app);
-        var roles = dao.userRolesInDomain(user, dept, app);
+        rbac.domain(app);
+        var roles = dao.userRolesInApplication(user, app);
         var usable = new ArrayList<Long>();
         var view = new ArrayList<Map<String,Object>>();
         for (var role : roles) {
@@ -149,7 +148,6 @@ public class GovernanceService {
         for (var grant : dao.grants(usable)) permissions.add((String) grant.get("code"));
         var result = new LinkedHashMap<String,Object>();
         result.put("userId", user);
-        result.put("departmentId", dept);
         result.put("applicationId", app);
         result.put("roles", view);
         result.put("permissions", new ArrayList<>(permissions));
@@ -200,7 +198,6 @@ public class GovernanceService {
         var users = new TreeSet<Long>();
         for (var item : revocations) if (item.get("userId") != null) users.add(number(item.get("userId")));
         dao.lockUsers(users);
-        var domains = new LinkedHashMap<Long, List<Long>>();
         var touched = new LinkedHashSet<Long>();
         int revoked = 0, skipped = 0;
         for (var item : revocations) {
@@ -211,9 +208,8 @@ public class GovernanceService {
             long user = number(item.get("userId"));
             revoked++;
             touched.add(user);
-            domains.computeIfAbsent(number(item.get("departmentId")), k -> new ArrayList<>()).add(user);
         }
-        for (var entry : domains.entrySet()) contexts.revokeDomain(entry.getValue(), entry.getKey(), app);
+        contexts.revokeApplication(touched, app);
         for (long user : touched) cache.touchUser(user);
         String summary = "回收 " + revoked + " 条授权" + (skipped == 0 ? "" : "，" + skipped + " 条在复核期间已变更或移除，未回收") + "，未决条目视为保留";
         if (gov.closeReview(reviewId, actor, summary) == 0) throw ApiException.conflict("复核已被并发关闭");
@@ -225,23 +221,23 @@ public class GovernanceService {
     // ---- assignment expiry ----
     /**
      * Deletes one batch of lapsed assignments, refreshes cached checks of the affected users and announces each
-     * expiry once per user and domain, even when several instances run the job at the same time.
+     * expiry once per user and application, even when several instances run the job at the same time.
      */
     @Transactional public int expireAssignments(int limit) {
         var lapsed = new LinkedHashMap<String, List<Map<String,Object>>>();
         for (var row : dao.lapsedAssignments(limit)) {
             if (dao.deleteLapsedAssignment(number(row.get("userId")), number(row.get("roleId"))) == 0) continue;
-            lapsed.computeIfAbsent(row.get("userId") + ":" + row.get("departmentId") + ":" + row.get("applicationId"), k -> new ArrayList<>()).add(row);
+            lapsed.computeIfAbsent(row.get("userId") + ":" + row.get("applicationId"), k -> new ArrayList<>()).add(row);
         }
         int expired = 0;
         for (var rows : lapsed.values()) {
             var first = rows.get(0);
-            long user = number(first.get("userId")), dept = number(first.get("departmentId")), app = number(first.get("applicationId"));
+            long user = number(first.get("userId")), app = number(first.get("applicationId"));
             String external = (String) first.get("externalId");
             cache.touchUser(user);
-            webhooks.emit(app, "user.roles.expired", Map.of("userId", user, "externalId", external, "departmentId", dept,
+            webhooks.emit(app, "user.roles.expired", Map.of("userId", user, "externalId", external,
                     "roleIds", rows.stream().map(row -> number(row.get("roleId"))).toList()));
-            rbac.audit("system", "USER_ROLES_EXPIRED", external, dept, app,
+            rbac.audit("system", "USER_ROLES_EXPIRED", external, null, app,
                     "到期角色 " + rows.stream().map(row -> (String) row.get("roleCode")).collect(Collectors.joining("、")));
             expired += rows.size();
         }
@@ -313,21 +309,26 @@ public class GovernanceService {
     }
 
     // ---- permission manifest ----
-    @Transactional(readOnly=true) public Map<String,Object> exportManifest(long app, Long departmentFilter) {
+    @Transactional(readOnly=true) public Map<String,Object> exportManifest(long app) {
         var application = dao.applicationRow(app).orElseThrow(() -> ApiException.missing("软件不存在"));
         var permissions = new ArrayList<Map<String,Object>>();
         var codesById = new HashMap<Long,String>();
-        for (var p : dao.permissions(0, app)) {
+        for (var p : dao.permissions(app)) {
             codesById.put(number(p.get("id")), (String) p.get("code"));
-            permissions.add(Map.of("roleCode", p.get("roleCode"), "code", p.get("code"),
-                    "name", p.get("name"), "resource", p.get("resource"), "action", p.get("action")));
+            var item = new LinkedHashMap<String,Object>();
+            item.put("code", p.get("code"));
+            item.put("name", p.get("name"));
+            item.put("resource", p.get("resource"));
+            item.put("action", p.get("action"));
+            permissions.add(item);
         }
         var grantsByRole = new HashMap<Long,List<String>>();
-        for (var pair : dao.rolePermissions(0, app))
-            grantsByRole.computeIfAbsent(number(pair.get("role_id")), k -> new ArrayList<>())
-                    .add(codesById.get(number(pair.get("permission_id"))));
+        for (var pair : dao.rolePermissions(app)) {
+            String code = codesById.get(number(pair.get("permission_id")));
+            grantsByRole.computeIfAbsent(number(pair.get("role_id")), k -> new ArrayList<>()).add(code);
+        }
         var roles = new ArrayList<Map<String,Object>>();
-        for (var r : dao.roles(0, app)) {
+        for (var r : dao.roles(app)) {
             var item = new LinkedHashMap<String,Object>();
             item.put("code", r.get("code"));
             item.put("name", r.get("name"));
@@ -336,61 +337,58 @@ public class GovernanceService {
             item.put("permissions", grantsByRole.getOrDefault(number(r.get("id")), List.of()));
             roles.add(item);
         }
-        return Map.of("version", 2, "application", Map.of("code", application.get("code"), "name", application.get("name")),
-                "exportedAt", Instant.now().toString(), "permissions", permissions, "roles", roles);
+        var manifest = new LinkedHashMap<String,Object>();
+        manifest.put("version", 2);
+        manifest.put("application", Map.of("code", application.get("code"), "name", application.get("name")));
+        manifest.put("exportedAt", Instant.now().toString());
+        manifest.put("permissions", permissions);
+        manifest.put("roles", roles);
+        return manifest;
     }
 
-    /** Import matches roles within the application and permissions within their owning role. */
+    /** Upserts software permissions and roles by code; import never deletes existing definitions. */
     @Transactional public Map<String,Object> importManifest(long app, Requests.Manifest manifest, String actor) {
         if (!dao.applicationExists(app)) throw ApiException.missing("软件不存在");
-        if (!Integer.valueOf(2).equals(manifest.version())) throw ApiException.bad("请使用版本 2 的角色权限清单");
-        var roleIds = new LinkedHashMap<String,Long>();
-        var previous = new HashMap<Long,Boolean>();
-        int rolesCreated = 0, rolesUpdated = 0, permissionsCreated = 0, permissionsUpdated = 0;
-        for (var role : manifest.roles()) {
-            if (roleIds.containsKey(role.code())) throw ApiException.bad("角色编码重复: " + role.code());
-            Long id = dao.scopedIdByCode("roles", 0, app, role.code()).orElse(null);
-            boolean enabled = role.enabled() == null || role.enabled();
-            if (id == null) {
-                id = dao.createRole(0, app, role.name(), role.code(), text(role.description()), enabled);
-                rolesCreated++;
-            } else {
-                if (!dao.lockRole(id)) throw ApiException.missing("角色不存在");
-                long existingId = id;
-                var existing = dao.roles(0, app).stream().filter(r -> number(r.get("id")) == existingId).findFirst();
-                previous.put(id, existing.isPresent() && Boolean.TRUE.equals(existing.get().get("enabled")));
-                dao.updateRole(id, role.name(), role.code(), text(role.description()));
-                dao.roleStatus(id, enabled);
-                rolesUpdated++;
-            }
-            roleIds.put(role.code(), id);
-        }
-        var seen = new HashSet<String>();
-        for (var permission : manifest.permissions()) {
-            Long role = roleIds.get(permission.roleCode());
-            if (role == null) throw ApiException.bad("权限所属角色不在清单中: " + permission.roleCode());
-            if (!seen.add(role + ":" + permission.code())) throw ApiException.bad("同一角色内权限编码重复: " + permission.code());
-            var existing = dao.permissionIdByCode(role, permission.code());
+        int permissionsCreated = 0, permissionsUpdated = 0, rolesCreated = 0, rolesUpdated = 0;
+        var wasEnabled = new HashMap<Long,Boolean>();
+        for (var role : dao.roles(app)) wasEnabled.put(number(role.get("id")), Boolean.TRUE.equals(role.get("enabled")));
+        var permissionIds = new HashMap<String,Long>();
+        for (var p : manifest.permissions()) {
+            var existing = dao.scopedIdByCode("permissions", app, p.code());
             if (existing.isPresent()) {
-                dao.updatePermission(existing.get(), permission.name(), permission.code(), permission.resource(), permission.action());
-                webhooks.emit(app, "permission.updated", Map.of("permissionId", existing.get(), "roleId", role));
+                dao.updatePermission(existing.get(), p.name(), p.code(), p.resource(), p.action());
+                permissionIds.put(p.code(), existing.get());
                 permissionsUpdated++;
             } else {
-                dao.createPermission(role, 0, app, permission.name(), permission.code(), permission.resource(), permission.action());
+                permissionIds.put(p.code(), dao.createPermission(app, p.name(), p.code(), p.resource(), p.action()));
                 permissionsCreated++;
             }
         }
-        for (var role : manifest.roles()) {
-            long id = roleIds.get(role.code());
+        for (var r : manifest.roles()) {
             var grants = new LinkedHashSet<Long>();
-            for (String code : role.permissions())
-                grants.add(dao.permissionIdByCode(id, code).orElseThrow(() -> ApiException.bad("角色 " + role.code() + " 没有权限 " + code)));
-            var before = new HashSet<>(dao.lockedRolePermissionIds(id));
-            dao.replaceRolePermissions(id, 0, app, grants);
-            if (!before.equals(grants)) webhooks.emit(app, "role.permissions.changed", Map.of("roleId", id));
-            boolean enabled = role.enabled() == null || role.enabled();
-            if (previous.containsKey(id) && previous.get(id) != enabled)
-                webhooks.emit(app, enabled ? "role.enabled" : "role.disabled", Map.of("roleId", id));
+            for (String code : r.permissions()) {
+                Long permissionId = permissionIds.get(code);
+                if (permissionId == null)
+                    permissionId = dao.scopedIdByCode("permissions", app, code)
+                            .orElseThrow(() -> ApiException.bad("角色 " + r.code() + " 引用了不存在的权限编码 " + code));
+                grants.add(permissionId);
+            }
+            boolean enabled = r.enabled() == null || r.enabled();
+            Long roleId = dao.scopedIdByCode("roles", app, r.code()).orElse(null);
+            if (roleId == null) {
+                dao.replaceRolePermissions(dao.createRole(app, r.name(), r.code(), text(r.description()), enabled), app, grants);
+                rolesCreated++;
+            } else {
+                var before = new HashSet<>(dao.rolePermissionIds(roleId));
+                dao.updateRole(roleId, r.name(), r.code(), text(r.description()));
+                dao.roleStatus(roleId, enabled);
+                dao.replaceRolePermissions(roleId, app, grants);
+                if (enabled != Boolean.TRUE.equals(wasEnabled.get(roleId)))
+                    webhooks.emit(app, enabled ? "role.enabled" : "role.disabled", Map.of("roleId", roleId));
+                if (!before.equals(grants))
+                    webhooks.emit(app, "role.permissions.changed", Map.of("roleId", roleId));
+                rolesUpdated++;
+            }
         }
         cache.touchApplication(app);
         rbac.audit(actor, "MANIFEST_IMPORTED", "application:" + app, null, app,
@@ -399,21 +397,16 @@ public class GovernanceService {
                 "rolesCreated", rolesCreated, "rolesUpdated", rolesUpdated);
     }
 
+    // ---- reverse lookup and expiry reports ----
     public Map<String,Object> permissionHolders(long app, String code, Long department) {
-        return permissionHolders(app, code, department, null);
-    }
-    public Map<String,Object> permissionHolders(long app, String code, Long department, Long ownerRole) {
         if (!dao.applicationExists(app)) throw ApiException.missing("软件不存在");
-        if (ownerRole != null && !dao.scopedExists("roles", ownerRole, 0, app)) throw ApiException.missing("角色不属于当前软件");
         var grouped = new LinkedHashMap<String,Map<String,Object>>();
-        for (var row : dao.permissionHolders(app, code, department, ownerRole, HOLDER_LIMIT)) {
-            var holder = grouped.computeIfAbsent(row.get("userId") + ":" + row.get("departmentId"), k -> {
+        for (var row : dao.permissionHolders(app, code, department, HOLDER_LIMIT)) {
+            var holder = grouped.computeIfAbsent(row.get("userId").toString(), k -> {
                 var h = new LinkedHashMap<String,Object>();
                 h.put("userId", number(row.get("userId")));
                 h.put("userName", row.get("userName"));
                 h.put("externalId", row.get("externalId"));
-                h.put("departmentId", number(row.get("departmentId")));
-                h.put("departmentName", row.get("departmentName"));
                 h.put("roles", new ArrayList<Map<String,Object>>());
                 return h;
             });
@@ -427,7 +420,7 @@ public class GovernanceService {
         var result = new LinkedHashMap<String,Object>();
         result.put("code", code);
         result.put("applicationId", app);
-        long total = dao.permissionHolderCount(app, code, department, ownerRole);
+        long total = dao.permissionHolderCount(app, code, department);
         result.put("holders", new ArrayList<>(grouped.values()));
         result.put("total", total);
         result.put("truncated", total > grouped.size());
@@ -437,7 +430,7 @@ public class GovernanceService {
         return dao.expiringAssignments(Timestamp.from(Instant.now().plus(days, ChronoUnit.DAYS)), visible, app);
     }
 
-    private static long number(Object value) { return value == null ? 0 : ((Number) value).longValue(); }
+    private static long number(Object value) { return ((Number) value).longValue(); }
     private static String text(String value) { return Objects.requireNonNullElse(value, "").strip(); }
     @SuppressWarnings("unchecked") private static List<Map<String,Object>> rows(Object value) { return (List<Map<String,Object>>) value; }
 }

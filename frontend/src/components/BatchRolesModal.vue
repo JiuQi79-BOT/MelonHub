@@ -6,7 +6,7 @@ import { useHub } from '../store'
 import type { Role } from '../types'
 
 const open = defineModel<boolean>('open', { required: true })
-const props = defineProps<{ departmentId: number; applicationId: number; userIds: number[] }>()
+const props = defineProps<{ applicationId: number; userIds: number[] }>()
 const emit = defineEmits<{ changed: [] }>()
 const hub = useHub()
 const applications = ref<number[]>([]), roles = ref<Record<number, Role[]>>({}), selected = ref<Record<number, number[]>>({})
@@ -29,7 +29,7 @@ watch(applications, async ids => {
   const current = ++sequence
   loading.value = true
   try {
-    const lists = await Promise.all(ids.map(async id => ({ id, roles: await get<Role[]>('/admin/roles', { departmentId: props.departmentId, applicationId: id }) })))
+    const lists = await Promise.all(ids.map(async id => ({ id, roles: await get<Role[]>('/admin/roles', { applicationId: id }) })))
     if (current !== sequence) return
     roles.value = Object.fromEntries(lists.map(item => [item.id, item.roles]))
     selected.value = Object.fromEntries(lists.map(item => [item.id, (selected.value[item.id] ?? []).filter(id => item.roles.some(r => r.id === id))]))
@@ -46,7 +46,7 @@ async function save() {
   try {
     for (const job of jobs) {
       const result = await send<{ changedUsers: number; grantsAdded: number }>('POST', '/admin/assignments/batch',
-        { userIds: props.userIds, roleIds: job.roleIds, expiresInDays: days.value }, { departmentId: props.departmentId, applicationId: job.applicationId })
+        { userIds: props.userIds, roleIds: job.roleIds, expiresInDays: days.value }, { applicationId: job.applicationId })
       results.value.push(`${hub.applicationName(job.applicationId)}：${result.changedUsers} 名成员新增 ${result.grantsAdded} 条角色分配。`)
       completed++
     }
@@ -65,10 +65,15 @@ async function save() {
   <a-modal v-model:open="open" :title="`为 ${userIds.length} 名成员分配软件角色`" width="720px" ok-text="追加角色" cancel-text="关闭"
            :confirm-loading="saving" :ok-button-props="{ disabled: !ready || loading }" :cancel-button-props="{ disabled: saving }"
            :closable="!saving" :keyboard="!saving" :mask-closable="false" @ok="save">
-    <p class="hint">{{ hub.departmentName(departmentId) }}。可同时选择多个软件；已有有效角色及期限保持不变，新增分配使用下面的有效天数。</p>
+    <p class="hint">可同时选择多个软件；已有有效角色及期限保持不变，新增分配使用下面的有效天数。</p>
     <a-form layout="vertical" :disabled="saving">
       <a-form-item label="软件" required>
-        <a-select v-model:value="applications" mode="multiple" :options="options" placeholder="选择一个或多个软件" option-filter-prop="label" />
+        <div class="toolbar">
+          <span class="muted">已选 {{ applications.length }} 个软件</span>
+          <a-button size="small" :disabled="saving || !options.length" @click="applications = options.map(a => a.value)">全选</a-button>
+          <a-button size="small" :disabled="saving || !applications.length" @click="applications = []">取消全选</a-button>
+        </div>
+        <a-select v-model:value="applications" mode="multiple" :options="options" max-tag-count="responsive" placeholder="选择一个或多个软件" option-filter-prop="label" />
       </a-form-item>
       <a-spin :spinning="loading">
         <section v-for="id in applications" :key="id" class="batch-role-group">
@@ -76,11 +81,11 @@ async function save() {
             <strong>{{ hub.applicationName(id) }}</strong>
             <span class="muted">已选 {{ selected[id]?.length ?? 0 }} 个角色</span>
             <a-button size="small" :disabled="saving || loading" @click="selected[id] = roles[id]?.map(r => r.id) ?? []">全选</a-button>
-            <a-button size="small" :disabled="saving || loading" @click="selected[id] = []">清空</a-button>
+            <a-button size="small" :disabled="saving || loading" @click="selected[id] = []">取消全选</a-button>
           </div>
           <a-checkbox-group v-model:value="selected[id]" :disabled="saving || loading" class="check-list"
                             :options="(roles[id] ?? []).map(r => ({ value: r.id, label: `${r.name}（${r.code}）${r.enabled ? '' : ' · 已停用'}` }))" />
-          <p v-if="!loading && !roles[id]?.length" class="muted">该软件还没有角色，请先在「角色」中创建。</p>
+          <p v-if="!loading && !roles[id]?.length" class="muted">此软件还没有角色，请先在软件配置的「角色」中添加。</p>
         </section>
       </a-spin>
       <a-form-item label="新增分配的有效天数" extra="留空为永久，不改变已有有效分配的期限。">

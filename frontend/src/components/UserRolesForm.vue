@@ -9,7 +9,6 @@ import type { Role } from '../types'
 
 const props = defineProps<{
   userId: number
-  departmentId: number
   applicationId: number
   roles: Role[]
   assigned: number[]
@@ -57,19 +56,19 @@ async function submit() {
   const lapsed = changes.find(c => c.expiresAt && !dayjs(c.expiresAt).isAfter(dayjs()))
   if (lapsed) { message.warning(`「${roleMap.value.get(lapsed.roleId)?.name ?? lapsed.roleId}」的到期时间必须晚于当前时间`); return false }
   return await attempt(saving, () => send('PUT', `/admin/users/${props.userId}/roles`, { ids: chosen.value, expiries: changes },
-    { departmentId: props.departmentId, applicationId: props.applicationId }), '用户角色已更新')
+    { applicationId: props.applicationId }), '用户角色已更新')
 }
 defineExpose({ submit, saving })
 </script>
 
 <template>
-  <p class="muted">保存后替换该用户在“{{ scope }}”中的全部角色，该软件的现有权限上下文立即失效。其他软件的授权不受影响。</p>
-  <a-empty v-if="!roleOptions.length" description="该软件还没有角色，请在配置抽屉的「角色」中创建" :image-style="{ height: '40px' }" />
+  <p class="muted">保存后替换该用户在“{{ scope }}”中的全部角色，其在此范围内的现有权限上下文立即失效。其他软件的授权不受影响。</p>
+  <a-empty v-if="!roleOptions.length" description="此软件还没有角色，请在配置抽屉的「角色」中创建" :image-style="{ height: '40px' }" />
   <template v-else>
-    <a-space class="block-gap">
+    <a-space wrap class="block-gap">
       <span class="muted">已选 {{ chosen.length }} 个角色</span>
       <a-button size="small" :disabled="disabled" @click="chosen = roles.map(r => r.id)">全选</a-button>
-      <a-button size="small" :disabled="disabled" @click="chosen = []">清空</a-button>
+      <a-button size="small" :disabled="disabled" @click="chosen = []">取消全选</a-button>
     </a-space>
     <a-checkbox-group v-model:value="chosen" class="check-list" :options="roleOptions" :disabled="disabled" />
     <div v-if="chosen.length" class="expires-form">

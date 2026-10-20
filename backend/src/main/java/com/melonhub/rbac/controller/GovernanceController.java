@@ -117,10 +117,10 @@ public class GovernanceController {
     }
 
     // ---- permission manifest ----
-    @GetMapping("/manifest") Object exportManifest(@RequestParam long applicationId, @RequestParam(required=false) Long departmentId,
+    @GetMapping("/manifest") Object exportManifest(@RequestParam long applicationId,
                                                    HttpServletRequest req) {
         AdminAccess.readApplication(req, applicationId);
-        return g.exportManifest(applicationId, departmentId);
+        return g.exportManifest(applicationId);
     }
     @PostMapping("/manifest/import") Object importManifest(@RequestParam long applicationId, @Valid @RequestBody Requests.Manifest body,
                                                            HttpServletRequest req) {
@@ -132,10 +132,9 @@ public class GovernanceController {
         return g.importUsers(body, AdminAccess.platformWrite(req).actor());
     }
     @GetMapping("/permissions/who") Object permissionHolders(@RequestParam long applicationId, @RequestParam String code,
-                                                             @RequestParam(required=false) Long departmentId,
-                                                             @RequestParam(required=false) Long roleId, HttpServletRequest req) {
+                                                             @RequestParam(required=false) Long departmentId, HttpServletRequest req) {
         AdminAccess.readApplication(req, applicationId);
-        return g.permissionHolders(applicationId, code, departmentId, roleId);
+        return g.permissionHolders(applicationId, code, departmentId);
     }
     @GetMapping("/assignments/expiring") Object expiring(@RequestParam(defaultValue="7") int days, @RequestParam(required=false) Long applicationId,
                                                          HttpServletRequest req) {

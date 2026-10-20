@@ -41,7 +41,7 @@ spring:
   data:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
-      port: ${REDIS_PORT:6379}
+      port: ${REDIS_PORT:6380}
       password: ${REDIS_PASSWORD:}
       database: ${REDIS_DATABASE:0}
       timeout: 300ms
@@ -59,7 +59,7 @@ management:
       show-details: always
   health:
     redis:
-      enabled: ${CACHE_ENABLED:false}
+      enabled: ${CACHE_ENABLED:true}
 melonhub:
   admin-username: ${ADMIN_USERNAME:admin}
   admin-password: ${ADMIN_PASSWORD}
@@ -71,8 +71,8 @@ melonhub:
     idle-minutes: ${ADMIN_IDLE_MINUTES:30}
   seed-demo: ${SEED_DEMO:false}
   cache:
-    enabled: ${CACHE_ENABLED:false}
-    prefix: "melonhub-role-v2:"
+    enabled: ${CACHE_ENABLED:true}
+    prefix: "melonhub:"
   rate-limit:
     application-per-second: ${APP_RATE_LIMIT:1000}
     login-per-minute: 10

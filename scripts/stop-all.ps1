@@ -15,6 +15,8 @@ try {
     while (@(Get-MelonProcesses).Count -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 300 }
     if (@(Get-MelonProcesses).Count) { throw 'Some project processes are still running.' }
     Remove-Item -LiteralPath (Join-Path $script:MelonRoot '.local/services.json') -ErrorAction SilentlyContinue
+    $configuration = Read-MelonConfiguration
+    if ($configuration['REDIS_CONTAINER']) { $env:REDIS_CONTAINER = $configuration['REDIS_CONTAINER']; Stop-MelonRedis }
     Write-Host 'MelonHub stopped. Shared databases and unrelated services were not stopped.'
 } catch {
     Write-Host ('Stop failed: ' + $_.Exception.Message) -ForegroundColor Red

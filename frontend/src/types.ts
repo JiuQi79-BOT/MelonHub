@@ -1,6 +1,6 @@
 export type AdminRole = 'SUPER_ADMIN' | 'ADMIN' | 'APP_ADMIN' | 'AUDITOR'
 export interface Principal { username: string; displayName: string; role: AdminRole; applicationIds: number[]; mfaEnabled: boolean }
-export interface Department { id: number; name: string; code: string; createdAt: string; memberCount: number; roleCount: number }
+export interface Department { id: number; name: string; code: string; createdAt: string; memberCount: number }
 export interface Application {
   id: number; name: string; code: string; description: string; owner: string; enabled: boolean; createdAt: string
   roleCount: number; permissionCount: number; activeKeyCount: number; rateLimit: number | null
@@ -10,7 +10,7 @@ export interface ApiKey {
   lastUsedAt: string | null; revokedAt: string | null; status: 'ACTIVE' | 'EXPIRED' | 'REVOKED'
 }
 export interface User {
-  id: number; name: string; externalId: string; email: string; enabled: boolean; activeDepartmentId: number | null
+  id: number; name: string; externalId: string; email: string; enabled: boolean
   contextVersion: number; createdAt: string; departmentIds: number[]
 }
 export interface Member {
@@ -19,13 +19,13 @@ export interface Member {
   roleExpiries?: Record<string, string>
 }
 export interface Role { id: number; name: string; code: string; description: string; enabled: boolean; createdAt: string; memberCount: number; permissionIds: number[] }
-export interface Permission { id: number; roleId: number; roleName: string; roleCode: string; name: string; code: string; resource: string; action: string; createdAt: string; roleCount: number }
+export interface Permission { id: number; name: string; code: string; resource: string; action: string; createdAt: string; roleCount: number }
 export interface AuditEvent {
   id: number; actor: string; action: string; target: string; detail: string; sourceIp: string; createdAt: string
   departmentId: number | null; departmentName: string | null; applicationId: number | null; applicationName: string | null
 }
 export interface Overview {
-  applications: number; enabledApplications: number; departments: number; users: number; enabledUsers: number; departmentMembers: number
+  applications: number; enabledApplications: number; departments: number; users: number; enabledUsers: number
   roles: number; permissions: number; members: number; activeKeys: number; activeContexts: number; auditLast24h: number
 }
 export interface Health { status: string; database: string; cache: string; model?: string }
@@ -35,11 +35,11 @@ export interface Account {
   activeSessions: number; applicationIds: number[]; mfaEnabled: boolean
 }
 export interface AccessDomain {
-  departmentId: number; departmentName: string; applicationId: number; applicationName: string; applicationEnabled: boolean
+  applicationId: number; applicationName: string; applicationEnabled: boolean
   roles: { id: number; name: string; code: string; enabled: boolean; expiresAt: string | null; grantedBy: string | null }[]; permissions: string[]
 }
 export interface ActiveContext {
-  departmentId: number; departmentName: string; applicationId: number; applicationName: string
+  applicationId: number; applicationName: string
   createdAt: string; expiresAt: string; activeRoleCount: number; valid: boolean
 }
 export interface UserAccess { user: User; domains: AccessDomain[]; contexts: ActiveContext[] }
@@ -75,12 +75,12 @@ export interface WebhookDelivery {
   nextAttemptAt: string | null; createdAt: string; deliveredAt: string | null
 }
 export interface PermissionHolderRole { id: number; name: string; code: string; expiresAt: string | null }
-export interface PermissionHolder { userId: number; userName: string; externalId: string; departmentId: number; departmentName: string; roles: PermissionHolderRole[] }
-/** total counts every (user, department) holder; holders is capped and truncated says whether some were left out. */
+export interface PermissionHolder { userId: number; userName: string; externalId: string; roles: PermissionHolderRole[] }
+/** total counts distinct users; holders is capped and truncated says whether some were left out. */
 export interface PermissionHolders { code: string; applicationId: number; total: number; truncated: boolean; holders: PermissionHolder[] }
 export interface ExpiringAssignment {
   userId: number; userName: string; externalId: string; roleId: number; roleName: string; roleCode: string
-  departmentId: number; departmentName: string; applicationId: number; applicationName: string
+  applicationId: number; applicationName: string
   expiresAt: string; grantedBy: string | null; grantedAt: string | null
 }
 export interface SystemCounts {
@@ -105,7 +105,7 @@ export interface AuditVerifyResult {
 }
 export interface PermissionManifest {
   version: number; application: { code: string; name: string }; exportedAt: string
-  permissions: { roleCode: string; code: string; name: string; resource: string; action: string }[]
+  permissions: { code: string; name: string; resource: string; action: string }[]
   roles: { code: string; name: string; description: string; enabled: boolean; permissions: string[] }[]
 }
 export interface ManifestImportResult { permissionsCreated: number; permissionsUpdated: number; rolesCreated: number; rolesUpdated: number }
@@ -115,10 +115,10 @@ export interface SearchResults {
   users: { id: number; name: string; externalId: string; enabled: boolean }[]
   departments: { id: number; name: string; code: string }[]
   applications: { id: number; name: string; code: string; enabled: boolean }[]
-  roles: { id: number; name: string; code: string; departmentId: number; departmentName: string; applicationId: number; applicationName: string }[]
+  roles: { id: number; name: string; code: string; applicationId: number; applicationName: string }[]
 }
 export interface Simulation {
-  eligible: boolean; issues: string[]; notices: string[]; user: User; member: boolean; applicationEnabled: boolean; switchesDepartment: boolean
+  eligible: boolean; issues: string[]; notices: string[]; user: User; applicationEnabled: boolean
   roles: { id: number; name: string; code: string; enabled: boolean; active: boolean }[]
   permissions: { id: number; code: string; name: string; resource: string; action: string; grantedBy: number[] }[]
   decisions?: Record<string, boolean>; allowed?: boolean

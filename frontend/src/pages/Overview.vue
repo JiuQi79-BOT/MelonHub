@@ -64,15 +64,14 @@ const domainStats = computed(() => [
   { label: '角色', value: overview.value?.roles, to: '/roles' },
   { label: '权限', value: overview.value?.permissions, to: '/permissions' },
   { label: '已授权用户', value: overview.value?.members, to: '/assignments' },
-  { label: hub.departmentId ? '部门成员' : '全部用户', value: overview.value?.departmentMembers, to: '/assignments' },
   { label: '有效 API Key', value: overview.value?.activeKeys, to: '/applications' },
   { label: '有效上下文', value: overview.value?.activeContexts, to: '/simulate' },
 ])
 const steps = [
-  { title: '管理部门（可选）', to: '/departments' },
+  { title: '创建用户，可按部门组织', to: '/users' },
   { title: '接入软件并保存 API Key', to: '/applications' },
   { title: '在软件配置中定义权限和角色', to: '/applications' },
-  { title: '在部门配置中给成员分配角色', to: '/departments' },
+  { title: '为用户分配软件角色', to: '/departments' },
 ]
 
 const dbUp = computed(() => hub.health?.database === 'UP')
@@ -127,7 +126,7 @@ function openDomain(to: string) {
       <div class="ov-main">
         <section v-if="hub.hasDomain" class="ov-sec">
           <div class="ov-head">
-            <h3>{{ hub.department?.name }}<span class="sep">/</span>{{ hub.application?.name }}</h3>
+            <h3>{{ hub.application?.name }}</h3>
             <router-link to="/simulate" class="ov-link">权限诊断</router-link>
           </div>
           <div class="facts">
@@ -209,7 +208,7 @@ function openDomain(to: string) {
       <a-skeleton v-else-if="!loaded" active :title="false" :paragraph="{ rows: 4 }" />
       <EmptyState v-else title="暂无操作记录" compact />
     </section>
-    <AuthorizationDrawer v-model:open="configurationOpen" :application-id="configurationApplication" :department-id="hub.departmentId" :initial-tab="configurationTab" />
+    <AuthorizationDrawer v-model:open="configurationOpen" :application-id="configurationApplication" :initial-tab="configurationTab" />
   </div>
 </template>
 
@@ -234,7 +233,7 @@ function openDomain(to: string) {
 .ov-warn { margin: 0 0 12px; color: var(--mh-warn); font-size: 12px; }
 .current { margin-left: 8px; font-size: 12px; }
 
-.facts { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; }
+.facts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
 .fact { display: flex; flex-direction: column; gap: 2px; min-width: 0; color: inherit; }
 .fact-value { color: var(--mh-text); font-size: 18px; font-weight: 600; line-height: 26px; font-variant-numeric: tabular-nums; }
 .fact-label { color: var(--mh-text-3); font-size: 12px; }

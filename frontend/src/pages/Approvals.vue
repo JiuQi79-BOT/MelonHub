@@ -17,7 +17,7 @@ table.load()
 
 const columns: TableColumnsType<AccessRequest> = [
   { title: '申请人', key: 'user', width: 170, ellipsis: true },
-  { title: '软件 / 来源部门', key: 'domain', width: 210, ellipsis: true },
+  { title: '软件', key: 'domain', width: 210, ellipsis: true },
   { title: '角色', key: 'role', width: 190, ellipsis: true },
   { title: '申请理由', dataIndex: 'reason', key: 'reason', ellipsis: true },
   { title: '有效天数', dataIndex: 'durationDays', key: 'durationDays', width: 90, align: 'right' },
@@ -67,7 +67,7 @@ async function save() {
 
 <template>
   <div class="page">
-    <PageHead title="审批中心" description="跨部门查看申请，使用下方的软件和状态筛选。每条申请的授权域以该行显示为准。">
+    <PageHead title="审批中心" description="按软件查看角色申请，使用下方的软件和状态筛选。">
       <a-button :loading="table.loading.value" @click="table.load()"><ReloadOutlined />刷新</a-button>
     </PageHead>
     <a-card :bordered="false">
@@ -86,7 +86,7 @@ async function save() {
             <div class="cell-main">{{ record.userName }}</div>
             <div class="cell-sub"><code>{{ record.externalId }}</code></div>
           </template>
-          <template v-else-if="column.key === 'domain'">{{ record.applicationName }}<span v-if="record.departmentName" class="muted"> · {{ record.departmentName }}</span></template>
+          <template v-else-if="column.key === 'domain'">{{ record.applicationName }}</template>
           <template v-else-if="column.key === 'role'">
             {{ record.roleName }} <code>{{ record.roleCode }}</code>
             <a-tag v-if="record.roleId == null" color="default">已删除</a-tag>

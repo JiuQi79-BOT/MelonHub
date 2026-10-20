@@ -17,9 +17,6 @@ public class MelonHubClientProperties {
     /** 用户外部标识请求头 */
     private String userHeader = MelonHubPermissionInterceptor.DEFAULT_USER_HEADER;
 
-    /** 部门编号请求头 */
-    private String departmentHeader = MelonHubPermissionInterceptor.DEFAULT_DEPARTMENT_HEADER;
-
     private long connectTimeoutMillis = 3000;
     private long requestTimeoutMillis = 5000;
 
@@ -32,8 +29,6 @@ public class MelonHubClientProperties {
     public void setApiKey(String apiKey) { this.apiKey = apiKey; }
     public String getUserHeader() { return userHeader; }
     public void setUserHeader(String userHeader) { this.userHeader = userHeader; }
-    public String getDepartmentHeader() { return departmentHeader; }
-    public void setDepartmentHeader(String departmentHeader) { this.departmentHeader = departmentHeader; }
     public long getConnectTimeoutMillis() { return connectTimeoutMillis; }
     public void setConnectTimeoutMillis(long connectTimeoutMillis) { this.connectTimeoutMillis = connectTimeoutMillis; }
     public long getRequestTimeoutMillis() { return requestTimeoutMillis; }

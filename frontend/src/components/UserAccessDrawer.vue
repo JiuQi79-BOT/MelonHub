@@ -35,7 +35,6 @@ const domainColumns: TableColumnsType<AccessDomain> = [
   { title: '有效权限', key: 'permissions' },
 ]
 const contextColumns: TableColumnsType<ActiveContext> = [
-  { title: '来源部门', dataIndex: 'departmentName', ellipsis: true },
   { title: '软件', dataIndex: 'applicationName', ellipsis: true },
   { title: '激活角色数', dataIndex: 'activeRoleCount', width: 96, align: 'right' },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 160 },
@@ -84,7 +83,7 @@ function revoke() {
         </a-descriptions>
 
         <h4 class="section-title">各软件的角色与权限</h4>
-        <a-table :columns="domainColumns" :data-source="data.domains" :row-key="(r: AccessDomain) => `${r.departmentId}:${r.applicationId}`" size="small" :pagination="false">
+        <a-table :columns="domainColumns" :data-source="data.domains" :row-key="(r: AccessDomain) => r.applicationId" size="small" :pagination="false">
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'application'">
               {{ record.applicationName }} <a-tag v-if="!record.applicationEnabled" color="orange">已停用</a-tag>

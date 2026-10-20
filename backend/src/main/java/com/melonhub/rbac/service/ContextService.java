@@ -29,9 +29,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class ContextService {
     public static final long CONTEXT_SECONDS = 3600;
 
-    record Meta(String u, String d, String a, long v, long exp) {
+    record Meta(String u, String a, long v, long exp) {
         long user() { return Long.parseLong(u); }
-        long department() { return Long.parseLong(d); }
         long application() { return Long.parseLong(a); }
         boolean usableFor(long app) { return application() == app && exp > Instant.now().getEpochSecond(); }
     }
@@ -55,14 +54,14 @@ public class ContextService {
     }
 
     @Transactional public Map<String,Object> issue(long app, Requests.Context input, String actor) {
-        rbac.domain(input.departmentId(), app);
+        rbac.domain(app);
         var found = dao.lockUserByExternalId(input.externalId());
         if (found.isEmpty()) throw ApiException.missing("用户不存在");
         var user = found.get(0);
         long userId = ((Number) user.get("id")).longValue();
         if (!Boolean.TRUE.equals(user.get("enabled"))) throw ApiException.forbidden("用户已停用");
         if (!dao.applicationEnabled(app)) throw ApiException.forbidden("软件已停用");
-        var assigned = dao.assignedRoles(userId, input.departmentId(), app);
+        var assigned = dao.assignedRoles(userId, app);
         List<Long> active = input.activeRoleIds() == null ? assigned : new ArrayList<>(new LinkedHashSet<>(input.activeRoleIds()));
         if (!new HashSet<>(assigned).containsAll(active)) throw ApiException.forbidden("激活角色必须为用户在当前软件内已分配的角色");
         long version = ((Number) user.get("context_version")).longValue();
@@ -71,11 +70,11 @@ public class ContextService {
         String hash = Credentials.hash(token);
         // MySQL TIMESTAMP rounds fractions; whole seconds keep the stored and cached expiry identical.
         Instant expires = Instant.now().truncatedTo(ChronoUnit.SECONDS).plusSeconds(CONTEXT_SECONDS);
-        dao.create(hash, userId, input.departmentId(), app, version, expires);
+        dao.create(hash, userId, app, version, expires);
         dao.activateRoles(hash, active);
-        rbac.audit(actor, "CONTEXT_ISSUED", input.externalId(), input.departmentId(), app,
+        rbac.audit(actor, "CONTEXT_ISSUED", input.externalId(), null, app,
                 "激活角色 " + active.size() + " 个");
-        var meta = new Meta(String.valueOf(userId), String.valueOf(input.departmentId()), String.valueOf(app), version, expires.getEpochSecond());
+        var meta = new Meta(String.valueOf(userId), String.valueOf(app), version, expires.getEpochSecond());
         var access = new Access(meta, compute(hash, meta));
         cache.putContextAfterCommit(hash, write(meta), CONTEXT_SECONDS);
         var result = new LinkedHashMap<String,Object>();
@@ -104,7 +103,7 @@ public class ContextService {
         dao.revoke(hash, app);
         cache.touchUser(access.meta().user());
         cache.forgetContextAfterCommit(hash);
-        rbac.audit(actor, "CONTEXT_REVOKED", "user:" + access.meta().u(), access.meta().department(), app, "");
+        rbac.audit(actor, "CONTEXT_REVOKED", "user:" + access.meta().u(), null, app, "");
     }
 
     private Access resolve(long app, String token) {
@@ -141,28 +140,27 @@ public class ContextService {
         var found = dao.state(hash);
         if (found.isEmpty()) return null;
         var row = found.get().context();
-        var meta = new Meta(String.valueOf(row.user()), String.valueOf(row.department()), String.valueOf(row.application()), row.version(), row.expiresAt().getEpochSecond());
+        var meta = new Meta(String.valueOf(row.user()), String.valueOf(row.application()), row.version(), row.expiresAt().getEpochSecond());
         return new Access(meta, found.get().valid() ? compute(hash, meta) : Payload.INVALID);
     }
 
     private Payload compute(String hash, Meta meta) {
         var roles = new ArrayList<Role>();
         Long refreshAt = null;
-        for (var r : dao.effectiveRoles(meta.user(), hash, meta.department(), meta.application())) {
+        for (var r : dao.effectiveRoles(meta.user(), hash, meta.application())) {
             roles.add(new Role(((Number) r.get("id")).longValue(), (String) r.get("name"), (String) r.get("code")));
             if (r.get("expires_at") instanceof Timestamp expires) {
                 long at = expires.toInstant().getEpochSecond();
                 if (refreshAt == null || at < refreshAt) refreshAt = at;
             }
         }
-        return new Payload(true, roles, dao.effectivePermissions(meta.user(), hash, meta.department(), meta.application()), refreshAt);
+        return new Payload(true, roles, dao.effectivePermissions(meta.user(), hash, meta.application()), refreshAt);
     }
 
     private static Map<String,Object> view(Access access) {
         var meta = access.meta();
         var result = new LinkedHashMap<String,Object>();
         result.put("userId", meta.user());
-        result.put("departmentId", meta.department());
         result.put("applicationId", meta.application());
         result.put("contextVersion", meta.v());
         result.put("expiresAt", Instant.ofEpochSecond(meta.exp()));

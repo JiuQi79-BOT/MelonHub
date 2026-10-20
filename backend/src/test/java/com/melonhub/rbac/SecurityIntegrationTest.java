@@ -78,19 +78,40 @@ class SecurityIntegrationTest {
         String manager = account(AdminPrincipal.APP_ADMIN, List.of(a1));
         String bearer = "Bearer " + auth.login(new Requests.Login(manager, PASSWORD)).get("token");
         long user = r.user(new Requests.User("Batch", "batch-" + suffix, "", List.of(d1)), null, "test");
-        long role = r.role(new Requests.Role("Batch", "batch", ""), null, d1, a1, "test");
+        long role = r.role(new Requests.Role("Batch", "batch", ""), null, a1, "test");
         String body = json(new Requests.BatchUserRoles(List.of(user), List.of(role), null));
         mvc.perform(post("/api/admin/assignments/batch").header("Authorization", bearer)
-                .param("departmentId", String.valueOf(d1)).param("applicationId", String.valueOf(a2))
+                .param("applicationId", String.valueOf(a2))
                 .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
         mvc.perform(post("/api/admin/assignments/batch").header("Authorization", bearer)
-                .param("departmentId", String.valueOf(d1)).param("applicationId", String.valueOf(a1))
+                .param("applicationId", String.valueOf(a1))
                 .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk()).andExpect(jsonPath("$.grantsAdded").value(1));
         String auditor = account(AdminPrincipal.AUDITOR, List.of());
         String readOnly = "Bearer " + auth.login(new Requests.Login(auditor, PASSWORD)).get("token");
         mvc.perform(post("/api/admin/assignments/batch").header("Authorization", readOnly)
-                .param("departmentId", String.valueOf(d1)).param("applicationId", String.valueOf(a1))
+                .param("applicationId", String.valueOf(a1))
                 .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+    }
+
+    @Test void departmentMemberBatchesRequirePlatformWriteAndValidateIds() throws Exception {
+        long user=r.user(new Requests.User("Membership","membership-"+suffix,"",List.of()),null,"test");
+        String path="/api/admin/departments/"+d1+"/members",body=json(new Requests.Ids(List.of(user)));
+        for (String role : List.of(AdminPrincipal.APP_ADMIN,AdminPrincipal.AUDITOR)) {
+            String token="Bearer "+auth.login(new Requests.Login(account(role,List.of(a1)),PASSWORD)).get("token");
+            mvc.perform(post(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+            mvc.perform(delete(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        }
+        String token="Bearer "+auth.login(new Requests.Login(account(AdminPrincipal.ADMIN,List.of()),PASSWORD)).get("token");
+        mvc.perform(post(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.changedUsers").value(1));
+        mvc.perform(post(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.changedUsers").value(0));
+        mvc.perform(delete(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.changedUsers").value(1));
+        mvc.perform(post(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON)
+                .content(json(new Requests.Ids(java.util.Collections.nCopies(1001,user))))).andExpect(status().isBadRequest());
+        mvc.perform(delete(path).header("Authorization",token).contentType(MediaType.APPLICATION_JSON)
+                .content(json(new Requests.Ids(List.of(-1L))))).andExpect(status().isBadRequest());
     }
 
     @Test void exportsIncludeAllFilteredUsersAndOnlyVisibleAuditRows() throws Exception {
@@ -138,7 +159,7 @@ class SecurityIntegrationTest {
         mvc.perform(get("/api/admin/audit").header("Authorization", token)).andExpect(status().isOk());
         mvc.perform(post("/api/admin/departments").header("Authorization", token).contentType(MediaType.APPLICATION_JSON)
                 .content(json(Map.of("name", "x", "code", "x-" + suffix)))).andExpect(status().isForbidden());
-        mvc.perform(post("/api/admin/roles").param("departmentId", "" + d1).param("applicationId", "" + a1).header("Authorization", token)
+        mvc.perform(post("/api/admin/roles").param("applicationId", "" + a1).header("Authorization", token)
                 .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("name", "R", "code", "r")))).andExpect(status().isForbidden());
         mvc.perform(get("/api/admin/accounts").header("Authorization", token)).andExpect(status().isForbidden());
     }
@@ -148,11 +169,11 @@ class SecurityIntegrationTest {
         mvc.perform(get("/api/auth/me").header("Authorization", token)).andExpect(jsonPath("$.applicationIds[0]").value(a1));
         mvc.perform(get("/api/admin/applications").header("Authorization", token))
             .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].id").value(a1));
-        mvc.perform(post("/api/admin/roles").param("departmentId", "" + d1).param("applicationId", "" + a1).header("Authorization", token)
+        mvc.perform(post("/api/admin/roles").param("applicationId", "" + a1).header("Authorization", token)
                 .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("name", "R", "code", "r")))).andExpect(status().isOk());
-        mvc.perform(post("/api/admin/roles").param("departmentId", "" + d1).param("applicationId", "" + a2).header("Authorization", token)
+        mvc.perform(post("/api/admin/roles").param("applicationId", "" + a2).header("Authorization", token)
                 .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("name", "R", "code", "r")))).andExpect(status().isForbidden());
-        mvc.perform(get("/api/admin/roles").param("departmentId", "" + d1).param("applicationId", "" + a2).header("Authorization", token)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/admin/roles").param("applicationId", "" + a2).header("Authorization", token)).andExpect(status().isForbidden());
         mvc.perform(get("/api/admin/audit").param("applicationId", "" + a2).header("Authorization", token)).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
         mvc.perform(post("/api/admin/applications/" + a2 + "/keys").header("Authorization", token).contentType(MediaType.APPLICATION_JSON)
                 .content(json(Map.of("name", "k")))).andExpect(status().isForbidden());

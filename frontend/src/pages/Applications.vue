@@ -75,7 +75,6 @@ async function save() {
   await reload()
   if (createdId) {
     configurationId.value = createdId
-    configurationDepartment.value = undefined
     configureAfterSecret.value = true
     secret.value = key
     secretOpen.value = true
@@ -116,14 +115,14 @@ async function saveLimit() {
   if (ok) { limitOpen.value = false; await reload() }
 }
 
-const configurationOpen = ref(false), configurationId = ref<number>(), configurationDepartment = ref<number>()
-function configure(row: Application) { configurationId.value = row.id; configurationDepartment.value = undefined; configurationOpen.value = true }
-watch(() => [route.query.configure, route.query.departmentId, hub.applications.length], () => {
+const configurationOpen = ref(false), configurationId = ref<number>()
+function configure(row: Application) { configurationId.value = row.id; configurationOpen.value = true }
+watch(() => [route.query.configure, hub.applications.length], () => {
   const row = hub.applications.find(a => a.id === Number(route.query.configure))
-  if (row) { configure(row); configurationDepartment.value = Number(route.query.departmentId) || undefined }
+  if (row) configure(row)
 }, { immediate: true })
 watch(configurationOpen, value => {
-  if (!value && route.query.configure) router.replace({ query: { ...route.query, configure: undefined, departmentId: undefined } })
+  if (!value && route.query.configure) router.replace({ query: { ...route.query, configure: undefined } })
 })
 function more(row: Application, key: string) {
   if (key === 'edit') edit(row)
@@ -139,7 +138,7 @@ function exportRows() {
 
 <template>
   <div class="page">
-    <PageHead title="软件接入" description="选中软件，维护角色和角色权限，再为成员分配角色。">
+    <PageHead title="软件接入" description="选中软件，统一维护角色、权限与用户授权。">
       <a-button @click="exportRows"><ExportOutlined />导出列表</a-button>
       <a-button :loading="loading" @click="reload"><ReloadOutlined />刷新</a-button>
       <a-button v-if="hub.canPlatform" type="primary" @click="edit()"><PlusOutlined />接入软件</a-button>
@@ -169,7 +168,7 @@ function exportRows() {
           <template v-else-if="column.key === 'createdAt'"><a-tooltip :title="fmt(record.createdAt)">{{ record.createdAt?.slice(0, 10) }}</a-tooltip></template>
           <template v-else-if="column.key === 'actions'">
             <a-space :size="4">
-              <a @click="configure(record)">部门与授权</a>
+              <a @click="configure(record)">角色与授权</a>
               <a-divider type="vertical" />
               <a @click="manageKeys(record)">API Key</a>
               <a-divider type="vertical" />
@@ -203,7 +202,7 @@ function exportRows() {
         </a-row>
         <a-form-item label="负责人" name="owner"><a-input v-model:value="form.owner" :maxlength="100" placeholder="团队或联系人" /></a-form-item>
         <a-form-item label="描述" name="description"><a-textarea v-model:value="form.description" :maxlength="500" :rows="3" show-count /></a-form-item>
-        <p v-if="!editing" class="hint">创建后保存 API Key，即可在配置抽屉中设置角色与权限，并按部门批量分配角色。</p>
+        <p v-if="!editing" class="hint">创建后保存 API Key，即可在配置抽屉中设置角色与权限，再按用户或部门成员分配角色。</p>
       </a-form>
     </a-modal>
 
@@ -223,7 +222,7 @@ function exportRows() {
 
     <KeysDrawer v-model:open="keysOpen" :application="keysApp" @changed="reload" />
     <WebhooksDrawer v-model:open="hooksOpen" :application="hooksApp" />
-    <AuthorizationDrawer v-model:open="configurationOpen" :application-id="configurationId" :department-id="configurationDepartment" initial-tab="roles" />
+    <AuthorizationDrawer v-model:open="configurationOpen" :application-id="configurationId" initial-tab="roles" />
     <SecretModal v-model:open="secretOpen" title="软件已接入：默认 API Key" :secret="secret" />
   </div>
 </template>
