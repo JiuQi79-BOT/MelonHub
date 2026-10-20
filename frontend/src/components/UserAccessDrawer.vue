@@ -30,13 +30,11 @@ watch(() => [open.value, props.userId], () => { if (open.value) { data.value = n
 
 const validContexts = computed(() => data.value?.contexts.filter(c => c.valid).length ?? 0)
 const domainColumns: TableColumnsType<AccessDomain> = [
-  { title: '部门', dataIndex: 'departmentName', width: 130, ellipsis: true },
   { title: '软件', dataIndex: 'applicationName', key: 'application', width: 150, ellipsis: true },
   { title: '角色', key: 'roles' },
   { title: '有效权限', key: 'permissions' },
 ]
 const contextColumns: TableColumnsType<ActiveContext> = [
-  { title: '部门', dataIndex: 'departmentName', ellipsis: true },
   { title: '软件', dataIndex: 'applicationName', ellipsis: true },
   { title: '激活角色数', dataIndex: 'activeRoleCount', width: 96, align: 'right' },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 160 },
@@ -82,11 +80,10 @@ function revoke() {
             <a-tag v-for="id in data.user.departmentIds" :key="id">{{ hub.departmentName(id) }}</a-tag>
             <span v-if="!data.user.departmentIds.length" class="muted">未加入部门</span>
           </a-descriptions-item>
-          <a-descriptions-item label="当前部门">{{ hub.departmentName(data.user.activeDepartmentId) }}</a-descriptions-item>
         </a-descriptions>
 
-        <h4 class="section-title">各授权域的角色与权限</h4>
-        <a-table :columns="domainColumns" :data-source="data.domains" :row-key="(r: AccessDomain) => `${r.departmentId}:${r.applicationId}`" size="small" :pagination="false">
+        <h4 class="section-title">各软件的角色与权限</h4>
+        <a-table :columns="domainColumns" :data-source="data.domains" :row-key="(r: AccessDomain) => r.applicationId" size="small" :pagination="false">
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'application'">
               {{ record.applicationName }} <a-tag v-if="!record.applicationEnabled" color="orange">已停用</a-tag>

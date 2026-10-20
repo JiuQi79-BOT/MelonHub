@@ -31,7 +31,6 @@ const columns: TableColumnsType<Department> = [
   { title: '部门名称', dataIndex: 'name', key: 'name', ellipsis: true },
   { title: '编码', dataIndex: 'code', key: 'code', ellipsis: true },
   { title: '成员数', dataIndex: 'memberCount', width: 100, align: 'right', sorter: (a, b) => a.memberCount - b.memberCount },
-  { title: '角色数', dataIndex: 'roleCount', width: 100, align: 'right', sorter: (a, b) => a.roleCount - b.roleCount },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 170 },
   { title: '操作', key: 'actions', width: 200 },
 ]
@@ -63,7 +62,7 @@ async function save() {
 function remove(row: Department) {
   Modal.confirm({
     title: `删除部门“${row.name}”？`,
-    content: '只能删除没有成员、角色和权限的部门。删除后无法恢复。',
+    content: '只能删除没有成员的部门。删除后无法恢复。',
     okText: '删除', okType: 'danger', cancelText: '取消',
     async onOk() {
       try { await send('DELETE', `/admin/departments/${row.id}`); message.success('部门已删除'); await reload() }
@@ -79,14 +78,14 @@ watch(() => [route.query.configure, hub.departments.length], () => {
 }, { immediate: true })
 watch(configurationOpen, value => { if (!value && route.query.configure) router.replace({ query: { ...route.query, configure: undefined } }) })
 function exportRows() {
-  downloadCsv('departments', ['ID', '部门名称', '编码', '成员数', '角色数', '创建时间'],
-    rows.value.map(d => [d.id, d.name, d.code, d.memberCount, d.roleCount, fmt(d.createdAt)]))
+  downloadCsv('departments', ['ID', '部门名称', '编码', '成员数', '创建时间'],
+    rows.value.map(d => [d.id, d.name, d.code, d.memberCount, fmt(d.createdAt)]))
 }
 </script>
 
 <template>
   <div class="page">
-    <PageHead title="部门" description="选中部门，在配置抽屉中管理软件、角色和成员授权。">
+    <PageHead title="部门" description="管理部门成员，按部门选人后批量分配软件角色。成员关系变化不自动改变已有授权。">
       <a-button @click="exportRows"><ExportOutlined />导出列表</a-button>
       <a-button :loading="loading" @click="reload"><ReloadOutlined />刷新</a-button>
       <a-button v-if="hub.canPlatform" type="primary" @click="edit()"><PlusOutlined />新建部门</a-button>

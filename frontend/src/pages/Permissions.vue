@@ -45,8 +45,8 @@ async function remove(row: Permission) {
 const holdersOpen = ref(false), holdersTarget = ref<Permission>()
 function showHolders(row: Permission) { holdersTarget.value = row; holdersOpen.value = true }
 function exportRows() {
-  downloadCsv('permissions', ['部门', '软件', '权限编码', '名称', '资源', '操作', '关联角色数'],
-    rows.value.map(p => [scope.department?.name, scope.application?.name, p.code, p.name, p.resource, p.action, p.roleCount]))
+  downloadCsv('permissions', ['软件', '权限编码', '名称', '资源', '操作', '关联角色数'],
+    rows.value.map(p => [scope.application?.name, p.code, p.name, p.resource, p.action, p.roleCount]))
 }
 </script>
 
@@ -89,7 +89,7 @@ function exportRows() {
       </a-card>
     </template>
 
-    <PermissionHoldersDrawer v-model:open="holdersOpen" :permission="holdersTarget" :application-id="scope.applicationId" :department-id="scope.departmentId" />
+    <PermissionHoldersDrawer v-model:open="holdersOpen" :permission="holdersTarget" :application-id="scope.applicationId" />
 
     <PermissionEditor v-model:open="open" :permission="editing" @saved="saved" />
   </div>

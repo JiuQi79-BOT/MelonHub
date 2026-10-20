@@ -46,7 +46,7 @@ async function save() {
 <template>
   <a-modal v-model:open="open" :title="permission ? '编辑权限' : '新建权限'" :confirm-loading="saving" ok-text="保存" destroy-on-close :mask-closable="false" @ok="save">
     <a-form ref="formRef" layout="vertical" :model="form" :rules="rules">
-      <a-form-item label="权限编码" name="code" extra="业务系统校验时使用的值，本授权域内唯一，区分大小写。建议“资源:操作”格式">
+      <a-form-item label="权限编码" name="code" extra="业务系统校验时使用的值，本软件内唯一，区分大小写。建议“资源:操作”格式">
         <a-input v-model:value="form.code" :maxlength="100" placeholder="例如：order:approve" @blur="suggest" />
       </a-form-item>
       <a-form-item label="名称" name="name"><a-input v-model:value="form.name" :maxlength="100" placeholder="例如：审批订单" /></a-form-item>

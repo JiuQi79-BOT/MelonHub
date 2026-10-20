@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { get, type PageResult } from '../api'
 import { useList, usePaged } from '../composables'
 import { expiringSoon, fmt } from '../labels'
+import { useHub } from '../store'
 import { useAuthorizationScope } from '../authorizationScope'
 import type { ExpiringAssignment, Member, Role } from '../types'
 import type { TableColumnsType } from 'ant-design-vue'
@@ -15,12 +16,12 @@ import ReadonlyHint from '../components/ReadonlyHint.vue'
 import UserRolesForm from '../components/UserRolesForm.vue'
 import BatchRolesModal from '../components/BatchRolesModal.vue'
 
-const scope = useAuthorizationScope()
-const props = defineProps<{ embedded?: boolean }>()
+const scope = useAuthorizationScope(), hub = useHub()
+const props = defineProps<{ embedded?: boolean; departmentId?: number }>()
 const emit = defineEmits<{ navigate: [tab: string] }>()
 const route = useRoute(), router = useRouter()
-const keyword = ref('')
-const table = usePaged<Member>((page, size) => get<PageResult<Member>>('/admin/assignments', { ...scope.domainQuery, keyword: keyword.value.trim(), page, size }))
+const keyword = ref(''), departmentId = ref<number | undefined>(props.departmentId)
+const table = usePaged<Member>((page, size) => get<PageResult<Member>>('/admin/assignments', { ...scope.domainQuery, departmentId: departmentId.value, keyword: keyword.value.trim(), page, size }))
 const roles = useList<Role>(() => get<Role[]>('/admin/roles', scope.domainQuery))
 const roleMap = computed(() => new Map(roles.rows.value.map(r => [r.id, r])))
 function reload() { table.load(); roles.load(); expiring.load() }
@@ -39,7 +40,6 @@ watch(() => scope.domainKey, key => {
 const expiringColumns: TableColumnsType<ExpiringAssignment> = [
   { title: '用户', key: 'user', width: 180, ellipsis: true },
   { title: '角色', key: 'role', width: 200, ellipsis: true },
-  { title: '部门', dataIndex: 'departmentName', width: 130, ellipsis: true },
   { title: '到期时间', dataIndex: 'expiresAt', key: 'expiresAt', width: 175 },
   { title: '授予', key: 'granted', width: 220, ellipsis: true },
 ]
@@ -60,11 +60,11 @@ const rowSelection = computed(() => scope.canDomain ? {
   preserveSelectedRowKeys: true,
   onChange: (keys: (string | number)[]) => { selected.value = keys.map(Number) },
 } : undefined)
-watch(() => scope.departmentId, () => { selected.value = [] })
+watch(departmentId, () => { selected.value = []; open.value = false; bulkOpen.value = false; table.load(true) })
 watch(() => scope.domainKey, () => { open.value = false; bulkOpen.value = false })
 function navigate(value: string) {
   if (props.embedded) emit('navigate', value)
-  else router.push(value === 'members' ? { path: '/users', query: { departmentId: scope.departmentId } } : '/' + value)
+  else router.push(value === 'members' ? { path: '/users', query: { departmentId: departmentId.value } } : '/' + value)
 }
 function expiryOf(row: Member, role: number) { return row.roleExpiries?.[role] ?? null }
 function edit(row: Member) { target.value = row; open.value = true }
@@ -89,8 +89,9 @@ async function save() {
       <a-card v-if="tab === 'members'" :bordered="false">
         <div class="toolbar">
           <a-input-search v-model:value="keyword" placeholder="姓名、外部标识或邮箱" allow-clear class="toolbar-search" @search="table.load(true)" />
-          <span class="muted">本部门共 {{ table.total.value }} 名成员</span>
-          <a @click="navigate('members')">管理本部门成员</a>
+          <a-select v-if="!props.departmentId" v-model:value="departmentId" :options="hub.departmentOptions" placeholder="全部用户（可按部门筛选）" allow-clear show-search option-filter-prop="label" class="toolbar-select" />
+          <span class="muted">共 {{ table.total.value }} 名用户</span>
+          <a @click="navigate('members')">管理用户</a>
         </div>
         <div v-if="scope.canDomain" class="toolbar">
           <a-button type="primary" :disabled="!selected.length" @click="bulkOpen = true">批量分配软件角色</a-button>
@@ -99,7 +100,7 @@ async function save() {
           <a v-if="!roles.rows.value.length" @click="navigate('roles')">先创建角色并配置权限</a>
         </div>
         <a-table :columns="columns" :data-source="table.rows.value" :row-selection="rowSelection" row-key="id" size="small" :loading="table.loading.value" :pagination="table.pagination.value" :scroll="{ x: 900 }" @change="table.onChange">
-          <template #emptyText><a-empty :image-style="{ height: '60px' }" :description="keyword.trim() ? '没有匹配的成员' : '该部门还没有成员，请先添加部门成员。'"><a-button v-if="!keyword.trim()" @click="navigate('members')">管理本部门成员</a-button></a-empty></template>
+          <template #emptyText><a-empty :image-style="{ height: '60px' }" :description="keyword.trim() ? '没有匹配的成员' : '没有用户，请先添加用户。'"><a-button v-if="!keyword.trim()" @click="navigate('members')">管理用户</a-button></a-empty></template>
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'externalId'"><code>{{ record.externalId }}</code></template>
             <template v-else-if="column.key === 'enabled'"><a-badge :status="record.enabled ? 'success' : 'default'" :text="record.enabled ? '启用' : '停用'" /></template>
@@ -121,7 +122,7 @@ async function save() {
                          :options="[{ value: 7, label: '7 天内' }, { value: 15, label: '15 天内' }, { value: 30, label: '30 天内' }]" />
           <span class="muted">当前软件下即将到期的角色分配共 {{ expiring.rows.value.length }} 条，到期后用户自动失去对应角色。</span>
         </div>
-        <a-table :columns="expiringColumns" :data-source="expiring.rows.value" :row-key="(r: ExpiringAssignment) => `${r.userId}:${r.roleId}:${r.departmentId}`" size="small"
+        <a-table :columns="expiringColumns" :data-source="expiring.rows.value" :row-key="(r: ExpiringAssignment) => `${r.userId}:${r.roleId}`" size="small"
                  :loading="expiring.loading.value" :scroll="{ x: 1000 }"
                  :pagination="{ size: 'small', defaultPageSize: 20, showSizeChanger: true, showTotal: (t: number) => `共 ${t} 条` }">
           <template #bodyCell="{ column, record }">
@@ -143,10 +144,10 @@ async function save() {
       </a-card>
     </template>
 
-    <BatchRolesModal v-model:open="bulkOpen" :department-id="scope.departmentId" :application-id="scope.applicationId" :user-ids="selected" @changed="reload" />
+    <BatchRolesModal v-model:open="bulkOpen" :application-id="scope.applicationId" :user-ids="selected" @changed="reload" />
 
     <a-modal v-model:open="open" :title="`个别调整：${target?.name ?? ''}`" :confirm-loading="grantForm?.saving" ok-text="保存" width="640px" destroy-on-close @ok="save">
-      <UserRolesForm v-if="target" ref="grantForm" :key="target.id" :user-id="target.id" :department-id="scope.departmentId" :application-id="scope.applicationId"
+      <UserRolesForm v-if="target" ref="grantForm" :key="target.id" :user-id="target.id" :application-id="scope.applicationId"
                      :roles="roles.rows.value" :assigned="target.roleIds ?? []" :expiries="target.roleExpiries ?? {}" :disabled="!scope.canDomain" />
     </a-modal>
   </div>

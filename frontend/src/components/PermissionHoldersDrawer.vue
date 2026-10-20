@@ -2,11 +2,13 @@
 import { ref, watch } from 'vue'
 import { message, type TableColumnsType } from 'ant-design-vue'
 import { errorText, get } from '../api'
+import { useHub } from '../store'
 import { expiringSoon, fmt } from '../labels'
 import type { Permission, PermissionHolder, PermissionHolders } from '../types'
 
 const open = defineModel<boolean>('open', { required: true })
-const props = defineProps<{ permission?: Permission; applicationId?: number; departmentId?: number }>()
+const props = defineProps<{ permission?: Permission; applicationId?: number }>()
+const hub = useHub(), departmentId = ref<number>()
 const data = ref<PermissionHolders | null>(null), loading = ref(false)
 let sequence = 0
 
@@ -16,7 +18,7 @@ async function load() {
   loading.value = true
   data.value = null
   try {
-    const result = await get<PermissionHolders>('/admin/permissions/who', { applicationId: props.applicationId, code: props.permission.code, departmentId: props.departmentId })
+    const result = await get<PermissionHolders>('/admin/permissions/who', { applicationId: props.applicationId, code: props.permission.code, departmentId: departmentId.value })
     if (current === sequence) data.value = result
   } catch (e) {
     if (current === sequence) message.error(errorText(e))
@@ -24,11 +26,10 @@ async function load() {
     if (current === sequence) loading.value = false
   }
 }
-watch(() => [open.value, props.permission?.id], () => { if (open.value) load() }, { immediate: true })
+watch(() => [open.value, props.permission?.id, departmentId.value], () => { if (open.value) load() }, { immediate: true })
 
 const columns: TableColumnsType = [
   { title: '用户', key: 'user', width: 200, ellipsis: true },
-  { title: '部门', dataIndex: 'departmentName', width: 130, ellipsis: true },
   { title: '来源角色', key: 'roles' },
 ]
 </script>
@@ -36,13 +37,14 @@ const columns: TableColumnsType = [
 <template>
   <a-drawer v-model:open="open" :title="`权限使用者：${permission?.code ?? ''}`" width="820" destroy-on-close>
     <template #extra><a-button @click="load">刷新</a-button></template>
+    <a-select v-model:value="departmentId" :options="hub.departmentOptions" placeholder="全部用户（可按部门筛选）" allow-clear show-search option-filter-prop="label" class="toolbar-select block-gap" />
     <a-spin :spinning="loading">
       <template v-if="data">
         <p class="hint">
-          共 {{ data.total }} 名用户通过角色获得 <code>{{ permission?.code }}</code>（同一用户在不同部门分别计），包括有期限和永久的授权。
+          共 {{ data.total }} 名用户通过角色获得 <code>{{ permission?.code }}</code>，包括有期限和永久的授权。
           <template v-if="data.truncated">这里只列出前 {{ data.holders.length }} 名，可按部门筛选后查看。</template>
         </p>
-        <a-table :columns="columns" :data-source="data.holders" :row-key="(h: PermissionHolder) => `${h.userId}:${h.departmentId}`" size="small"
+        <a-table :columns="columns" :data-source="data.holders" :row-key="(h: PermissionHolder) => h.userId" size="small"
                  :pagination="{ size: 'small', defaultPageSize: 20, showSizeChanger: true, showTotal: (t: number) => `共 ${t} 条` }">
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'user'">

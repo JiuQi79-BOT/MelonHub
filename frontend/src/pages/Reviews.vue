@@ -50,7 +50,7 @@ const createableApps = computed(() => hub.applicationOptions.filter(o => hub.can
 
 <template>
   <div class="page">
-    <PageHead title="权限复核" description="跨部门查看复核，使用下方的软件和状态筛选。每次复核的部门范围在创建时指定。">
+    <PageHead title="权限复核" description="复核软件角色分配；可在创建时按部门筛选用户，复核范围以创建时的快照为准。">
       <a-button :loading="list.loading.value" @click="list.load()"><ReloadOutlined />刷新</a-button>
       <a-button v-if="createableApps.length" type="primary" @click="create"><PlusOutlined />发起复核</a-button>
     </PageHead>
@@ -69,7 +69,7 @@ const createableApps = computed(() => hub.applicationOptions.filter(o => hub.can
             <div class="cell-main">{{ record.name }}</div>
             <div v-if="record.summary" class="cell-sub">{{ record.summary }}</div>
           </template>
-          <template v-else-if="column.key === 'scope'">{{ record.applicationName }}<span class="muted"> × </span>{{ record.departmentName ?? '全部部门' }}</template>
+          <template v-else-if="column.key === 'scope'">{{ record.applicationName }}<span class="muted"> · </span>{{ record.departmentName ? `部门成员：${record.departmentName}` : '全部用户' }}</template>
           <template v-else-if="column.key === 'status'"><a-tag :color="reviewStatus[record.status]?.color">{{ reviewStatus[record.status]?.text ?? record.status }}</a-tag></template>
           <template v-else-if="column.key === 'pending'"><span :class="{ 'warn-text': record.status === 'OPEN' && record.pending }">{{ record.pending }}</span></template>
           <template v-else-if="column.key === 'revoked'"><span :class="{ 'warn-text': record.revoked }">{{ record.revoked }}</span></template>
@@ -88,8 +88,8 @@ const createableApps = computed(() => hub.applicationOptions.filter(o => hub.can
       <a-form ref="formRef" layout="vertical" :model="form" :rules="rules">
         <a-form-item label="复核名称" name="name"><a-input v-model:value="form.name" :maxlength="100" placeholder="例如：2026Q4 季度复核" /></a-form-item>
         <a-form-item label="软件" name="applicationId"><a-select v-model:value="form.applicationId" :options="createableApps" placeholder="选择软件" show-search option-filter-prop="label" /></a-form-item>
-        <a-form-item label="部门" name="departmentId" extra="不选则覆盖该软件在全部部门的授权">
-          <a-select v-model:value="form.departmentId" :options="hub.departmentOptions" placeholder="全部部门" allow-clear show-search option-filter-prop="label" />
+        <a-form-item label="按部门选人" name="departmentId" extra="不选则覆盖该软件的全部用户授权；部门仅用于筛选快照中的用户">
+          <a-select v-model:value="form.departmentId" :options="hub.departmentOptions" placeholder="全部用户" allow-clear show-search option-filter-prop="label" />
         </a-form-item>
         <a-form-item label="截止天数" name="dueDays" extra="留空则不设截止时间">
           <a-input-number v-model:value="form.dueDays" :min="1" :max="365" :precision="0" placeholder="不设截止" class="grow" />

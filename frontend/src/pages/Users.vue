@@ -34,7 +34,6 @@ const columns: TableColumnsType<User> = [
   { title: '外部标识', dataIndex: 'externalId', key: 'externalId', width: 150, ellipsis: true },
   { title: '邮箱', dataIndex: 'email', key: 'email', width: 180, ellipsis: true },
   { title: '所属部门', key: 'departments' },
-  { title: '当前部门', key: 'active', width: 120, ellipsis: true },
   { title: '状态', key: 'enabled', width: 72 },
   { title: '创建日期', dataIndex: 'createdAt', key: 'createdAt', width: 104 },
   { title: '操作', key: 'actions', width: 250, fixed: 'right' },
@@ -120,8 +119,8 @@ const exporting = ref(false)
 async function exportUsers() {
   await attempt(exporting, async () => {
     const result = await get<PageResult<User>>('/admin/users/export', { ...filters, keyword: filters.keyword.trim() })
-    downloadCsv('users', ['ID', '姓名', '外部标识', '邮箱', '所属部门', '当前部门', '状态'],
-      result.items.map(u => [u.id, u.name, u.externalId, u.email, u.departmentIds.map(hub.departmentName).join('、'), hub.departmentName(u.activeDepartmentId), u.enabled ? '启用' : '停用']))
+    downloadCsv('users', ['ID', '姓名', '外部标识', '邮箱', '所属部门', '状态'],
+      result.items.map(u => [u.id, u.name, u.externalId, u.email, u.departmentIds.map(hub.departmentName).join('、'), u.enabled ? '启用' : '停用']))
   })
 }
 
@@ -175,7 +174,6 @@ async function runImport() {
             <a-tag v-for="id in record.departmentIds" :key="id">{{ hub.departmentName(id) }}</a-tag>
             <span v-if="!record.departmentIds.length" class="muted">未加入部门</span>
           </template>
-          <template v-else-if="column.key === 'active'">{{ hub.departmentName(record.activeDepartmentId) }}</template>
           <template v-else-if="column.key === 'enabled'"><a-badge :status="record.enabled ? 'success' : 'default'" :text="record.enabled ? '启用' : '停用'" /></template>
           <template v-else-if="column.key === 'createdAt'"><a-tooltip :title="fmt(record.createdAt)">{{ record.createdAt?.slice(0, 10) }}</a-tooltip></template>
           <template v-else-if="column.key === 'actions'">
@@ -216,8 +214,8 @@ async function runImport() {
           <a-select v-model:value="form.departmentIds" mode="multiple" :options="hub.departmentOptions" placeholder="选择一个或多个部门" option-filter-prop="label" />
         </a-form-item>
         <a-alert v-if="identityChanged" type="warning" show-icon message="修改外部标识会使该用户现有的全部权限上下文失效。" class="block-gap" />
-        <a-alert v-if="removedDepartments.length" type="warning" show-icon class="block-gap"
-                 :message="`移出部门：${removedDepartments.map(id => hub.departmentName(id)).join('、')}。该用户在这些部门的角色分配会被一并删除。`" />
+        <a-alert v-if="removedDepartments.length" type="info" show-icon class="block-gap"
+                 :message="`移出部门：${removedDepartments.map(id => hub.departmentName(id)).join('、')}。已有的软件角色分配及有效期保持不变。`" />
       </a-form>
     </a-modal>
 
@@ -232,7 +230,7 @@ async function runImport() {
     </a-modal>
 
     <UserAccessDrawer v-model:open="accessOpen" :user-id="accessUser" @changed="table.load()" />
-    <UserRolesDrawer v-model:open="grantOpen" :user="grantUser" :department-id="filters.departmentId" @changed="table.load()" />
+    <UserRolesDrawer v-model:open="grantOpen" :user="grantUser" @changed="table.load()" />
     <AuthorizationDrawer v-if="!embedded" v-model:open="configurationOpen" :department-id="filters.departmentId" />
     <a-modal v-model:open="existingOpen" title="添加已有用户到当前部门" ok-text="继续" :ok-button-props="{ disabled: !existingUser }" destroy-on-close @ok="joinDepartment">
       <p class="hint">选择用户后检查资料并保存，原有部门归属保持不变。</p>

@@ -10,10 +10,10 @@ import PageHead from '../components/PageHead.vue'
 import UserPicker from '../components/UserPicker.vue'
 
 const hub = useHub()
-const form = reactive<{ userId?: number; departmentId?: number; applicationId?: number; mode: 'all' | 'custom'; activeRoleIds: number[]; permissions: string[] }>({
-  departmentId: hub.departmentId || undefined, applicationId: hub.applicationId || undefined, mode: 'all', activeRoleIds: [], permissions: [],
+const form = reactive<{ userId?: number; applicationId?: number; mode: 'all' | 'custom'; activeRoleIds: number[]; permissions: string[] }>({
+  applicationId: hub.applicationId || undefined, mode: 'all', activeRoleIds: [], permissions: [],
 })
-const domain = computed(() => form.departmentId && form.applicationId ? { departmentId: form.departmentId, applicationId: form.applicationId } : null)
+const domain = computed(() => form.applicationId ? { applicationId: form.applicationId } : null)
 const roles = useList<Role>(() => get<Role[]>('/admin/roles', domain.value!))
 const permissions = useList<Permission>(() => get<Permission[]>('/admin/permissions', domain.value!))
 const result = ref<Simulation | null>(null), running = ref(false)
@@ -28,7 +28,7 @@ watch(domain, value => {
   form.activeRoleIds = []
   if (value) { roles.load(); permissions.load() } else { roles.clear(); permissions.clear() }
 }, { immediate: true })
-watch(() => [form.userId, form.departmentId, form.applicationId, form.mode, form.activeRoleIds.join(','), form.permissions.join('\n')], invalidate)
+watch(() => [form.userId, form.applicationId, form.mode, form.activeRoleIds.join(','), form.permissions.join('\n')], invalidate)
 
 const roleOptions = computed(() => roles.rows.value.map(r => ({ value: r.id, label: `${r.name}（${r.code}）${r.enabled ? '' : ' · 已停用'}` })))
 const permissionOptions = computed(() => permissions.rows.value.map(p => ({ value: p.code, label: `${p.code}  ${p.name}` })))
@@ -81,10 +81,7 @@ const permissionColumns: TableColumnsType<Simulation['permissions'][number]> = [
         <a-card :bordered="false" title="诊断条件">
           <a-form layout="vertical">
             <a-form-item label="用户" required><UserPicker v-model:value="form.userId" /></a-form-item>
-            <a-row :gutter="12">
-              <a-col :span="12"><a-form-item label="部门" required><a-select v-model:value="form.departmentId" :options="hub.departmentOptions" show-search option-filter-prop="label" placeholder="选择部门" /></a-form-item></a-col>
-              <a-col :span="12"><a-form-item label="软件" required><a-select v-model:value="form.applicationId" :options="hub.applicationOptions" show-search option-filter-prop="label" placeholder="选择软件" /></a-form-item></a-col>
-            </a-row>
+            <a-form-item label="软件" required><a-select v-model:value="form.applicationId" :options="hub.applicationOptions" show-search option-filter-prop="label" placeholder="选择软件" /></a-form-item>
             <a-form-item label="激活角色">
               <a-radio-group v-model:value="form.mode" class="block-gap">
                 <a-radio value="all">全部已分配角色</a-radio>
@@ -101,9 +98,9 @@ const permissionColumns: TableColumnsType<Simulation['permissions'][number]> = [
       </a-col>
       <a-col :xs="24" :xl="16">
         <a-card :bordered="false" title="诊断结果">
-          <a-empty v-if="!result" description="选择用户和授权域后开始诊断" />
+          <a-empty v-if="!result" description="选择用户和软件后开始诊断" />
           <template v-else>
-            <a-alert v-if="result.eligible" type="success" show-icon class="block-gap" message="该用户可以在此授权域创建权限上下文"
+            <a-alert v-if="result.eligible" type="success" show-icon class="block-gap" message="该用户可以在此软件创建权限上下文"
                      :description="`激活 ${result.roles.filter(r => r.active).length} 个角色，获得 ${result.permissions.length} 项权限。`" />
             <a-alert v-else type="error" show-icon class="block-gap" message="业务系统为该用户创建权限上下文会失败">
               <template #description><ul class="issue-list"><li v-for="issue in result.issues" :key="issue">{{ issue }}</li></ul></template>
@@ -111,9 +108,6 @@ const permissionColumns: TableColumnsType<Simulation['permissions'][number]> = [
             <a-alert v-if="result.notices?.length" type="info" show-icon class="block-gap" message="以下角色不计入权限">
               <template #description><ul class="issue-list"><li v-for="notice in result.notices" :key="notice">{{ notice }}</li></ul></template>
             </a-alert>
-            <a-alert v-if="result.eligible && result.switchesDepartment && result.user.activeDepartmentId != null" type="warning" show-icon class="block-gap"
-                     :message="`该用户当前部门为“${hub.departmentName(result.user.activeDepartmentId)}”`"
-                     description="业务系统要求切换部门时，创建此部门的上下文会使其在其他部门所有软件中的上下文立即失效；不允许切换时（Java SDK 的普通校验即如此）会被拒绝并返回 DEPARTMENT_MISMATCH。" />
             <template v-if="decisionRows.length">
               <h4 class="section-title">权限校验
                 <a-tag :color="result.allowed ? 'green' : 'red'" class="title-tag">{{ result.allowed ? '全部通过' : '未全部通过' }}</a-tag>
@@ -132,7 +126,7 @@ const permissionColumns: TableColumnsType<Simulation['permissions'][number]> = [
                 <template v-else-if="column.key === 'enabled'"><a-badge :status="record.enabled ? 'success' : 'default'" :text="record.enabled ? '启用' : '停用'" /></template>
                 <template v-else-if="column.key === 'active'"><a-tag :color="record.active ? 'blue' : 'default'">{{ record.active ? '是' : '否' }}</a-tag></template>
               </template>
-              <template #emptyText><a-empty description="该用户在此授权域没有角色" :image-style="{ height: '40px' }" /></template>
+              <template #emptyText><a-empty description="该用户在此软件没有角色" :image-style="{ height: '40px' }" /></template>
             </a-table>
             <h4 class="section-title">有效权限</h4>
             <a-table :columns="permissionColumns" :data-source="result.permissions" row-key="code" size="small" :pagination="{ size: 'small', pageSize: 20, hideOnSinglePage: true }">

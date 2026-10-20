@@ -8,16 +8,16 @@ import type { Member, Role, User } from '../types'
 import UserPicker from './UserPicker.vue'
 
 const open = defineModel<boolean>('open', { required: true })
-const props = defineProps<{ role?: Role; departmentId: number; applicationId: number; embedded?: boolean }>()
+const props = defineProps<{ role?: Role; applicationId: number; embedded?: boolean }>()
 const emit = defineEmits<{ changed: []; navigate: [tab: string] }>()
 const hub = useHub()
 const members = ref<Member[]>([]), original = ref<number[]>([]), loading = ref(false), saving = ref(false), adding = ref<number[]>([])
-const picked = ref<User[]>([])
-type Target = { roleId: number; departmentId: number; applicationId: number }
+const picked = ref<User[]>([]), departmentId = ref<number>()
+type Target = { roleId: number; applicationId: number }
 /** The role and domain the member list on screen was loaded for; edits are only ever saved there. */
 const loaded = ref<Target | null>(null)
-const target = computed<Target | null>(() => props.role ? { roleId: props.role.id, departmentId: props.departmentId, applicationId: props.applicationId } : null)
-const same = (a: Target | null, b: Target | null) => !!a && !!b && a.roleId === b.roleId && a.departmentId === b.departmentId && a.applicationId === b.applicationId
+const target = computed<Target | null>(() => props.role ? { roleId: props.role.id, applicationId: props.applicationId } : null)
+const same = (a: Target | null, b: Target | null) => !!a && !!b && a.roleId === b.roleId && a.applicationId === b.applicationId
 const ready = computed(() => same(loaded.value, target.value) && !loading.value)
 const canWrite = computed(() => hub.canWriteApp(props.applicationId))
 const dirty = computed(() => {
@@ -33,6 +33,7 @@ function reset() {
   original.value = []
   adding.value = []
   picked.value = []
+  departmentId.value = undefined
   loading.value = false
 }
 async function load() {
@@ -41,7 +42,7 @@ async function load() {
   const current = ++sequence
   loading.value = true
   try {
-    const rows = await get<Member[]>(`/admin/roles/${at.roleId}/members`, { departmentId: at.departmentId, applicationId: at.applicationId })
+    const rows = await get<Member[]>(`/admin/roles/${at.roleId}/members`, { applicationId: at.applicationId })
     if (current !== sequence) return
     members.value = rows
     original.value = rows.map(m => m.id).sort((a, b) => a - b)
@@ -54,7 +55,7 @@ async function load() {
     if (current === sequence) loading.value = false
   }
 }
-watch(() => [open.value, target.value?.roleId, target.value?.departmentId, target.value?.applicationId], () => {
+watch(() => [open.value, target.value?.roleId, target.value?.applicationId], () => {
   reset()
   if (open.value) load()
 }, { immediate: true })
@@ -72,7 +73,7 @@ async function save() {
   const at = loaded.value
   if (!ready.value || !at) return
   const ids = members.value.map(m => m.id)
-  const ok = await attempt(saving, () => send('PUT', `/admin/roles/${at.roleId}/members`, { ids }, { departmentId: at.departmentId, applicationId: at.applicationId }), '角色成员已更新')
+  const ok = await attempt(saving, () => send('PUT', `/admin/roles/${at.roleId}/members`, { ids }, { applicationId: at.applicationId }), '角色成员已更新')
   if (!ok) return
   emit('changed')
   if (same(loaded.value, at)) await load()
@@ -94,13 +95,14 @@ const columns: TableColumnsType<Member> = [
         <a-button type="primary" :disabled="!ready || !dirty" :loading="saving" @click="save">保存</a-button>
       </a-space>
     </template>
-    <p class="hint">{{ hub.departmentName(departmentId) }} × {{ hub.applicationName(applicationId) }}。只能添加该部门的成员，保存后变动用户的现有上下文失效。</p>
+    <p class="hint">{{ hub.applicationName(applicationId) }}。可按部门筛选并添加用户，保存后变动用户在本软件的现有上下文失效。</p>
     <p class="hint">这里按一个角色维护成员。给多人分配多个软件的角色，可使用
       <a v-if="embedded" @click="open = false; emit('navigate', 'assignments')">成员授权</a>
       <router-link v-else to="/assignments" @click="open = false">用户授权</router-link>。
     </p>
     <div v-if="canWrite" class="toolbar">
-      <UserPicker v-model:value="adding" :disabled="!ready" multiple @picks="(users: User[]) => (picked = users)" :department-id="departmentId" :exclude="members.map(m => m.id)" placeholder="搜索并选择要加入的部门成员" class="grow" />
+      <a-select v-model:value="departmentId" :options="hub.departmentOptions" placeholder="全部部门" allow-clear show-search option-filter-prop="label" class="toolbar-select" />
+      <UserPicker v-model:value="adding" :disabled="!ready" multiple @picks="(users: User[]) => (picked = users)" :department-id="departmentId" :exclude="members.map(m => m.id)" placeholder="搜索并选择要加入的用户" class="grow" />
       <a-button :disabled="!ready || !adding.length" @click="add">添加</a-button>
     </div>
     <a-table :columns="columns" :data-source="members" row-key="id" size="small" :loading="loading" :pagination="{ size: 'small', pageSize: 50, hideOnSinglePage: true }">

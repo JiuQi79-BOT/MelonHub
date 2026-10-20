@@ -3,22 +3,20 @@ import { computed, ref } from 'vue'
 import { get, session } from './api'
 import type { Application, Department, Health, Principal } from './types'
 
-const DEPARTMENT = 'melonhub-department', APPLICATION = 'melonhub-application'
+const APPLICATION = 'melonhub-application'
 
 export const useHub = defineStore('hub', () => {
   const me = ref<Principal | null>(null)
   const departments = ref<Department[]>([])
   const applications = ref<Application[]>([])
-  const departmentId = ref(Number(localStorage.getItem(DEPARTMENT)) || 0)
   const applicationId = ref(Number(localStorage.getItem(APPLICATION)) || 0)
   const health = ref<Health | null>(null)
 
-  const department = computed(() => departments.value.find(d => d.id === departmentId.value))
   const application = computed(() => applications.value.find(a => a.id === applicationId.value))
-  const hasDomain = computed(() => !!department.value && !!application.value)
+  const hasDomain = computed(() => !!application.value)
   /** Changes whenever the isolation domain changes; domain pages reload on it and drop stale responses. */
-  const domainKey = computed(() => hasDomain.value ? `${departmentId.value}:${applicationId.value}` : '')
-  const domainQuery = computed(() => ({ departmentId: departmentId.value, applicationId: applicationId.value }))
+  const domainKey = computed(() => hasDomain.value ? String(applicationId.value) : '')
+  const domainQuery = computed(() => ({ applicationId: applicationId.value }))
 
   const role = computed(() => me.value?.role)
   const isSuper = computed(() => role.value === 'SUPER_ADMIN')
@@ -32,19 +30,16 @@ export const useHub = defineStore('hub', () => {
   const applicationOptions = computed(() => applications.value.map(a => ({ value: a.id, label: a.enabled ? a.name : `${a.name}（已停用）` })))
 
   function persist() {
-    localStorage.setItem(DEPARTMENT, String(departmentId.value))
     localStorage.setItem(APPLICATION, String(applicationId.value))
   }
-  function setDomain(dept?: number, app?: number) {
-    if (dept !== undefined) departmentId.value = dept
-    if (app !== undefined) applicationId.value = app
+  function setApplication(app: number) {
+    applicationId.value = app
     persist()
   }
   async function loadLists() {
     const [d, a] = await Promise.all([get<Department[]>('/admin/departments'), get<Application[]>('/admin/applications')])
     departments.value = d
     applications.value = a
-    if (!d.some(x => x.id === departmentId.value)) departmentId.value = d[0]?.id ?? 0
     if (!a.some(x => x.id === applicationId.value)) applicationId.value = a[0]?.id ?? 0
     persist()
   }
@@ -66,8 +61,8 @@ export const useHub = defineStore('hub', () => {
   }
 
   return {
-    me, departments, applications, departmentId, applicationId, health, department, application, hasDomain, domainKey, domainQuery,
+    me, departments, applications, applicationId, health, application, hasDomain, domainKey, domainQuery,
     role, isSuper, canPlatform, canWriteApp, canDomain, departmentName, applicationName, departmentOptions, applicationOptions,
-    setDomain, loadLists, refreshHealth, signIn, signOut,
+    setApplication, loadLists, refreshHealth, signIn, signOut,
   }
 })
