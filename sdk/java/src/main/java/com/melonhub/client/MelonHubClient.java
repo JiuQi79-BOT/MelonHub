@@ -27,7 +27,6 @@ import java.util.concurrent.TimeoutException;
  * MelonHub 统一权限平台业务 API 客户端（线程安全）。
  * <p>失败语义：429/503 按 Retry-After 秒数退避重试（默认最多 2 次）；其余 4xx/5xx 抛
  * {@link MelonHubApiException}，401 且 code=CONTEXT_INVALID 抛子类 {@link ContextInvalidException}，
- * 409 且 code=DEPARTMENT_MISMATCH 抛子类 {@link DepartmentMismatchException}；
  * 网络/超时异常包装为 {@link MelonHubException}。</p>
  */
 public class MelonHubClient {
@@ -59,26 +58,13 @@ public class MelonHubClient {
         return new Builder(baseUrl, apiKey);
     }
 
-    /**
-     * 创建上下文；activeRoleIds 传 null 表示激活全部已分配启用角色，空列表表示无激活角色。
-     * 与平台默认行为一致：部门与用户当前部门不同时会切换部门。
-     */
-    public ContextView issueContext(String externalId, long departmentId, List<Long> activeRoleIds) {
-        return issueContext(externalId, departmentId, activeRoleIds, true);
-    }
-
-    /**
-     * 创建上下文。switchDepartment=false 时只在用户当前部门（或尚无当前部门时）创建，
-     * 当前部门不同则抛 {@link DepartmentMismatchException}，不会让其他部门的上下文失效。
-     */
-    public ContextView issueContext(String externalId, long departmentId, List<Long> activeRoleIds, boolean switchDepartment) {
+    /** 创建当前软件的上下文；activeRoleIds 为 null 时激活全部已分配启用角色，空列表表示无激活角色。 */
+    public ContextView issueContext(String externalId, List<Long> activeRoleIds) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("externalId", externalId);
-        body.put("departmentId", departmentId);
         if (activeRoleIds != null) {
             body.put("activeRoleIds", activeRoleIds);
         }
-        body.put("switchDepartment", switchDepartment);
         return send("POST", "/api/v1/contexts", null, body, ContextView.class);
     }
 
@@ -102,18 +88,17 @@ public class MelonHubClient {
         send("DELETE", "/api/v1/contexts", contextToken, null, JsonNode.class);
     }
 
-    /** 只读查询用户在某部门的授权，不创建上下文。 */
-    public UserAccessView userAccess(String externalId, long departmentId) {
-        String query = "?externalId=" + encode(externalId) + "&departmentId=" + departmentId;
+    /** 只读查询用户在本软件的授权，不创建上下文。 */
+    public UserAccessView userAccess(String externalId) {
+        String query = "?externalId=" + encode(externalId);
         return send("GET", "/api/v1/users/access" + query, null, null, UserAccessView.class);
     }
 
     /** 提交角色申请；durationDays 传 null 表示长期。 */
-    public AccessRequestView submitAccessRequest(String externalId, long departmentId, long roleId,
+    public AccessRequestView submitAccessRequest(String externalId, long roleId,
                                                  String reason, Integer durationDays) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("externalId", externalId);
-        body.put("departmentId", departmentId);
         body.put("roleId", roleId);
         body.put("reason", reason);
         if (durationDays != null) {
@@ -216,9 +201,6 @@ public class MelonHubClient {
         }
         if (status == 401 && "CONTEXT_INVALID".equals(code)) {
             return new ContextInvalidException(code, message, requestId);
-        }
-        if (status == 409 && "DEPARTMENT_MISMATCH".equals(code)) {
-            return new DepartmentMismatchException(code, message, requestId);
         }
         return new MelonHubApiException(status, code, message, requestId);
     }

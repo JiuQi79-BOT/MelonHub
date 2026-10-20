@@ -13,28 +13,24 @@ import java.util.Map;
 
 /**
  * Spring MVC 拦截器：按 {@link RequirePermission} 校验权限。
- * 身份取自请求头（默认 X-MelonHub-User / X-MelonHub-Department，可在构造器配置）；
- * 缺头返回 401，无权限或平台拒绝返回 403，用户当前部门不是请求部门返回 409（DEPARTMENT_MISMATCH，需由业务系统
- * 引导用户显式切换部门），响应体为平台风格的 JSON 错误。
+ * 身份取自可信请求头（默认 X-MelonHub-User，可在构造器配置）。
+ * 缺头返回 401，无权限或平台拒绝返回 403，响应体为平台风格的 JSON 错误。
  */
 public class MelonHubPermissionInterceptor implements HandlerInterceptor {
 
     public static final String DEFAULT_USER_HEADER = "X-MelonHub-User";
-    public static final String DEFAULT_DEPARTMENT_HEADER = "X-MelonHub-Department";
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final MelonHubAuthorizer authorizer;
     private final String userHeader;
-    private final String departmentHeader;
 
     public MelonHubPermissionInterceptor(MelonHubAuthorizer authorizer) {
-        this(authorizer, DEFAULT_USER_HEADER, DEFAULT_DEPARTMENT_HEADER);
+        this(authorizer, DEFAULT_USER_HEADER);
     }
 
-    public MelonHubPermissionInterceptor(MelonHubAuthorizer authorizer, String userHeader, String departmentHeader) {
+    public MelonHubPermissionInterceptor(MelonHubAuthorizer authorizer, String userHeader) {
         this.authorizer = authorizer;
         this.userHeader = userHeader;
-        this.departmentHeader = departmentHeader;
     }
 
     @Override
@@ -44,26 +40,15 @@ public class MelonHubPermissionInterceptor implements HandlerInterceptor {
             return true;
         }
         String externalId = request.getHeader(userHeader);
-        String department = request.getHeader(departmentHeader);
-        if (externalId == null || externalId.isBlank() || department == null || department.isBlank()) {
-            writeError(response, 401, "UNAUTHORIZED", "缺少身份请求头 " + userHeader + " / " + departmentHeader);
-            return false;
-        }
-        long departmentId;
-        try {
-            departmentId = Long.parseLong(department.trim());
-        } catch (NumberFormatException e) {
-            writeError(response, 401, "UNAUTHORIZED", "部门编号非法: " + department);
+        if (externalId == null || externalId.isBlank()) {
+            writeError(response, 401, "UNAUTHORIZED", "缺少身份请求头 " + userHeader);
             return false;
         }
         boolean allowed;
         try {
-            allowed = authorizer.hasPermission(externalId, departmentId, required.value());
-        } catch (DepartmentMismatchException e) {
-            writeError(response, 409, e.getCode(), e.getMessage());
-            return false;
+            allowed = authorizer.hasPermission(externalId, required.value());
         } catch (MelonHubApiException e) {
-            // 用户不存在、已停用、不属于该部门等平台拒绝，同样按无权限处理
+            // 用户不存在、已停用等平台拒绝，同样按无权限处理
             writeError(response, 403, e.getCode() == null ? "FORBIDDEN" : e.getCode(), e.getMessage());
             return false;
         }

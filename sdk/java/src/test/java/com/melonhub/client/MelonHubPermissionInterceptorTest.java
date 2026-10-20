@@ -15,7 +15,7 @@ class MelonHubPermissionInterceptorTest {
     private static MelonHubAuthorizer stubAuthorizer(boolean allowed) {
         return new MelonHubAuthorizer(new MelonHubClient("http://127.0.0.1:1", "mh_test")) {
             @Override
-            public boolean hasPermission(String externalId, long departmentId, String permission) {
+            public boolean hasPermission(String externalId, String permission) {
                 return allowed;
             }
         };
@@ -38,7 +38,6 @@ class MelonHubPermissionInterceptorTest {
     private static MockHttpServletRequest request() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("X-MelonHub-User", "u1");
-        request.addHeader("X-MelonHub-Department", "1");
         return request;
     }
 
@@ -70,20 +69,10 @@ class MelonHubPermissionInterceptorTest {
     private static MelonHubAuthorizer throwingAuthorizer(RuntimeException error) {
         return new MelonHubAuthorizer(new MelonHubClient("http://127.0.0.1:1", "mh_test")) {
             @Override
-            public boolean hasPermission(String externalId, long departmentId, String permission) {
+            public boolean hasPermission(String externalId, String permission) {
                 throw error;
             }
         };
-    }
-
-    @Test
-    void reportsDepartmentMismatchWith409() throws Exception {
-        MelonHubPermissionInterceptor interceptor = new MelonHubPermissionInterceptor(
-                throwingAuthorizer(new DepartmentMismatchException("DEPARTMENT_MISMATCH", "需要切换部门", "r1")));
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        assertThat(interceptor.preHandle(request(), response, handler("guarded"))).isFalse();
-        assertThat(response.getStatus()).isEqualTo(409);
-        assertThat(response.getContentAsString()).contains("DEPARTMENT_MISMATCH");
     }
 
     @Test
@@ -97,16 +86,14 @@ class MelonHubPermissionInterceptorTest {
     }
 
     @Test
-    void headerTextCannotBreakTheErrorJson() throws Exception {
-        MelonHubPermissionInterceptor interceptor = new MelonHubPermissionInterceptor(stubAuthorizer(true));
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader("X-MelonHub-User", "u1");
-        request.addHeader("X-MelonHub-Department", "1\\\",\"admin\":\"true");
+    void errorMessageCannotBreakTheErrorJson() throws Exception {
+        MelonHubPermissionInterceptor interceptor = new MelonHubPermissionInterceptor(
+                throwingAuthorizer(new MelonHubApiException(404, "NOT_FOUND", "用户 \\\"未知\\\" 不存在", "r3")));
         MockHttpServletResponse response = new MockHttpServletResponse();
-        assertThat(interceptor.preHandle(request, response, handler("guarded"))).isFalse();
+        assertThat(interceptor.preHandle(request(), response, handler("guarded"))).isFalse();
         var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(response.getContentAsString());
-        assertThat(json.has("admin")).isFalse();
-        assertThat(json.path("code").asText()).isEqualTo("UNAUTHORIZED");
+        assertThat(json.path("message").asText()).isEqualTo("用户 \\\"未知\\\" 不存在");
+        assertThat(json.path("code").asText()).isEqualTo("NOT_FOUND");
     }
 
     @Test

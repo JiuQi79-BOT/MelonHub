@@ -40,7 +40,7 @@ public class MelonHubAutoConfiguration {
         @ConditionalOnMissingBean
         MelonHubPermissionInterceptor melonHubPermissionInterceptor(MelonHubAuthorizer authorizer,
                                                                     MelonHubClientProperties properties) {
-            return new MelonHubPermissionInterceptor(authorizer, properties.getUserHeader(), properties.getDepartmentHeader());
+            return new MelonHubPermissionInterceptor(authorizer, properties.getUserHeader());
         }
 
         @Bean

@@ -12,9 +12,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 授权门面：按 (externalId, departmentId) 缓存上下文 token。
- * <p>普通校验（{@link #hasPermission}、{@link #token}）只在用户的当前部门内创建上下文，绝不切换部门：
- * 用户当前部门不同时抛 {@link DepartmentMismatchException}。只有 {@link #switchDepartment} 会切换部门。</p>
+ * 授权门面：按 externalId 缓存当前软件的上下文 token。
+ * <p>一个客户端绑定一个软件的 API Key；不同软件使用各自的客户端。</p>
  * <p>fail-closed：平台 5xx、网络异常等传输层故障时 {@link #hasPermission} 返回 false 并记 warn；
  * 业务错误（4xx）以及 {@link ContextInvalidException} 重建后仍失败时向外抛出。</p>
  */
@@ -33,86 +32,65 @@ public class MelonHubAuthorizer {
             "application.enabled", "application.disabled", "apikey.revoked");
 
     private final MelonHubClient client;
-    private final Map<Key, CachedContext> contexts = new ConcurrentHashMap<>();
+    private final Map<String, CachedContext> contexts = new ConcurrentHashMap<>();
 
     public MelonHubAuthorizer(MelonHubClient client) {
         this.client = client;
     }
 
-    /**
-     * 判断用户在某部门是否拥有权限；传输层故障 fail-closed 返回 false。
-     * 上下文失效时在同一部门重建一次；用户已切到其他部门时抛 {@link DepartmentMismatchException}，不会把部门切回来。
-     */
-    public boolean hasPermission(String externalId, long departmentId, String permission) {
+    /** 判断用户在本软件是否拥有权限；失效上下文重建一次，传输层故障 fail-closed 返回 false。 */
+    public boolean hasPermission(String externalId, String permission) {
         try {
             try {
-                return client.check(token(externalId, departmentId), List.of(permission)).allowed();
+                return client.check(token(externalId), List.of(permission)).allowed();
             } catch (ContextInvalidException e) {
-                evict(externalId, departmentId);
-                return client.check(token(externalId, departmentId), List.of(permission)).allowed();
+                evict(externalId);
+                return client.check(token(externalId), List.of(permission)).allowed();
             }
         } catch (MelonHubApiException e) {
             if (e.getStatus() >= 500) {
-                log.warn("MelonHub 平台错误 {}，fail-closed 拒绝: user={} dept={} perm={}", e.getStatus(), externalId, departmentId, permission);
+                log.warn("MelonHub 平台错误 {}，fail-closed 拒绝: user={} perm={}", e.getStatus(), externalId, permission);
                 return false;
             }
             throw e;
         } catch (MelonHubException e) {
-            log.warn("MelonHub 平台不可达，fail-closed 拒绝: user={} dept={} perm={} - {}", externalId, departmentId, permission, e.getMessage());
+            log.warn("MelonHub 平台不可达，fail-closed 拒绝: user={} perm={} - {}", externalId, permission, e.getMessage());
             return false;
         }
     }
 
-    /** 取缓存上下文，缺失或临近过期时在用户当前部门内新建；不会切换部门。 */
-    public String token(String externalId, long departmentId) {
-        Key key = new Key(externalId, departmentId);
-        CachedContext cached = contexts.get(key);
+    /** 取当前软件的缓存上下文，缺失或临近过期时新建。 */
+    public String token(String externalId) {
+        CachedContext cached = contexts.get(externalId);
         if (cached != null && cached.expiresAtSeconds > Instant.now().getEpochSecond() + EXPIRY_SKEW_SECONDS) {
             return cached.token;
         }
-        return remember(key, client.issueContext(externalId, departmentId, null, false));
+        return remember(externalId, client.issueContext(externalId, null));
     }
 
-    /**
-     * 用户主动切换到另一个部门时调用：创建该部门的上下文并把它设为用户的当前部门。
-     * 平台会使该用户在其他部门所有软件中的上下文失效，本地缓存同步清理。
-     */
-    public String switchDepartment(String externalId, long departmentId) {
-        ContextView view = client.issueContext(externalId, departmentId, null, true);
-        contexts.keySet().removeIf(k -> k.externalId.equals(externalId));
-        return remember(new Key(externalId, departmentId), view);
-    }
-
-    public void evict(String externalId, long departmentId) {
-        contexts.remove(new Key(externalId, departmentId));
+    public void evict(String externalId) {
+        contexts.remove(externalId);
     }
 
     public void evictAll() {
         contexts.clear();
     }
 
-    /**
-     * 处理 Webhook 事件：data 为事件 payload 的 data 对象，按其中的 externalId/departmentId 清缓存。
-     * 只有 departmentId 时清理该部门全部用户；两者都缺失时清理此客户端的全部缓存。
-     */
+    /** 处理本软件的 Webhook：按 externalId 清缓存；未指定用户时清理此客户端的全部上下文。 */
     public void handleWebhookEvent(String type, JsonNode data) {
         if (!EVICT_EVENTS.contains(type) || data == null) {
             return;
         }
         JsonNode externalIdNode = data.get("externalId");
         String externalId = externalIdNode == null ? null : externalIdNode.asText();
-        JsonNode deptNode = data.get("departmentId");
-        contexts.keySet().removeIf(k -> (externalId == null || k.externalId.equals(externalId))
-                && (deptNode == null || k.departmentId == deptNode.asLong()));
+        if (externalId == null) evictAll();
+        else evict(externalId);
     }
 
-    private String remember(Key key, ContextView view) {
+    private String remember(String key, ContextView view) {
         long expiresAt = Instant.parse(view.getExpiresAt()).getEpochSecond();
         contexts.put(key, new CachedContext(view.getContextToken(), expiresAt));
         return view.getContextToken();
-    }
-
-    private record Key(String externalId, long departmentId) {
     }
 
     private record CachedContext(String token, long expiresAtSeconds) {

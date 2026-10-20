@@ -69,13 +69,13 @@ class MelonHubClientTest {
     void issueContextParsesViewAndOmitsNullRoles() {
         stub.on("POST", "/api/v1/contexts", (ex, body) -> {
             assertThat(ex.getRequestHeaders().getFirst("X-API-Key")).isEqualTo("mh_test");
-            assertThat(body).contains("\"externalId\":\"u1\"").doesNotContain("activeRoleIds");
+            assertThat(body).contains("\"externalId\":\"u1\"").doesNotContain("activeRoleIds", "departmentId", "switchDepartment");
             return StubServer.Response.json(200, """
-                    {"contextToken":"tok","userId":1,"departmentId":1,"applicationId":2,"contextVersion":3,
+                    {"contextToken":"tok","userId":1,"applicationId":2,"contextVersion":3,
                      "expiresAt":"2026-10-18T17:00:00Z","roles":[{"id":1,"name":"管理员","code":"admin"}],
                      "permissions":["item:read"]}""");
         });
-        ContextView view = client.issueContext("u1", 1L, null);
+        ContextView view = client.issueContext("u1", null);
         assertThat(view.getContextToken()).isEqualTo("tok");
         assertThat(view.getContextVersion()).isEqualTo(3);
         assertThat(view.getPermissions()).containsExactly("item:read");
@@ -86,7 +86,7 @@ class MelonHubClientTest {
     void effectiveSendsContextTokenHeader() {
         stub.on("GET", "/api/v1/contexts/effective", (ex, body) -> {
             assertThat(ex.getRequestHeaders().getFirst("X-Context-Token")).isEqualTo("tok");
-            return StubServer.Response.json(200, "{\"userId\":1,\"departmentId\":1,\"contextVersion\":3}");
+            return StubServer.Response.json(200, "{\"userId\":1,\"contextVersion\":3}");
         });
         assertThat(client.effective("tok").getContextVersion()).isEqualTo(3);
     }
@@ -108,10 +108,10 @@ class MelonHubClientTest {
         assertThat(stub.hits("DELETE", "/api/v1/contexts")).isEqualTo(1);
 
         stub.on("POST", "/api/v1/access-requests", (ex, body) -> {
-            assertThat(body).contains("\"roleId\":5").doesNotContain("durationDays");
+            assertThat(body).contains("\"roleId\":5").doesNotContain("durationDays", "departmentId");
             return StubServer.Response.json(200, "{\"id\":9,\"status\":\"PENDING\"}");
         });
-        AccessRequestView created = client.submitAccessRequest("u1", 1L, 5L, "需要", null);
+        AccessRequestView created = client.submitAccessRequest("u1", 5L, "需要", null);
         assertThat(created.getId()).isEqualTo(9);
         assertThat(created.getStatus()).isEqualTo("PENDING");
 
@@ -125,10 +125,10 @@ class MelonHubClientTest {
         client.cancelAccessRequest(9L, "u1");
 
         stub.on("GET", "/api/v1/users/access", (ex, body) -> {
-            assertThat(ex.getRequestURI().getQuery()).contains("externalId=u1").contains("departmentId=1");
+            assertThat(ex.getRequestURI().getQuery()).contains("externalId=u1").doesNotContain("departmentId");
             return StubServer.Response.json(200, "{\"userId\":1,\"roles\":[{\"id\":1,\"enabled\":true}],\"permissions\":[\"item:read\"]}");
         });
-        UserAccessView access = client.userAccess("u1", 1L);
+        UserAccessView access = client.userAccess("u1");
         assertThat(access.getRoles().get(0).getEnabled()).isTrue();
     }
 
@@ -148,7 +148,7 @@ class MelonHubClientTest {
     void apiErrorCarriesCodeAndRequestId() {
         stub.on("POST", "/api/v1/contexts", (ex, body) ->
                 StubServer.Response.json(404, "{\"code\":\"NOT_FOUND\",\"message\":\"用户不存在\",\"requestId\":\"r2\"}"));
-        assertThatThrownBy(() -> client.issueContext("ghost", 1L, null))
+        assertThatThrownBy(() -> client.issueContext("ghost", null))
                 .isInstanceOfSatisfying(MelonHubApiException.class, e -> {
                     assertThat(e.getStatus()).isEqualTo(404);
                     assertThat(e.getCode()).isEqualTo("NOT_FOUND");

@@ -13,7 +13,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MelonHubAuthorizerTest {
 
@@ -31,7 +30,7 @@ class MelonHubAuthorizerTest {
         stub = new StubServer();
         stub.on("POST", "/api/v1/contexts", (ex, body) -> {
             int n = issues.incrementAndGet();
-            return StubServer.Response.json(200, "{\"contextToken\":\"tok" + n + "\",\"userId\":1,\"departmentId\":1,\"applicationId\":2,\"contextVersion\":" + n + ",\"expiresAt\":\"" + futureExpiry() + "\"}");
+            return StubServer.Response.json(200, "{\"contextToken\":\"tok" + n + "\",\"userId\":1,\"applicationId\":2,\"contextVersion\":" + n + ",\"expiresAt\":\"" + futureExpiry() + "\"}");
         });
         authorizer = new MelonHubAuthorizer(new MelonHubClient(stub.baseUrl(), "mh_test"));
     }
@@ -51,14 +50,14 @@ class MelonHubAuthorizerTest {
     @Test
     void cachesTokenAcrossCalls() {
         allowChecks();
-        assertThat(authorizer.hasPermission("u1", 1L, "item:read")).isTrue();
-        assertThat(authorizer.hasPermission("u1", 1L, "item:read")).isTrue();
+        assertThat(authorizer.hasPermission("u1", "item:read")).isTrue();
+        assertThat(authorizer.hasPermission("u1", "item:read")).isTrue();
         assertThat(issues.get()).isEqualTo(1);
         assertThat(checks.get()).isEqualTo(2);
     }
 
     @Test
-    void rebuildsContextOnceOnContextInvalidWithoutSwitching() {
+    void rebuildsContextOnceOnContextInvalid() {
         List<String> bodies = new CopyOnWriteArrayList<>();
         stub.on("POST", "/api/v1/contexts", (ex, body) -> {
             bodies.add(body);
@@ -73,40 +72,20 @@ class MelonHubAuthorizerTest {
             assertThat(ex.getRequestHeaders().getFirst("X-Context-Token")).isEqualTo("tok2");
             return StubServer.Response.json(200, "{\"allowed\":true,\"decisions\":{},\"contextVersion\":2}");
         });
-        assertThat(authorizer.hasPermission("u1", 1L, "item:read")).isTrue();
+        assertThat(authorizer.hasPermission("u1", "item:read")).isTrue();
         assertThat(issues.get()).isEqualTo(2);
-        assertThat(bodies).allSatisfy(body -> assertThat(body).contains("\"switchDepartment\":false"));
+        assertThat(bodies).allSatisfy(body -> assertThat(body).doesNotContain("departmentId", "switchDepartment"));
     }
 
     @Test
-    void normalChecksNeverMoveTheCurrentDepartment() {
+    void clientsKeepSoftwareContextsIndependent() {
         allowChecks();
-        stub.on("POST", "/api/v1/contexts", (ex, body) -> {
-            if (body.contains("\"switchDepartment\":false")) {
-                return StubServer.Response.json(409, "{\"code\":\"DEPARTMENT_MISMATCH\",\"message\":\"用户当前部门为 #1\"}");
-            }
-            int n = issues.incrementAndGet();
-            return StubServer.Response.json(200, "{\"contextToken\":\"tok" + n + "\",\"expiresAt\":\"" + futureExpiry() + "\"}");
-        });
-        assertThatThrownBy(() -> authorizer.hasPermission("u1", 2L, "item:read"))
-                .isInstanceOfSatisfying(DepartmentMismatchException.class, e -> assertThat(e.getStatus()).isEqualTo(409));
-        assertThat(issues.get()).isZero();
-        // Only the explicit call switches; afterwards checks reuse its context.
-        assertThat(authorizer.switchDepartment("u1", 2L)).isEqualTo("tok1");
-        assertThat(authorizer.hasPermission("u1", 2L, "item:read")).isTrue();
-        assertThat(issues.get()).isEqualTo(1);
-    }
-
-    @Test
-    void switchingDropsCachedContextsOfOtherDepartments() {
-        allowChecks();
-        authorizer.hasPermission("u1", 1L, "item:read");
-        authorizer.hasPermission("u2", 1L, "item:read");
-        authorizer.switchDepartment("u1", 2L);
-        assertThat(issues.get()).isEqualTo(3);
-        authorizer.hasPermission("u1", 1L, "item:read");
-        authorizer.hasPermission("u2", 1L, "item:read");
-        assertThat(issues.get()).isEqualTo(4); // u1 的旧部门上下文已在平台失效，需重建；u2 不受影响
+        MelonHubAuthorizer otherSoftware = new MelonHubAuthorizer(new MelonHubClient(stub.baseUrl(), "mh_other"));
+        assertThat(authorizer.token("u1")).isEqualTo("tok1");
+        assertThat(otherSoftware.token("u1")).isEqualTo("tok2");
+        otherSoftware.evict("u1");
+        assertThat(authorizer.token("u1")).isEqualTo("tok1");
+        assertThat(otherSoftware.token("u1")).isEqualTo("tok3");
     }
 
     @Test
@@ -116,66 +95,59 @@ class MelonHubAuthorizerTest {
                 : StubServer.Response.json(500, "{\"code\":\"INTERNAL\",\"message\":\"boom\"}"));
         stub.on("POST", "/api/v1/contexts/check", (ex, body) ->
                 StubServer.Response.json(401, "{\"code\":\"CONTEXT_INVALID\",\"message\":\"已失效\"}"));
-        assertThat(authorizer.hasPermission("u1", 1L, "item:read")).isFalse();
+        assertThat(authorizer.hasPermission("u1", "item:read")).isFalse();
         assertThat(issues.get()).isEqualTo(2);
     }
 
     @Test
     void failClosedOnServerError() {
         stub.on("POST", "/api/v1/contexts", (ex, body) -> StubServer.Response.json(500, "{\"code\":\"INTERNAL\",\"message\":\"boom\"}"));
-        assertThat(authorizer.hasPermission("u1", 1L, "item:read")).isFalse();
+        assertThat(authorizer.hasPermission("u1", "item:read")).isFalse();
     }
 
     @Test
     void failClosedOnNetworkError() {
         stub.close();
-        assertThat(authorizer.hasPermission("u1", 1L, "item:read")).isFalse();
+        assertThat(authorizer.hasPermission("u1", "item:read")).isFalse();
     }
 
     @Test
     void webhookEvictsCachedContext() throws IOException {
         allowChecks();
-        authorizer.hasPermission("u1", 1L, "item:read");
-        authorizer.hasPermission("u2", 1L, "item:read");
+        authorizer.hasPermission("u1", "item:read");
+        authorizer.hasPermission("u2", "item:read");
         assertThat(issues.get()).isEqualTo(2);
 
         ObjectMapper mapper = new ObjectMapper();
-        ObjectNode data = mapper.createObjectNode().put("externalId", "u1").put("departmentId", 1);
+        ObjectNode data = mapper.createObjectNode().put("externalId", "u1");
         authorizer.handleWebhookEvent("user.disabled", data);
 
-        authorizer.hasPermission("u1", 1L, "item:read");
-        authorizer.hasPermission("u2", 1L, "item:read");
+        authorizer.hasPermission("u1", "item:read");
+        authorizer.hasPermission("u2", "item:read");
         assertThat(issues.get()).isEqualTo(3); // 只有 u1 重建
     }
 
     @Test
-    void domainAndApplicationEventsEvictTheAffectedContexts() {
-        authorizer.token("u1", 1L);
-        authorizer.token("u2", 1L);
-        authorizer.token("u1", 2L);
+    void applicationEventsEvictAllUsersInThisClient() {
+        authorizer.token("u1");
+        authorizer.token("u2");
         var mapper = new ObjectMapper();
-        authorizer.handleWebhookEvent("permission.updated", mapper.createObjectNode().put("departmentId", 1));
-        authorizer.token("u1", 1L);
-        authorizer.token("u2", 1L);
-        authorizer.token("u1", 2L);
-        assertThat(issues.get()).isEqualTo(5);
-        authorizer.handleWebhookEvent("application.disabled", mapper.createObjectNode());
-        authorizer.token("u1", 1L);
-        authorizer.token("u2", 1L);
-        authorizer.token("u1", 2L);
-        assertThat(issues.get()).isEqualTo(8);
+        authorizer.handleWebhookEvent("permission.updated", mapper.createObjectNode().put("applicationId", 2));
+        authorizer.token("u1");
+        authorizer.token("u2");
+        assertThat(issues.get()).isEqualTo(4);
     }
 
     @Test
     void evictAndEvictAll() {
         allowChecks();
-        authorizer.hasPermission("u1", 1L, "item:read");
-        authorizer.evict("u1", 1L);
-        authorizer.hasPermission("u1", 1L, "item:read");
+        authorizer.hasPermission("u1", "item:read");
+        authorizer.evict("u1");
+        authorizer.hasPermission("u1", "item:read");
         assertThat(issues.get()).isEqualTo(2);
 
         authorizer.evictAll();
-        authorizer.hasPermission("u1", 1L, "item:read");
+        authorizer.hasPermission("u1", "item:read");
         assertThat(issues.get()).isEqualTo(3);
     }
 }
