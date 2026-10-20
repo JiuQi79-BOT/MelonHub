@@ -25,8 +25,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 /**
  * Redis read-through cache for authorization decisions. MySQL stays the source of truth.
  *
- * <p>Entries live under random generation tokens of the user, application, application keys and isolation
- * domain, plus a global epoch. A write that changes authorization state replaces the generation and raises a
+ * <p>Entries live under random generation tokens of the user, application, application keys, plus a global epoch. A write that changes authorization state replaces the generation and raises a
  * per-generation "busy" counter before its DB commit, replaces the generation again after commit and lowers
  * the counter on completion. Readers read generations atomically with the busy flag before touching MySQL and
  * never store while busy, so a snapshot taken before a commit is never served after it.
@@ -62,14 +61,13 @@ public class PermissionCache {
         end
         """;
     private static final DefaultRedisScript<List> CONTEXT_LOOKUP = new DefaultRedisScript<>(GENERATIONS + """
-        local meta = redis.call('GET', p .. 'ctx:' .. ARGV[2])
+        local meta = redis.call('GET', p .. 'ctx:v2:' .. ARGV[2])
         if not meta then return {'NONE'} end
         local m = cjson.decode(meta)
         local ug, ub = gen(p .. 'gen:u:' .. m.u, ARGV[3])
         local ag, ab = gen(p .. 'gen:a:' .. m.a, ARGV[4])
-        local dg, db = gen(p .. 'gen:d:' .. m.d .. ':' .. m.a, ARGV[5])
-        if ub or ab or db then return {'MISS', meta, ''} end
-        local key = p .. 'eff:' .. ARGV[2] .. ':' .. epoch .. ':' .. ug .. ':' .. ag .. ':' .. dg
+        if ub or ab then return {'MISS', meta, ''} end
+        local key = p .. 'eff:' .. ARGV[2] .. ':' .. epoch .. ':' .. ug .. ':' .. ag
         local e = redis.call('GET', key)
         if e then return {'HIT', meta, e} end
         return {'MISS', meta, key}
@@ -125,10 +123,10 @@ public class PermissionCache {
         } catch (RuntimeException e) { failed(e); return "DOWN"; }
     }
 
-    public Lookup context(String hash) { return lookup(CONTEXT_LOOKUP, "context", hash, fresh(), fresh(), fresh()); }
+    public Lookup context(String hash) { return lookup(CONTEXT_LOOKUP, "context", hash, fresh(), fresh()); }
     public Lookup applicationKey(String hash) { return lookup(KEY_LOOKUP, "apikey", hash, fresh()); }
 
-    public void putContext(String hash, String meta, long ttlSeconds) { put(prefix + "ctx:" + hash, meta, ttlSeconds); }
+    public void putContext(String hash, String meta, long ttlSeconds) { put(prefix + "ctx:v2:" + hash, meta, ttlSeconds); }
     public void putContextAfterCommit(String hash, String meta, long ttlSeconds) {
         if (!enabled) return;
         if (!TransactionSynchronizationManager.isSynchronizationActive()) { putContext(hash, meta, ttlSeconds); return; }
@@ -142,14 +140,13 @@ public class PermissionCache {
     public void forgetContextAfterCommit(String hash) {
         if (!enabled || !TransactionSynchronizationManager.isSynchronizationActive()) return;
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override public void afterCommit() { delete(prefix + "ctx:" + hash); }
+            @Override public void afterCommit() { delete(prefix + "ctx:v2:" + hash); }
         });
     }
 
     public void touchUser(long user) { touch("gen:u:" + user); }
     public void touchApplication(long application) { touch("gen:a:" + application); touch("gen:k:" + application); }
     public void touchKeys(long application) { touch("gen:k:" + application); }
-    public void touchDomain(long department, long application) { touch("gen:d:" + department + ":" + application); }
 
     private void touch(String suffix) {
         if (!enabled) return;

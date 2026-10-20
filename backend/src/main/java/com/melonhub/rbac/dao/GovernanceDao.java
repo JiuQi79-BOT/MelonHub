@@ -54,12 +54,11 @@ public class GovernanceDao {
      * Records the names next to the ids so the request stays readable after the user, role or department is
      * deleted. pending_role_id is unique per user while pending, so a concurrent duplicate fails on insert.
      */
-    public long createRequest(long user, long dept, long app, long role, String reason, Integer durationDays, String requestedBy) {
-        return insert("INSERT INTO access_requests(user_id,department_id,application_id,role_id,pending_role_id,reason,duration_days,requested_by,"
-                + "user_name,external_id,role_code,role_name,department_name) "
-                + "SELECT u.id,d.id,?,ro.id,ro.id,?,?,?,u.name,u.external_id,ro.code,ro.name,d.name FROM users u JOIN roles ro ON ro.id=? "
-                + "JOIN departments d ON d.id=? WHERE u.id=?",
-                app, reason, durationDays, requestedBy, role, dept, user);
+    public long createRequest(long user, long app, long role, String reason, Integer durationDays, String requestedBy) {
+        return insert("INSERT INTO access_requests(user_id,application_id,role_id,pending_role_id,reason,duration_days,requested_by,"
+                + "user_name,external_id,role_code,role_name) "
+                + "SELECT u.id,?,ro.id,ro.id,?,?,?,u.name,u.external_id,ro.code,ro.name FROM users u JOIN roles ro ON ro.id=? WHERE u.id=?",
+                app, reason, durationDays, requestedBy, role, user);
     }
     public boolean pendingExists(long user, long role) {
         return count("SELECT COUNT(*) FROM access_requests WHERE user_id=? AND role_id=? AND status='PENDING'", user, role) > 0;
@@ -142,15 +141,15 @@ public class GovernanceDao {
                 + where.sql + " ORDER BY v.id DESC LIMIT 200", where.args.toArray());
     }
     /**
-     * Snapshots current non-expired assignments of the application (one department when scoped) as review items,
+     * Snapshots current non-expired assignments of the application (optionally filtered by current department membership) as review items,
      * each with the grant it was taken from and the names needed to read it after deletions.
      */
     public int insertSnapshot(long review, long app, Long dept) {
         return db.update("INSERT INTO access_review_items(review_id,user_id,role_id,department_id,grant_id,user_name,external_id,role_code,role_name,department_name) "
-                + "SELECT ?,ur.user_id,ur.role_id,ur.department_id,ur.grant_id,u.name,u.external_id,r.code,r.name,d.name FROM user_roles ur "
-                + "JOIN users u ON u.id=ur.user_id JOIN roles r ON r.id=ur.role_id JOIN departments d ON d.id=ur.department_id "
-                + "WHERE ur.application_id=? AND (? IS NULL OR ur.department_id=?) AND (ur.expires_at IS NULL OR ur.expires_at>CURRENT_TIMESTAMP)",
-                review, app, dept, dept);
+                + "SELECT ?,ur.user_id,ur.role_id,?,ur.grant_id,u.name,u.external_id,r.code,r.name,COALESCE(d.name,'') FROM user_roles ur "
+                + "JOIN users u ON u.id=ur.user_id JOIN roles r ON r.id=ur.role_id LEFT JOIN departments d ON d.id=? "
+                + "WHERE ur.application_id=? AND (? IS NULL OR EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=ur.user_id AND m.department_id=?)) "
+                + "AND (ur.expires_at IS NULL OR ur.expires_at>CURRENT_TIMESTAMP)", review, dept, dept, app, dept, dept);
     }
     public RbacDao.Page reviewItems(long review, String decision, int page, int size) {
         var where = new Where().and("i.review_id=?", review);

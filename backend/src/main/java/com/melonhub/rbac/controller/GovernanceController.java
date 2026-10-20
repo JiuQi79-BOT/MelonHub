@@ -117,10 +117,10 @@ public class GovernanceController {
     }
 
     // ---- permission manifest ----
-    @GetMapping("/manifest") Object exportManifest(@RequestParam long applicationId, @RequestParam(required=false) Long departmentId,
+    @GetMapping("/manifest") Object exportManifest(@RequestParam long applicationId,
                                                    HttpServletRequest req) {
         AdminAccess.readApplication(req, applicationId);
-        return g.exportManifest(applicationId, departmentId);
+        return g.exportManifest(applicationId);
     }
     @PostMapping("/manifest/import") Object importManifest(@RequestParam long applicationId, @Valid @RequestBody Requests.Manifest body,
                                                            HttpServletRequest req) {

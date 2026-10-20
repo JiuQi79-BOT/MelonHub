@@ -23,7 +23,7 @@ class PermissionCacheOutageTest {
             assertThat(cache.applicationKey("missing").status()).isEqualTo(PermissionCache.Status.BYPASS);
             TransactionSynchronizationManager.initSynchronization();
             try {
-                assertThatCode(() -> { cache.touchUser(1); cache.touchApplication(2); cache.touchDomain(3, 2); }).doesNotThrowAnyException();
+                assertThatCode(() -> { cache.touchUser(1); cache.touchApplication(2); cache.touchKeys(2); }).doesNotThrowAnyException();
                 for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) sync.afterCommit();
                 for (TransactionSynchronization sync : TransactionSynchronizationManager.getSynchronizations()) sync.afterCompletion(TransactionSynchronization.STATUS_COMMITTED);
             } finally {
