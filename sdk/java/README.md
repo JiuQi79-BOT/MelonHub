@@ -70,6 +70,8 @@ public List<Item> list() { ... }
 
 缺少用户身份头返回 401，部门头可省略；无权限返回 403。软件由配置的 API Key 确定。
 
+类级 `@RequirePermission` 支持父类及接口上的声明；当前类声明覆盖父类声明，方法声明优先于类声明。
+
 也可以注入 `MelonHubAuthorizer` 自行判断：
 
 ```java
@@ -101,7 +103,7 @@ authorizer.handleWebhookEvent(event.path("type").asText(), event.path("data"));
 | 其他 4xx / 5xx | 抛 `MelonHubApiException`（含 status/code/message/requestId） |
 | 网络中断、超时 | 抛 `MelonHubException`（无状态码）；单次请求超时覆盖响应头和完整响应体，收到头后响应体停滞也会结束请求 |
 | `hasPermission` 遇 5xx / 网络故障 | **fail-closed**：返回 false 并记 SLF4J warn |
-| 上下文缓存 | 按 (externalId, departmentId) 内存缓存，距过期 60 秒内视为过期；可 `evict` / `evictAll` / Webhook 事件清理 |
+| 上下文缓存 | 在当前软件客户端内按 externalId 缓存，部门不参与隔离，距过期 60 秒内视为过期；可 `evict` / `evictAll` / Webhook 事件清理 |
 
 Webhook 按 `externalId` 清理当前软件的用户缓存；没有 externalId 时清理当前客户端软件的全部缓存，部门不限制失效范围。角色启停、删除、权限编码修改或删除以及强制下线均会通知。无 Spring MVC 或 Servlet 的 Spring Boot 应用只装配客户端和授权器。
 
