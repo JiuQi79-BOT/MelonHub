@@ -38,29 +38,29 @@ API Key 对应的软件由服务端决定，调用方无法通过参数切换到
 | --- | --- | --- |
 | GET | `/departments` | 查询全部部门 |
 | GET | `/departments/{departmentId}/users` | 查询部门成员 |
-| GET、POST | `/departments/{departmentId}/roles` | 查询或创建本软件在该部门的角色；创建体为 `{"name":"只读角色","code":"reader","description":""}`，返回 `{"id":...}` |
-| PUT、DELETE | `/departments/{departmentId}/roles/{roleId}` | 更新或删除角色；更新字段与创建一致 |
-| PATCH | `/departments/{departmentId}/roles/{roleId}/status` | 启停角色；`{"enabled":false}` |
-| GET、POST | `/departments/{departmentId}/permissions` | 查询或创建权限；创建体为 `{"name":"查看项目","code":"project:read","resource":"project","action":"read"}` |
-| PUT、DELETE | `/departments/{departmentId}/permissions/{permissionId}` | 更新或删除权限；更新字段与创建一致 |
-| PUT | `/departments/{departmentId}/roles/{roleId}/permissions` | `{"ids":[1,2]}`，整体替换该角色的权限集合 |
-| GET、PUT | `/departments/{departmentId}/users/{userId}/roles` | 查询（返回 `{"roleIds":[...]}`）或整体替换该用户在本域的角色；更新体与控制台相同（第 5.5 节）：`{"ids":[1,2],"expiresInDays":30,"expiries":[{"roleId":2,"expiresAt":"2026-12-31T18:00:00+08:00"}]}`，`expiresInDays`、`expiries` 均可省略 |
-| POST | `/contexts` | `{"externalId":"sample-user","departmentId":1,"activeRoleIds":[1],"switchDepartment":false}`，创建上下文；`switchDepartment` 省略或为 true 时，目标部门与用户当前部门不同会切换部门，为 false 时拒绝切换（见第 3.3 节） |
+| GET、POST | `/roles` | 查询或创建本软件的角色；创建体为 `{"name":"只读角色","code":"reader","description":""}`，返回 `{"id":...}` |
+| PUT、DELETE | `/roles/{roleId}` | 更新或删除角色；更新字段与创建一致 |
+| PATCH | `/roles/{roleId}/status` | 启停角色；`{"enabled":false}` |
+| GET、POST | `/permissions` | 查询或创建权限；创建体为 `{"name":"查看项目","code":"project:read","resource":"project","action":"read"}` |
+| PUT、DELETE | `/permissions/{permissionId}` | 更新或删除权限；更新字段与创建一致 |
+| PUT | `/roles/{roleId}/permissions` | `{"ids":[1,2]}`，整体替换该角色的权限集合 |
+| GET、PUT | `/users/{userId}/roles` | 查询（返回 `{"roleIds":[...]}`）或整体替换该用户在本软件的角色；更新体与控制台相同（第 5.5 节）：`{"ids":[1,2],"expiresInDays":30,"expiries":[{"roleId":2,"expiresAt":"2026-12-31T18:00:00+08:00"}]}`，`expiresInDays`、`expiries` 均可省略 |
+| POST | `/contexts` | `{"externalId":"sample-user","activeRoleIds":[1]}`，创建该软件的上下文 |
 | GET | `/contexts/effective` | 查询当前有效角色和权限，需要上下文头 |
 | POST | `/contexts/check` | `{"permissions":["project:read"]}`，逐项校验，需要上下文头 |
 | DELETE | `/contexts` | 注销该上下文，需要上下文头 |
-| GET | `/users/access?externalId=&departmentId=` | 只读查询某用户在本软件该部门已分配的角色和有效权限，不创建上下文、不切换部门 |
+| GET | `/users/access?externalId=` | 只读查询某用户在本软件已分配的角色和有效权限，不创建上下文 |
 | POST | `/access-requests` | 代员工提交角色申请，见第 3.5 节 |
 | GET | `/access-requests?externalId=` | 查询该员工在本软件提交过的申请，最新在前 |
 | POST | `/access-requests/{id}/cancel` | `{"externalId":"sample-user"}`，撤回本人仍待审批的申请 |
 
 路径中的 ID 仅为示例，应先查询真实 ID。角色和权限编码允许 `[a-zA-Z0-9_.:-]`，最长 100 位；权限编码区分大小写，服务不会解析其中的冒号或业务含义。`resource` 与 `action` 只是描述信息，不构成额外授权规则。
 
-`activeRoleIds` 省略时激活全部已分配角色，传空数组表示不激活任何角色。传入的角色必须是该用户在当前域已分配且启用的角色，否则返回 403。
+`activeRoleIds` 省略时激活全部已分配角色，传空数组表示不激活任何角色。传入的角色必须是该用户在当前软件已分配且启用的角色，否则返回 403。
 
 用户身份和部门成员关系只能由平台管理员维护，业务 API 只能管理本软件内的角色、权限及关联。
 
-`GET /users/access` 的响应为 `{"userId":7,"departmentId":1,"applicationId":3,"roles":[{"id":11,"name":"阅读者","code":"reader","enabled":true,"expiresAt":null}],"permissions":["project:read"]}`，`permissions` 只计入启用且未到期的角色。它适合在业务界面上展示“我有哪些权限”，不能代替每次操作前的 `/contexts/check`。
+`GET /users/access` 的响应为 `{"userId":7,"applicationId":3,"roles":[{"id":11,"name":"阅读者","code":"reader","enabled":true,"expiresAt":null}],"permissions":["project:read"]}`，`permissions` 只计入启用且未到期的角色。它适合在业务界面上展示“我有哪些权限”，不能代替每次操作前的 `/contexts/check`。
 
 ### 3.2 创建与校验示例
 
@@ -70,7 +70,7 @@ API Key 对应的软件由服务端决定，调用方无法通过参数切换到
 curl -X POST http://127.0.0.1:8080/api/v1/contexts \
   -H 'Content-Type: application/json' \
   -H 'X-API-Key: YOUR_SOFTWARE_API_KEY' \
-  -d '{"externalId":"sample-user","departmentId":1}'
+  -d '{"externalId":"sample-user"}'
 
 curl -X POST http://127.0.0.1:8080/api/v1/contexts/check \
   -H 'Content-Type: application/json' \
@@ -84,7 +84,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/contexts/check \
 ```json
 {
   "contextToken": "只在创建时返回一次",
-  "userId": 7, "departmentId": 1, "applicationId": 3,
+  "userId": 7, "applicationId": 3,
   "contextVersion": 4,
   "expiresAt": "2026-10-18T07:30:00Z",
   "roles": [{"id": 11, "name": "阅读者", "code": "reader"}],
@@ -102,13 +102,12 @@ curl -X POST http://127.0.0.1:8080/api/v1/contexts/check \
 
 一次最多校验 100 个权限编码。`decisions` 逐项给出结果，只有全部通过时 `allowed` 才为 true；不存在或未授权的权限一律为 false。
 
-### 3.3 部门切换与失效
+### 3.3 软件上下文与失效
 
-同一用户的当前部门跨软件、跨设备共享。在另一部门创建上下文，会使该用户旧部门的全部软件上下文失效；切回原部门也不会恢复旧 token。同一部门为不同软件创建的上下文可以同时有效。
+上下文仅绑定用户和软件。创建新上下文不影响已有上下文，用户的部门归属变化也不会改变已有授权。请求不再需要 `departmentId` 或 `switchDepartment`。
 
-只有用户在业务界面上主动切换部门时才应切换。普通的权限校验应传 `"switchDepartment":false`：用户尚无当前部门或目标部门就是当前部门时正常创建；否则返回 `409 DEPARTMENT_MISMATCH`，不改变当前部门，也不影响其他上下文，业务系统据此提示用户先切换部门。Java SDK 的 `MelonHubAuthorizer.hasPermission` 即按此方式创建上下文，只有 `switchDepartment` 方法会切换部门。
+修改外部标识、停用或删除用户、强制下线会使该用户全部上下文失效；角色重分配、角色成员调整、批准申请和复核回收使受影响用户在该软件的上下文失效；停用或删除软件会清除该软件上下文。到期或被注销的上下文也返回 `CONTEXT_INVALID`。
 
-以下变更会让相关上下文立即失效（返回 `CONTEXT_INVALID`）：切换部门、修改用户的外部标识、把用户移出其当前部门、重新分配该用户在该域的角色、通过角色成员调整移入或移出、批准该用户在该域的角色申请、权限复核关闭时回收其在该域的角色、停用或删除用户、停用或删除软件、管理员强制下线、上下文到期或被注销。
 
 角色停用、权限移除、角色权限调整、导入权限清单在下一次校验时生效，旧 token 仍然有效但不再包含被移除的权限。平台内部用 Redis 缓存加速校验，但每次授权变更都会主动使缓存失效，正常情况下变更提交后的下一次校验就能看到新结果。
 
@@ -117,7 +116,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/contexts/check \
 ### 3.4 接入建议
 
 - 每次受保护的业务操作之前都调用 `/contexts/check`，不要在业务侧缓存“允许”的结果反复使用。平台无法撤回已经在业务系统中执行的操作。
-- 收到 `CONTEXT_INVALID` 时丢弃旧 token，根据已认证用户和其当前部门重新创建上下文。
+- 收到 `CONTEXT_INVALID` 时丢弃旧 token，根据已认证用户重新创建上下文。
 - 收到 `429 RATE_LIMITED` 或 `503 SERVICE_BUSY` 时，按 `Retry-After` 秒数退避后重试，不要立即密集重试。
 - 网络错误、超时、5xx 和未知响应都按“拒绝”处理，不能默认为有权限。
 - 计划内更换 API Key 时，先在控制台新建密钥并替换业务配置，确认旧密钥的“最近使用”时间不再更新后再吊销旧密钥，可做到不停机。
@@ -131,14 +130,14 @@ Java 业务后端可以使用 `sdk/java` 中的 `melonhub-client`：它封装了
 
 ```json
 POST /api/v1/access-requests
-{"externalId":"sample-user","departmentId":1,"roleId":11,"reason":"负责新项目，需要审批权限","durationDays":30}
+{"externalId":"sample-user","roleId":11,"reason":"负责新项目，需要审批权限","durationDays":30}
 ```
 
 - `reason` 必填，最长 500 字；`durationDays` 可选（1–3650），表示希望的授权天数，省略为永久。
-- 用户必须是该部门成员（否则 403），角色必须属于本软件在该部门的授权域（否则 404）；同一用户对同一角色已有待审批申请时返回 409。该限制由数据库唯一约束保证，并发重复提交也只有一条成功。
+- 用户必须存在，角色必须属于本软件；同一用户对同一角色已有待审批申请时返回 409。该限制由数据库唯一约束保证，并发重复提交也只有一条成功。
 - 响应为申请记录，`status` 依次可能为 `PENDING`、`APPROVED`、`REJECTED`、`CANCELLED`。批准后返回的 `grantExpiresAt` 为授权到期时间（永久授权为 null）。
-- 申请记录保存提交时的用户姓名、外部标识、角色名称与编码、部门名称。之后删除用户、角色或部门，记录仍保留，对应的 `userId`、`roleId`、`departmentId` 变为 null。
-- 批准即写入角色分配，并使该用户在该域的已有上下文失效；业务系统需重新创建上下文才能拿到新权限。
+- 申请记录保存提交时的用户姓名、外部标识、角色名称与编码。之后删除用户或角色，记录仍保留，对应 ID 变为 null；旧记录的部门快照保留。
+- 批准即写入角色分配，并使该用户在该软件的已有上下文失效；业务系统需重新创建上下文才能拿到新权限。
 - 撤回只对本人、本软件、仍为 `PENDING` 的申请有效，其他情况返回 404 或 409。
 
 ### 3.6 接收 Webhook
@@ -156,16 +155,16 @@ POST /api/v1/access-requests
 请求体：
 
 ```json
-{"type":"user.roles.changed","applicationId":3,"occurredAt":"2026-10-18T07:30:00Z","data":{"userId":7,"externalId":"sample-user","departmentId":1}}
+{"type":"user.roles.changed","applicationId":3,"occurredAt":"2026-10-18T07:30:00Z","data":{"userId":7,"externalId":"sample-user"}}
 ```
 
 | 事件 | 触发 |
 | --- | --- |
 | `user.updated`、`user.enabled`、`user.disabled`、`user.deleted` | 用户编辑、启停、删除；平台级事件，推送到所有订阅它的软件，`applicationId` 为 0 |
-| `user.roles.changed` | 用户在本软件某域的角色被重新分配，或角色成员被调整（后者 `data` 含 `roleId`、`added`、`removed`） |
-| `user.roles.expired` | 用户在本软件某域的角色分配到期，`data` 含 `userId`、`externalId`、`departmentId`、`roleIds`；后台每分钟检查一次，同一批到期的角色合并为一个事件 |
+| `user.roles.changed` | 用户在本软件的角色被重新分配，或角色成员被调整（后者 `data` 含 `roleId`、`added`、`removed`） |
+| `user.roles.expired` | 用户在本软件的角色分配到期，`data` 含 `userId`、`externalId`、`roleIds`；后台每分钟检查一次，同一批到期的角色合并为一个事件 |
 | `role.enabled`、`role.disabled`、`role.deleted`、`role.permissions.changed` | 本软件的角色启停、删除、角色权限调整（含清单导入产生的启停及权限变化） |
-| `permission.updated`、`permission.deleted` | 本软件的权限修改、删除，`data` 含 `permissionId`、`departmentId` |
+| `permission.updated`、`permission.deleted` | 本软件的权限修改、删除，`data` 含 `permissionId` |
 | `user.contexts.revoked` | 用户强制下线，`data` 含 `userId`、`externalId` |
 | `application.enabled`、`application.disabled` | 本软件启停 |
 | `apikey.revoked` | 吊销密钥或紧急轮换 |
@@ -230,8 +229,9 @@ POST /api/v1/access-requests
 
 | 方法 | 路径 | 说明与所需角色 |
 | --- | --- | --- |
-| GET | `/api/admin/departments` | 部门列表，含成员数和角色数；任意管理员 |
+| GET | `/api/admin/departments` | 部门列表，含成员数；任意管理员 |
 | POST、PUT、DELETE | `/api/admin/departments[/{id}]` | `{"name":"研发中心","code":"rd-center"}`；超级/平台管理员 |
+| POST、DELETE | `/api/admin/departments/{id}/members` | `{"ids":[1,2]}`，批量加入或移出已有用户，每批最多 1000 个正整数 ID；返回 `{"changedUsers":2}`；超级/平台管理员 |
 | GET | `/api/admin/applications` | 软件列表（含 `rateLimit`）；软件管理员只看到被授权的软件 |
 | POST | `/api/admin/applications` | `{"name":"OA","code":"oa","description":"","owner":"行政组"}`；返回 `id`、`keyId` 和一次性 `apiKey` |
 | PUT、DELETE | `/api/admin/applications/{id}` | 更新或删除；删除会一并删除其 API Key、管理员授权、Webhook 和上下文 |
@@ -242,7 +242,9 @@ POST /api/v1/access-requests
 | DELETE | `/api/admin/applications/{id}/keys/{keyId}` | 吊销单个密钥，立即生效 |
 | POST | `/api/admin/applications/{id}/rotate-key` | 紧急轮换：吊销该软件全部现有密钥并生成一个新密钥，返回 `{"apiKey":"..."}` |
 
-删除部门或软件前会检查剩余依赖，有依赖时返回 `409 CONFLICT`，并在 `message` 中说明还剩什么，例如“部门下还有 1 名成员、1 个角色、1 个权限，请先移除后再删除”“软件下还有 2 个角色、2 个权限，请先删除，或改为停用”。删除部门时会一并清除前成员遗留的权限上下文（它们已无法通过校验）。删除记录的审计对象为部门或软件名称，详情中注明“编码 xxx”。
+删除部门或软件前会检查剩余依赖，有依赖时返回 `409 CONFLICT`，并在 `message` 中说明还剩什么，例如“部门下还有 1 名成员，请先移除后再删除”“软件下还有 2 个角色、2 个权限，请先删除，或改为停用”。删除空部门不影响用户角色分配或权限上下文。删除记录的审计对象为部门或软件名称，详情中注明“编码 xxx”。
+
+批量成员接口只调整指定部门的成员关系，保留用户资料、其他部门关系、软件角色及期限和已有上下文。重复 ID 去重，已加入者再次加入、非成员移出均不计入 `changedUsers`；空数组不改变成员。每批在一个事务内完成，任一用户或部门不存在时整批拒绝。每个实际变更的用户写入 `USER_UPDATED` 审计及 `user.updated` Webhook 事件；成员变化不会自动授予或回收软件角色。
 
 密钥写操作要求对该软件有写权限，即超级/平台管理员，或被授权该软件的软件管理员。“最近使用”时间约每分钟写入一次。
 
@@ -259,7 +261,7 @@ POST /api/v1/access-requests
 | GET | `/api/admin/users/{id}/access` | 授权详情：用户信息、各授权域的角色与权限、当前有效上下文；按调用者可见的软件过滤 |
 | DELETE | `/api/admin/users/{id}/contexts` | 强制下线该用户的全部上下文，返回 `{"revoked":n}` |
 
-修改外部标识会使该用户现有的全部上下文失效；移出某个部门会同时删除该用户在该部门的角色分配。
+修改外部标识会使该用户现有的全部上下文失效；加入或移出部门不改变角色分配和上下文。
 
 批量导入一次最多 500 行：
 
@@ -271,7 +273,7 @@ POST /api/v1/access-requests
 
 ### 5.5 授权域：角色、权限与分配
 
-以下接口（除注明外）都必须带查询参数 `departmentId` 与 `applicationId`。读接口要求对该软件有读权限，写接口要求有写权限。
+以下接口（除注明外）都必须带查询参数 `applicationId`。读接口要求对该软件有读权限，写接口要求有写权限。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -279,14 +281,14 @@ POST /api/v1/access-requests
 | PUT、DELETE | `/api/admin/roles/{id}` | 更新或删除角色 |
 | PATCH | `/api/admin/roles/{id}/status` | 启停角色 |
 | PUT | `/api/admin/roles/{id}/permissions` | `{"ids":[...]}` 整体替换角色权限 |
-| GET、PUT | `/api/admin/roles/{id}/members` | 查询或整体替换角色成员 `{"ids":[用户 ID...]}`；成员必须属于该部门，被移入或移出的用户在本域的上下文失效。保存期间如有用户被同时加入该角色，服务会自动重试；连续 3 次仍冲突时返回 `503 SERVICE_BUSY`，稍后重试即可 |
+| GET、PUT | `/api/admin/roles/{id}/members` | 查询或整体替换角色成员 `{"ids":[用户 ID...]}`；可选择任意用户，被移入或移出的用户在本软件的上下文失效。保存期间如有用户被同时加入该角色，服务会自动重试；连续 3 次仍冲突时返回 `503 SERVICE_BUSY`，稍后重试即可 |
 | GET、POST | `/api/admin/permissions` | 权限列表（含 `roleCount`）或创建权限 |
 | PUT、DELETE | `/api/admin/permissions/{id}` | 更新或删除权限 |
-| GET、PUT | `/api/admin/users/{id}/roles` | 查询或整体替换某用户在本域的角色；更新体见下文 |
-| GET | `/api/admin/assignments` | 分页列出该部门成员及其在本域的 `roleIds`，以及 `roleExpiries`（`{角色 ID: 到期时间}`，只含有到期时间的角色）；参数 `keyword`、`page`、`size` |
-| POST | `/api/admin/assignments/batch` | 为一批部门成员追加多个角色；参数仍需 `departmentId`、`applicationId`，需要该软件写权限；请求体见下文 |
-| GET | `/api/admin/assignments/expiring` | 参数 `days`（1–365，默认 7）、可选 `applicationId`，不需要 `departmentId`；列出到期时间在该范围内的角色分配（最多 500 条），含用户、角色、部门、软件、到期时间和授予人 |
-| GET | `/api/admin/permissions/who` | 参数 `applicationId`、`code`（权限编码）、可选 `departmentId`；反查哪些用户通过哪些启用且未到期的角色持有该权限。`holders` 每项为一个“用户 × 部门”，含授予该权限的全部角色及到期时间，最多返回 500 项；`total` 为实际的“用户 × 部门”数，`truncated` 为 true 表示未全部返回 |
+| GET、PUT | `/api/admin/users/{id}/roles` | 查询或整体替换某用户在本软件的角色；更新体见下文 |
+| GET | `/api/admin/assignments` | 分页列出用户及其在本软件的 `roleIds`，以及 `roleExpiries`（`{角色 ID: 到期时间}`，只含有到期时间的角色）；参数 `keyword`、可选 `departmentId`（按成员关系筛选）、`page`、`size` |
+| POST | `/api/admin/assignments/batch` | 为一批指定用户追加多个角色；参数为 `applicationId`，需要该软件写权限；请求体见下文 |
+| GET | `/api/admin/assignments/expiring` | 参数 `days`（1–365，默认 7）、可选 `applicationId`，不需要 `departmentId`；列出到期时间在该范围内的角色分配（最多 500 条），含用户、角色、软件、到期时间和授予人 |
+| GET | `/api/admin/permissions/who` | 参数 `applicationId`、`code`（权限编码）、可选 `departmentId`；反查哪些用户通过哪些启用且未到期的角色持有该权限。`holders` 每项为一个用户，含授予该权限的全部角色及到期时间，最多返回 500 项；`total` 为实际的用户数，`truncated` 为 true 表示未全部返回 |
 | GET | `/api/admin/overview` | 当前授权域与平台的统计概览 |
 
 批量追加角色：
@@ -295,15 +297,15 @@ POST /api/v1/access-requests
 {"userIds":[7,8],"roleIds":[11,12],"expiresInDays":30}
 ```
 
-`userIds` 与 `roleIds` 各为 1–1000 项，所有用户必须属于指定部门，所有角色必须属于指定授权域。已有有效分配保持原期限和授予记录，未持有或已到期的所选角色按本次设置授予；`expiresInDays` 可省略（永久），或为 1–3650 天。整批在一个事务中完成，返回 `users`、`changedUsers`、`grantsAdded`。仅实际发生变化的用户在该域的上下文失效。
+`userIds` 与 `roleIds` 各为 1–1000 项，所有用户必须存在，所有角色必须属于指定软件；部门仅用于调用前选人。已有有效分配保持原期限和授予记录，未持有或已到期的所选角色按本次设置授予；`expiresInDays` 可省略（永久），或为 1–3650 天。整批在一个事务中完成，返回 `users`、`changedUsers`、`grantsAdded`。仅实际发生变化的用户在该软件的上下文失效。
 
-替换某用户在本域的角色：
+替换某用户在本软件的角色：
 
 ```json
 {"ids":[11,12,13],"expiresInDays":30,"expiries":[{"roleId":12,"expiresAt":"2026-12-31T18:00:00+08:00"},{"roleId":13,"expiresAt":null}]}
 ```
 
-- `ids` 是该用户在本域的完整角色集合，不在其中的已有角色被移除。
+- `ids` 是该用户在本软件的完整角色集合，不在其中的已有角色被移除。
 - `expiries` 逐个设置角色的到期时间，`expiresAt` 为 null 表示永久；到期时间必须晚于当前时间、不晚于 3650 天后，且只能为 `ids` 中的角色设置。
 - `expiresInDays`（1–3650）作用于 `ids` 中没有出现在 `expiries` 里的全部角色。
 - 两者都没有涉及的角色：已有的保持原到期时间和授予记录，新增的为永久。因此只改一个角色的期限时，其他角色的期限不会被改动。
@@ -312,41 +314,30 @@ POST /api/v1/access-requests
 
 到期的分配立即不再计入有效权限：缓存的校验结果不会保留到其中最早到期角色的到期时刻之后。后台任务每分钟删除已到期的分配行，写入审计 `USER_ROLES_EXPIRED`，并发出 `user.roles.expired` 事件；上下文本身不失效。
 
-### 5.6 权限诊断、配置复制与权限清单
+### 5.6 权限诊断与权限清单
 
-`POST /api/admin/simulate` 只做计算，不创建上下文，也不切换用户的当前部门：
-
-```json
-{"userId":7,"departmentId":1,"applicationId":3,"activeRoleIds":null,"permissions":["order:approve"]}
-```
-
-响应包含 `eligible`（业务系统能否为该用户创建上下文）、`issues`（不能创建的原因，如用户停用、不是部门成员、激活了未分配角色）、`switchesDepartment`（创建上下文是否会切换当前部门）、`roles`（已分配角色及是否激活）、`permissions`（有效权限及授予它的角色 `grantedBy`），以及传入 `permissions` 时的 `decisions` 与 `allowed`。
-
-`POST /api/admin/domains/copy` 把同一软件下源部门的权限和角色（含角色权限关系）复制到目标部门：
+`POST /api/admin/simulate` 只计算，不创建上下文：
 
 ```json
-{"applicationId":3,"sourceDepartmentId":1,"targetDepartmentId":2}
+{"userId":7,"applicationId":3,"activeRoleIds":null,"permissions":["order:approve"]}
 ```
 
-目标部门已存在的同编码权限会被复用，同编码角色会被跳过，不复制用户角色分配。响应为 `{"permissionsCreated":5,"permissionsSkipped":1,"rolesCreated":2,"rolesSkipped":0}`。
-
-权限清单用于把一个软件的权限与角色配置导出为 JSON，再导入到其他部门或其他环境：
+响应包含 `eligible`、`issues`、`notices`、`roles`、`permissions`（含 `grantedBy`），以及提供待校验权限时的 `decisions` 和 `allowed`。部门成员关系不参与诊断。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/manifest?applicationId=3[&departmentId=1]` | 导出；省略 `departmentId` 时导出该软件有配置的全部部门；需要读权限 |
-| POST | `/api/admin/manifest/import?applicationId=3` | 导入；需要写权限 |
+| GET | `/api/admin/manifest?applicationId=3` | 导出整个软件的权限和角色，需要读权限 |
+| POST | `/api/admin/manifest/import?applicationId=3` | 导入到指定软件，需要写权限 |
 
-清单格式（导出结果可直接导入；修改 `departments[].code` 即可导入到另一个部门）：
+清单格式：
 
 ```json
-{"version":1,"application":{"code":"oa","name":"OA"},"exportedAt":"...",
- "departments":[{"code":"rd-center","name":"研发中心",
-   "permissions":[{"code":"order:read","name":"查看订单","resource":"order","action":"read"}],
-   "roles":[{"code":"reader","name":"阅读者","description":"","enabled":true,"permissions":["order:read"]}]}]}
+{"version":2,"application":{"code":"oa","name":"OA"},"exportedAt":"...",
+ "permissions":[{"code":"order:read","name":"查看订单","resource":"order","action":"read"}],
+ "roles":[{"code":"reader","name":"阅读者","description":"","enabled":true,"permissions":["order:read"]}]}
 ```
 
-导入在一个事务内按编码新建或更新权限与角色，角色的权限集合按清单整体替换，`enabled` 省略视为启用；清单中没有的权限、角色和全部用户分配保持不变，**不会删除**任何配置。部门编码必须已存在，角色引用的权限编码必须在清单或目标域中存在，否则整体失败。响应为 `{"permissionsCreated":..,"permissionsUpdated":..,"rolesCreated":..,"rolesUpdated":..}`。导入的变更在下一次校验时生效。
+导入在一个事务内按编码新建或更新权限与角色，角色权限整体替换，`enabled` 省略视为启用；清单外配置和所有用户分配保持不变。角色引用的权限必须在清单或目标软件中存在。响应为 `permissionsCreated`、`permissionsUpdated`、`rolesCreated`、`rolesUpdated`。导入后下一次校验生效。不接受 version 1；旧数据先升级 V6 后重新导出。原 `/domains/copy` 已移除，部门不再保存授权配置；跨软件复制使用清单。
 
 ### 5.7 审计与哈希链
 
@@ -386,19 +377,19 @@ POST /api/v1/access-requests
 | POST | `/api/admin/access-requests/{id}/approve` | `{"durationDays":7,"comment":"","permanent":false}`；`permanent` 为 true 时永久授权（此时不能再传 `durationDays`，否则 400）；否则 `durationDays`（1–3650）省略时沿用申请中的天数，申请也未指定则永久授权 |
 | POST | `/api/admin/access-requests/{id}/reject` | `{"comment":"理由"}` |
 
-审批要求对申请所属软件有写权限。只能处理 `PENDING` 的申请；角色已停用或用户已不在该部门时批准返回 409。批准会写入（或刷新）该用户的角色分配并记录授予人和到期时间，使该用户在该域的上下文失效，并发出 `access.approved` 事件；驳回发出 `access.rejected` 事件（含驳回理由）。列表中的申请保存提交时的姓名、角色和部门名称；对应记录被删除后 `userId`、`roleId`、`departmentId` 为 null，`roleEnabled` 为 null 表示角色已删除。
+审批要求对申请所属软件有写权限。只能处理 `PENDING` 的申请；角色已停用时批准返回 409。批准会写入（或刷新）该用户的角色分配并记录授予人和到期时间，使该用户在该软件的上下文失效，并发出 `access.approved` 事件；驳回发出 `access.rejected` 事件（含驳回理由）。列表中的申请保存提交时的姓名和角色名称；旧记录的部门名称快照保留；对应记录被删除后 `userId`、`roleId`、`departmentId` 为 null，`roleEnabled` 为 null 表示角色已删除。
 
 ### 5.10 权限复核
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET、POST | `/api/admin/reviews` | 列表（参数 `applicationId`、`status` 为 `OPEN`/`CLOSED`）或发起复核：`{"name":"2026 Q4 OA 复核","applicationId":3,"departmentId":1,"dueDays":14}`，`departmentId` 省略表示该软件全部部门，`dueDays` 可选（1–365） |
+| GET、POST | `/api/admin/reviews` | 列表（参数 `applicationId`、`status` 为 `OPEN`/`CLOSED`）或发起复核：`{"name":"2026 Q4 OA 复核","applicationId":3,"dueDays":14}`，`departmentId` 仅按当前部门成员关系筛选快照，省略表示该软件全部用户，`dueDays` 可选（1–365） |
 | GET | `/api/admin/reviews/{id}` | 复核详情，含条目总数与 `pending`、`kept`、`revoked`、`skipped` 统计 |
 | GET | `/api/admin/reviews/{id}/items` | 分页列出快照条目；参数 `decision`（`PENDING`/`KEEP`/`REVOKE`）；关闭后每项的 `applied` 表示已处理，`skipped` 表示未回收（见下文） |
 | PUT | `/api/admin/reviews/{id}/items/{itemId}` | `{"decision":"REVOKE","comment":"已转岗"}`，`decision` 为 `KEEP` 或 `REVOKE` |
 | POST | `/api/admin/reviews/{id}/close` | 关闭复核并执行回收 |
 
-发起时对当前仍有效（未到期）的角色分配拍快照，之后新增的分配不在本次复核内。复核关闭前可以随时修改条目的决定（以最后一次为准），关闭后再提交返回 409。关闭时回收全部标记为 `REVOKE` 的分配，并使相关用户在对应域的上下文失效；**未决定的条目视为保留**。每个条目记录的是快照时的那一次分配：若该分配在复核期间被移除、续期、修改期限或重新授予，关闭时不会回收新的分配，该条目标记为 `skipped`，复核摘要中注明数量。条目保存快照时的用户、角色和部门名称，之后删除这些记录不影响复核历史（对应 ID 变为 null）。实际回收了授权时发出 `review.closed` 事件。复核接口要求对该软件有读（查询）或写（发起、决定、关闭）权限。
+发起时对当前仍有效（未到期）的角色分配拍快照，之后新增的分配不在本次复核内。复核关闭前可以随时修改条目的决定（以最后一次为准），关闭后再提交返回 409。关闭时回收全部标记为 `REVOKE` 的分配，并使相关用户在对应软件的上下文失效；**未决定的条目视为保留**。每个条目记录的是快照时的那一次分配：若该分配在复核期间被移除、续期、修改期限或重新授予，关闭时不会回收新的分配，该条目标记为 `skipped`，复核摘要中注明数量。条目保存快照时的用户、角色和部门名称，之后删除这些记录不影响复核历史（对应 ID 变为 null）。实际回收了授权时发出 `review.closed` 事件。复核接口要求对该软件有读（查询）或写（发起、决定、关闭）权限。
 
 ### 5.11 Webhook 管理
 
@@ -441,13 +432,12 @@ POST /api/v1/access-requests
 | 401 | MFA_REQUIRED | 账号已启用两步验证，登录时未提供动态口令 |
 | 401 | MFA_INVALID | 登录时动态口令不正确或已被使用 |
 | 401 | CONTEXT_INVALID | 上下文过期、注销、已因变更失效或不属于当前软件 |
-| 403 | FORBIDDEN | 越权、跨域关联、非部门成员、用户或软件停用、激活了未分配的角色 |
+| 403 | FORBIDDEN | 越权、跨域关联、用户或软件停用、激活了未分配的角色 |
 | 403 | ACCOUNT_LOCKED | 管理员账号因连续登录失败处于锁定期 |
 | 403 | ACCOUNT_DISABLED | 管理员账号已停用 |
 | 404 | NOT_FOUND | 记录、隔离域或接口不存在 |
 | 405 | METHOD_NOT_ALLOWED | 接口不支持该请求方法 |
 | 409 | DUPLICATE | 编码或标识重复 |
-| 409 | DEPARTMENT_MISMATCH | 创建上下文时传了 `switchDepartment:false`，而用户当前部门不是目标部门 |
 | 409 | CONFLICT | 删除时仍有依赖（`message` 说明剩余内容）、密钥数量已达上限、申请或复核已被处理等冲突 |
 | 415 | UNSUPPORTED_MEDIA_TYPE | 请求体不是 `application/json` |
 | 429 | RATE_LIMITED | 调用频率或登录尝试超过限制，带 `Retry-After` |
