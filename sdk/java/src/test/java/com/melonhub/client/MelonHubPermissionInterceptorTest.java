@@ -30,6 +30,20 @@ class MelonHubPermissionInterceptorTest {
         }
     }
 
+    @Test void departmentHeaderIsOptionalForSoftwareAuthorization() throws Exception {
+        var request = new MockHttpServletRequest();
+        request.addHeader("X-MelonHub-User", "no-department-user");
+        var response = new MockHttpServletResponse();
+        var authorizer = new MelonHubAuthorizer(new MelonHubClient("http://127.0.0.1:1", "mh_test")) {
+            @Override public boolean hasPermission(String externalId, long departmentId, String permission) {
+                assertThat(externalId).isEqualTo("no-department-user");
+                assertThat(departmentId).isZero();
+                return true;
+            }
+        };
+        assertThat(new MelonHubPermissionInterceptor(authorizer).preHandle(request, response, handler("guarded"))).isTrue();
+    }
+
     private static HandlerMethod handler(String methodName) throws NoSuchMethodException {
         Method method = DemoController.class.getMethod(methodName);
         return new HandlerMethod(new DemoController(), method);

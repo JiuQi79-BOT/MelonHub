@@ -13,7 +13,7 @@ const hub = useHub()
 const form = reactive<{ userId?: number; departmentId?: number; applicationId?: number; mode: 'all' | 'custom'; activeRoleIds: number[]; permissions: string[] }>({
   departmentId: hub.departmentId || undefined, applicationId: hub.applicationId || undefined, mode: 'all', activeRoleIds: [], permissions: [],
 })
-const domain = computed(() => form.departmentId && form.applicationId ? { departmentId: form.departmentId, applicationId: form.applicationId } : null)
+const domain = computed(() => form.applicationId ? { departmentId: form.departmentId ?? 0, applicationId: form.applicationId } : null)
 const roles = useList<Role>(() => get<Role[]>('/admin/roles', domain.value!))
 const permissions = useList<Permission>(() => get<Permission[]>('/admin/permissions', domain.value!))
 const result = ref<Simulation | null>(null), running = ref(false)
@@ -31,7 +31,7 @@ watch(domain, value => {
 watch(() => [form.userId, form.departmentId, form.applicationId, form.mode, form.activeRoleIds.join(','), form.permissions.join('\n')], invalidate)
 
 const roleOptions = computed(() => roles.rows.value.map(r => ({ value: r.id, label: `${r.name}（${r.code}）${r.enabled ? '' : ' · 已停用'}` })))
-const permissionOptions = computed(() => permissions.rows.value.map(p => ({ value: p.code, label: `${p.code}  ${p.name}` })))
+const permissionOptions = computed(() => [...new Map(permissions.rows.value.map(p => [p.code, { value: p.code, label: `${p.code}  ${p.name}` }])).values()])
 const roleName = computed(() => new Map((result.value?.roles ?? []).map(r => [r.id, r.name])))
 
 async function run() {
@@ -82,7 +82,7 @@ const permissionColumns: TableColumnsType<Simulation['permissions'][number]> = [
           <a-form layout="vertical">
             <a-form-item label="用户" required><UserPicker v-model:value="form.userId" /></a-form-item>
             <a-row :gutter="12">
-              <a-col :span="12"><a-form-item label="部门" required><a-select v-model:value="form.departmentId" :options="hub.departmentOptions" show-search option-filter-prop="label" placeholder="选择部门" /></a-form-item></a-col>
+              <a-col :span="12"><a-form-item label="部门（筛选）"><a-select v-model:value="form.departmentId" :options="[{ value: 0, label: '全部成员' }, ...hub.departmentOptions]" show-search option-filter-prop="label" placeholder="选择部门" /></a-form-item></a-col>
               <a-col :span="12"><a-form-item label="软件" required><a-select v-model:value="form.applicationId" :options="hub.applicationOptions" show-search option-filter-prop="label" placeholder="选择软件" /></a-form-item></a-col>
             </a-row>
             <a-form-item label="激活角色">
@@ -111,9 +111,6 @@ const permissionColumns: TableColumnsType<Simulation['permissions'][number]> = [
             <a-alert v-if="result.notices?.length" type="info" show-icon class="block-gap" message="以下角色不计入权限">
               <template #description><ul class="issue-list"><li v-for="notice in result.notices" :key="notice">{{ notice }}</li></ul></template>
             </a-alert>
-            <a-alert v-if="result.eligible && result.switchesDepartment && result.user.activeDepartmentId != null" type="warning" show-icon class="block-gap"
-                     :message="`该用户当前部门为“${hub.departmentName(result.user.activeDepartmentId)}”`"
-                     description="业务系统要求切换部门时，创建此部门的上下文会使其在其他部门所有软件中的上下文立即失效；不允许切换时（Java SDK 的普通校验即如此）会被拒绝并返回 DEPARTMENT_MISMATCH。" />
             <template v-if="decisionRows.length">
               <h4 class="section-title">权限校验
                 <a-tag :color="result.allowed ? 'green' : 'red'" class="title-tag">{{ result.allowed ? '全部通过' : '未全部通过' }}</a-tag>

@@ -1,5 +1,16 @@
 # MelonHub 开发规范与任务交接
 
+## 2026-10-20 当前规则（覆盖下文历史描述）
+
+用户确认“角色 × 软件”：软件隔离角色，权限归属角色且编码在角色内唯一。部门仅用于成员管理、筛选、批量设置软件角色；无部门用户也可申请和授权。部门变化不撤销软件角色或上下文。分配期限、grant_id、复核保护保留。
+
+V1–V5 不修改，V6 拆分共享权限、保留同编码旧角色并改名、移除角色/权限部门字段、建立复合外键、清除旧上下文。清单为软件级 v2，跨部门复制取消。详见 [数据库设计](doc/数据库设计.md)。
+
+仅使用云 MySQL，正式/测试库分别为 melonhub_rbac/melonhub_rbac_test。本地 MySQL/Redis 容器管理代码和 application-local.yml 已移除，Redis 默认关闭，服务器部署后配置启用。脚本只管理项目 Java/Vite，不根据历史记录启动本地容器。当前工作目录为 D:/PersonalStudy/MelonHub。
+
+下文保留历史交接信息，其中“部门 × 软件”、全局部门切换失效、本地 Docker、TEST_DB_TARGET 的描述已过时；其他安全和工程规则继续有效。最新证据见 doc/验证记录.md。
+
+
 最后更新：2026-10-19（Asia/Shanghai）。当前工作目录：`D:\MelonHub`。本地 Git 仓库的功能分支为 `rbac-platform`；既有改动按运行环境、控制台、鉴权、缓存限流、RBAC 授权、授权治理、Webhook、审计监控、Java SDK 和文档拆分提交。`origin` 指向个人 fork `https://github.com/xqy2006/MelonHub`，`upstream` 指向原仓库 `https://github.com/JiuQi79-BOT/MelonHub`；后续改动推送到个人 fork，通过 PR 向上游贡献。
 
 上一轮完成“企业化改造”：修复鉴权绕过与监听地址缺陷，新增 Redis 权限缓存与无锁校验、限流与过载保护、多级管理员、多 API Key、审计增强、权限诊断、角色成员、跨部门复制，并用 Ant Design Vue 4 重建控制台。

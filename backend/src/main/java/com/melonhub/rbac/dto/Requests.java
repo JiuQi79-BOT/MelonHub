@@ -32,17 +32,17 @@ public final class Requests {
     public record User(@NotBlank @Size(max=100) String name, @NotBlank @Size(max=100) String externalId, @Size(max=150) String email,
                        @NotNull @Size(max=100) List<@NotNull @Positive Long> departmentIds) {}
     public record Role(@NotBlank @Size(max=100) String name, @NotBlank @Pattern(regexp=DOMAIN_CODE) String code, @Size(max=500) String description) {}
-    public record Permission(@NotBlank @Size(max=100) String name, @NotBlank @Pattern(regexp=DOMAIN_CODE) String code,
+    public record Permission(@NotNull @Positive Long roleId, @NotBlank @Size(max=100) String name, @NotBlank @Pattern(regexp=DOMAIN_CODE) String code,
                              @NotBlank @Size(max=100) String resource, @NotBlank @Size(max=64) String action) {}
     public record Ids(@NotNull @Size(max=1000) List<@NotNull @Positive Long> ids) {}
     public record Enabled(@NotNull Boolean enabled) {}
-    /** switchDepartment=false refuses to move the user's current department; null or true keeps the switching behaviour. */
-    public record Context(@NotBlank @Size(max=100) String externalId, @Positive long departmentId,
+    /** departmentId and switchDepartment are legacy metadata; authorization is scoped to the application. */
+    public record Context(@NotBlank @Size(max=100) String externalId, @Min(0) long departmentId,
                           @Size(max=1000) List<@NotNull @Positive Long> activeRoleIds, Boolean switchDepartment) {
         public Context(String externalId, long departmentId, List<Long> activeRoleIds) { this(externalId, departmentId, activeRoleIds, null); }
     }
     public record Check(@NotNull @Size(min=1,max=100) List<@NotBlank @Size(max=100) String> permissions) {}
-    public record Simulation(@Positive long userId, @Positive long departmentId, @Positive long applicationId,
+    public record Simulation(@Positive long userId, @Min(0) long departmentId, @Positive long applicationId,
                              @Size(max=1000) List<@NotNull @Positive Long> activeRoleIds,
                              @Size(max=100) List<@NotBlank @Size(max=100) String> permissions) {}
     public record DomainCopy(@Positive long applicationId, @Positive long sourceDepartmentId, @Positive long targetDepartmentId) {}
@@ -66,7 +66,7 @@ public final class Requests {
     public record RateLimitUpdate(@Min(0) @Max(100000) Integer perSecond) {}
 
     // ---- access requests (submitted by business systems on behalf of employees) ----
-    public record AccessRequestSubmit(@NotBlank @Size(max=100) String externalId, @Positive long departmentId, @Positive long roleId,
+    public record AccessRequestSubmit(@NotBlank @Size(max=100) String externalId, @Min(0) long departmentId, @Positive long roleId,
                                       @NotBlank @Size(max=500) String reason, @Min(1) @Max(3650) Integer durationDays) {}
     public record AccessRequestCancel(@NotBlank @Size(max=100) String externalId) {}
     /** permanent=true grants without expiry; otherwise durationDays, or the requested duration when that is null. */
@@ -95,12 +95,17 @@ public final class Requests {
 
     // ---- permission manifest (export/import of one application's roles and permissions) ----
     public record ManifestPermission(@NotBlank @Pattern(regexp=DOMAIN_CODE) String code, @NotBlank @Size(max=100) String name,
-                                     @NotBlank @Size(max=100) String resource, @NotBlank @Size(max=64) String action) {}
+                                     @NotBlank @Size(max=100) String resource, @NotBlank @Size(max=64) String action,
+                                     @Pattern(regexp=DOMAIN_CODE) String roleCode) {
+        public ManifestPermission(String code, String name, String resource, String action) { this(code, name, resource, action, null); }
+    }
     public record ManifestRole(@NotBlank @Pattern(regexp=DOMAIN_CODE) String code, @NotBlank @Size(max=100) String name,
                                @Size(max=500) String description, Boolean enabled,
                                @NotNull @Size(max=1000) List<@NotBlank @Size(max=100) String> permissions) {}
     public record ManifestDepartment(@NotBlank @Pattern(regexp=CODE) String code,
                                      @NotNull @Size(max=2000) List<@Valid ManifestPermission> permissions,
                                      @NotNull @Size(max=2000) List<@Valid ManifestRole> roles) {}
-    public record Manifest(@Positive Integer version, @NotNull @Size(max=200) List<@Valid ManifestDepartment> departments) {}
+    public record Manifest(@NotNull @Min(2) @Max(2) Integer version,
+                           @NotNull @Size(max=20000) List<@Valid ManifestPermission> permissions,
+                           @NotNull @Size(max=2000) List<@Valid ManifestRole> roles) {}
 }

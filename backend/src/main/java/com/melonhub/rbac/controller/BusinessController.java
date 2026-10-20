@@ -27,6 +27,39 @@ public class BusinessController {
 
     @GetMapping("/departments") Object departments(HttpServletRequest q) { app(q); return r.departments(); }
     @GetMapping("/departments/{dept}/users") Object users(@PathVariable long dept, HttpServletRequest q) { app(q); return r.departmentUsers(dept); }
+    @GetMapping("/roles") Object applicationRoles(HttpServletRequest q) { return r.roles(0, app(q)); }
+    @PostMapping("/roles") Object applicationRole(@Valid @RequestBody Requests.Role b, HttpServletRequest q) {
+        return Map.of("id", r.role(b, null, 0, app(q), actor(q)));
+    }
+    @GetMapping("/permissions") Object applicationPermissions(HttpServletRequest q) { return r.permissions(0, app(q)); }
+    @PutMapping("/roles/{id}") Object updateApplicationRole(@PathVariable long id, @Valid @RequestBody Requests.Role b, HttpServletRequest q) {
+        return Map.of("id", r.role(b, id, 0, app(q), actor(q)));
+    }
+    @PatchMapping("/roles/{id}/status") Object applicationRoleStatus(@PathVariable long id, @Valid @RequestBody Requests.Enabled b, HttpServletRequest q) {
+        r.roleStatus(id, 0, app(q), b.enabled(), actor(q)); return ok();
+    }
+    @DeleteMapping("/roles/{id}") Object deleteApplicationRole(@PathVariable long id, HttpServletRequest q) {
+        r.deleteRole(id, 0, app(q), actor(q)); return ok();
+    }
+    @PostMapping("/permissions") Object applicationPermission(@Valid @RequestBody Requests.Permission b, HttpServletRequest q) {
+        return Map.of("id", r.permission(b, null, 0, app(q), actor(q)));
+    }
+    @PutMapping("/permissions/{id}") Object updateApplicationPermission(@PathVariable long id, @Valid @RequestBody Requests.Permission b, HttpServletRequest q) {
+        return Map.of("id", r.permission(b, id, 0, app(q), actor(q)));
+    }
+    @DeleteMapping("/permissions/{id}") Object deleteApplicationPermission(@PathVariable long id, HttpServletRequest q) {
+        r.deletePermission(id, 0, app(q), actor(q)); return ok();
+    }
+    @PutMapping("/roles/{id}/permissions") Object applicationRolePermissions(@PathVariable long id, @Valid @RequestBody Requests.Ids b, HttpServletRequest q) {
+        r.rolePermissions(id, 0, app(q), b.ids(), actor(q)); return ok();
+    }
+    @GetMapping("/users/{id}/roles") Object applicationUserRoles(@PathVariable long id, HttpServletRequest q) {
+        return r.assignments(id, 0, app(q));
+    }
+    @PutMapping("/users/{id}/roles") Object applicationUserRoles(@PathVariable long id, @Valid @RequestBody Requests.UserRoles b, HttpServletRequest q) {
+        r.userRoles(id, 0, app(q), b.ids(), b.expiresInDays(), b.expiries(), actor(q)); return ok();
+    }
+
     @GetMapping("/departments/{dept}/roles") Object roles(@PathVariable long dept, HttpServletRequest q) { return r.roles(dept, app(q)); }
     @PostMapping("/departments/{dept}/roles") Object role(@PathVariable long dept, @Valid @RequestBody Requests.Role b, HttpServletRequest q) {
         return Map.of("id", r.role(b, null, dept, app(q), actor(q)));
@@ -71,7 +104,7 @@ public class BusinessController {
         governance.cancelOwn(app(q), id, b.externalId(), actor(q));
         return ok();
     }
-    @GetMapping("/users/access") Object myAccess(@RequestParam String externalId, @RequestParam long departmentId, HttpServletRequest q) {
+    @GetMapping("/users/access") Object myAccess(@RequestParam String externalId, @RequestParam(defaultValue="0") long departmentId, HttpServletRequest q) {
         return governance.myAccess(app(q), externalId, departmentId);
     }
     @PostMapping("/contexts") Object issue(@Valid @RequestBody Requests.Context b, HttpServletRequest q) { return contexts.issue(app(q), b, actor(q)); }

@@ -132,9 +132,10 @@ public class GovernanceController {
         return g.importUsers(body, AdminAccess.platformWrite(req).actor());
     }
     @GetMapping("/permissions/who") Object permissionHolders(@RequestParam long applicationId, @RequestParam String code,
-                                                             @RequestParam(required=false) Long departmentId, HttpServletRequest req) {
+                                                             @RequestParam(required=false) Long departmentId,
+                                                             @RequestParam(required=false) Long roleId, HttpServletRequest req) {
         AdminAccess.readApplication(req, applicationId);
-        return g.permissionHolders(applicationId, code, departmentId);
+        return g.permissionHolders(applicationId, code, departmentId, roleId);
     }
     @GetMapping("/assignments/expiring") Object expiring(@RequestParam(defaultValue="7") int days, @RequestParam(required=false) Long applicationId,
                                                          HttpServletRequest req) {

@@ -83,8 +83,7 @@ public class RbacDao {
     public long[] departmentUsage(long id) {
         return new long[] {
             count("SELECT COUNT(*) FROM memberships WHERE department_id=?", id),
-            count("SELECT COUNT(*) FROM roles WHERE department_id=?", id),
-            count("SELECT COUNT(*) FROM permissions WHERE department_id=?", id) };
+            0, 0 };
     }
     /** Roles and permissions, across all departments, that keep an application from being deleted. */
     public long[] applicationUsage(long id) {
@@ -99,18 +98,18 @@ public class RbacDao {
     public boolean applicationEnabled(long id) { return count("SELECT COUNT(*) FROM applications WHERE id=? AND enabled=TRUE", id) > 0; }
     public boolean scopedExists(String table, long id, long dept, long app) {
         if (!Set.of("roles", "permissions").contains(table)) throw new IllegalArgumentException();
-        return count("SELECT COUNT(*) FROM " + table + " WHERE id=? AND department_id=? AND application_id=?", id, dept, app) > 0;
+        return count("SELECT COUNT(*) FROM " + table + " WHERE id=? AND application_id=?", id, app) > 0;
     }
     public long scopedCount(String table, Collection<Long> ids, long dept, long app) {
         if (!Set.of("roles", "permissions").contains(table)) throw new IllegalArgumentException();
         if (ids.isEmpty()) return 0;
-        return count("SELECT COUNT(*) FROM " + table + " WHERE department_id=? AND application_id=? AND id IN (" + AuthDao.placeholders(ids.size()) + ")",
-                join(new Object[]{dept, app}, ids));
+        return count("SELECT COUNT(*) FROM " + table + " WHERE application_id=? AND id IN (" + AuthDao.placeholders(ids.size()) + ")",
+                join(new Object[]{app}, ids));
     }
 
     public List<Map<String,Object>> departments() {
         return db.queryForList("SELECT d.id,d.name,d.code,d.created_at AS createdAt,(SELECT COUNT(*) FROM memberships m WHERE m.department_id=d.id) AS memberCount,"
-                + "(SELECT COUNT(*) FROM roles r WHERE r.department_id=d.id) AS roleCount FROM departments d ORDER BY d.id");
+                + "(SELECT COUNT(DISTINCT ur.role_id) FROM user_roles ur JOIN memberships m ON m.user_id=ur.user_id WHERE m.department_id=d.id) AS roleCount FROM departments d ORDER BY d.id");
     }
     public long createDepartment(String name, String code) { return insert("INSERT INTO departments(name,code) VALUES (?,?)", name, code); }
     public int updateDepartment(long id, String name, String code) { return db.update("UPDATE departments SET name=?,code=? WHERE id=?", name, code, id); }
@@ -162,7 +161,7 @@ public class RbacDao {
     public Page users(String keyword, Long department, Boolean enabled, int page, int size) {
         var where = new Where();
         if (enabled != null) where.and("u.enabled=?", enabled);
-        if (department != null) where.and("EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.department_id=?)", department);
+        if (department != null && department > 0) where.and("EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.department_id=?)", department);
         if (keyword != null && !keyword.isBlank()) {
             String pattern = like(keyword.strip());
             where.and("(u.name LIKE ? OR u.external_id LIKE ? OR u.email LIKE ?)", pattern, pattern, pattern);
@@ -226,38 +225,48 @@ public class RbacDao {
         return count("SELECT COUNT(*) FROM memberships WHERE department_id=? AND user_id IN (" + AuthDao.placeholders(users.size()) + ")", join(new Object[]{dept}, users));
     }
     public List<Map<String,Object>> accessRoles(long user) {
-        return db.queryForList("SELECT ur.department_id,d.name AS department_name,ur.application_id,a.name AS application_name,a.enabled AS application_enabled,"
-                + "r.id,r.name,r.code,r.enabled,ur.expires_at AS expires_at,ur.granted_by AS granted_by FROM user_roles ur JOIN roles r ON r.id=ur.role_id JOIN departments d ON d.id=ur.department_id "
+        return db.queryForList("SELECT 0 AS department_id,\'全部成员\' AS department_name,ur.application_id,a.name AS application_name,a.enabled AS application_enabled,"
+                + "r.id,r.name,r.code,r.enabled,ur.expires_at AS expires_at,ur.granted_by AS granted_by FROM user_roles ur JOIN roles r ON r.id=ur.role_id LEFT JOIN departments d ON d.id=ur.department_id "
                 + "JOIN applications a ON a.id=ur.application_id WHERE ur.user_id=? ORDER BY ur.department_id,ur.application_id,r.id", user);
     }
     public List<Map<String,Object>> accessPermissions(long user) {
-        return db.queryForList("SELECT DISTINCT ur.department_id,ur.application_id,p.code FROM user_roles ur JOIN roles r ON r.id=ur.role_id AND r.enabled=TRUE "
+        return db.queryForList("SELECT DISTINCT 0 AS department_id,ur.application_id,p.code FROM user_roles ur JOIN roles r ON r.id=ur.role_id AND r.enabled=TRUE "
                 + "AND (ur.expires_at IS NULL OR ur.expires_at>CURRENT_TIMESTAMP) "
                 + "JOIN role_permissions rp ON rp.role_id=r.id JOIN permissions p ON p.id=rp.permission_id WHERE ur.user_id=? ORDER BY p.code", user);
     }
 
     public List<Map<String,Object>> roles(long dept, long app) {
         return db.queryForList("SELECT r.id,r.name,r.code,r.description,r.enabled,r.created_at AS createdAt,"
-                + "(SELECT COUNT(*) FROM user_roles ur WHERE ur.role_id=r.id) AS memberCount FROM roles r WHERE r.department_id=? AND r.application_id=? ORDER BY r.id", dept, app);
+                + "(SELECT COUNT(*) FROM user_roles ur WHERE ur.role_id=r.id) AS memberCount FROM roles r WHERE r.application_id=? ORDER BY r.id", app);
     }
     public List<Map<String,Object>> rolePermissions(long dept, long app) {
-        return db.queryForList("SELECT role_id,permission_id FROM role_permissions WHERE department_id=? AND application_id=? ORDER BY permission_id", dept, app);
+        return db.queryForList("SELECT role_id,permission_id FROM role_permissions WHERE application_id=? ORDER BY permission_id", app);
     }
     public List<Map<String,Object>> permissions(long dept, long app) {
-        return db.queryForList("SELECT p.id,p.name,p.code,p.resource,p.action,p.created_at AS createdAt,"
-                + "(SELECT COUNT(*) FROM role_permissions rp WHERE rp.permission_id=p.id) AS roleCount FROM permissions p WHERE p.department_id=? AND p.application_id=? ORDER BY p.id", dept, app);
+        return db.queryForList("SELECT p.id,p.role_id AS roleId,r.name AS roleName,r.code AS roleCode,p.name,p.code,p.resource,p.action,p.created_at AS createdAt,"
+                + "(SELECT COUNT(*) FROM role_permissions rp WHERE rp.permission_id=p.id) AS roleCount FROM permissions p JOIN roles r ON r.id=p.role_id WHERE p.application_id=? ORDER BY p.id", app);
     }
     public long createRole(long dept, long app, String name, String code, String description) {
-        return insert("INSERT INTO roles(department_id,application_id,name,code,description) VALUES (?,?,?,?,?)", dept, app, name, code, description);
+        return insert("INSERT INTO roles(application_id,name,code,description) VALUES (?,?,?,?)", app, name, code, description);
     }
     public long createRole(long dept, long app, String name, String code, String description, boolean enabled) {
-        return insert("INSERT INTO roles(department_id,application_id,name,code,description,enabled) VALUES (?,?,?,?,?,?)", dept, app, name, code, description, enabled);
+        return insert("INSERT INTO roles(application_id,name,code,description,enabled) VALUES (?,?,?,?,?)", app, name, code, description, enabled);
     }
     public void updateRole(long id, String name, String code, String description) { db.update("UPDATE roles SET name=?,code=?,description=? WHERE id=?", name, code, description, id); }
     public int roleStatus(long id, boolean enabled) { return db.update("UPDATE roles SET enabled=? WHERE id=?", enabled, id); }
     public int deleteRole(long id) { return db.update("DELETE FROM roles WHERE id=?", id); }
-    public long createPermission(long dept, long app, String name, String code, String resource, String action) {
-        return insert("INSERT INTO permissions(department_id,application_id,name,code,resource,action) VALUES (?,?,?,?,?,?)", dept, app, name, code, resource, action);
+    public long createPermission(long role, long dept, long app, String name, String code, String resource, String action) {
+        return insert("INSERT INTO permissions(role_id,application_id,name,code,resource,action) VALUES (?,?,?,?,?,?)", role, app, name, code, resource, action);
+    }
+    public boolean permissionOwnedBy(long permission, long role) {
+        return count("SELECT COUNT(*) FROM permissions WHERE id=? AND role_id=?", permission, role) == 1;
+    }
+    public long ownedPermissionCount(long role, Collection<Long> ids) {
+        if (ids.isEmpty()) return 0;
+        return count("SELECT COUNT(*) FROM permissions WHERE role_id=? AND id IN (" + AuthDao.placeholders(ids.size()) + ")", join(new Object[]{role}, ids));
+    }
+    public Optional<Long> permissionIdByCode(long role, String code) {
+        return db.queryForList("SELECT id FROM permissions WHERE role_id=? AND code=?", Long.class, role, code).stream().findFirst();
     }
     public void updatePermission(long id, String name, String code, String resource, String action) {
         db.update("UPDATE permissions SET name=?,code=?,resource=?,action=? WHERE id=?", name, code, resource, action, id);
@@ -276,24 +285,24 @@ public class RbacDao {
     }
     public void replaceRolePermissions(long role, long dept, long app, Collection<Long> permissions) {
         db.update("DELETE FROM role_permissions WHERE role_id=?", role);
-        db.batchUpdate("INSERT INTO role_permissions(role_id,permission_id,department_id,application_id) VALUES (?,?,?,?)",
-                permissions.stream().map(p -> new Object[]{role, p, dept, app}).toList());
+        db.batchUpdate("INSERT INTO role_permissions(role_id,permission_id,application_id) VALUES (?,?,?)",
+                permissions.stream().map(p -> new Object[]{role, p, app}).toList());
     }
     public List<Long> assignedRoles(long user, long dept, long app) {
-        return db.queryForList("SELECT role_id FROM user_roles WHERE user_id=? AND department_id=? AND application_id=? ORDER BY role_id", Long.class, user, dept, app);
+        return db.queryForList("SELECT role_id FROM user_roles WHERE user_id=? AND application_id=? ORDER BY role_id", Long.class, user, app);
     }
     /** The user's current assignments in one domain (role id to expiry, null when permanent), without locking. */
     public Map<Long,Timestamp> assignmentExpiries(long user, long dept, long app) {
         var result = new LinkedHashMap<Long,Timestamp>();
-        db.query("SELECT role_id,expires_at FROM user_roles WHERE user_id=? AND department_id=? AND application_id=? ORDER BY role_id",
-                rs -> { result.put(rs.getLong(1), rs.getTimestamp(2)); }, user, dept, app);
+        db.query("SELECT role_id,expires_at FROM user_roles WHERE user_id=? AND application_id=? ORDER BY role_id",
+                rs -> { result.put(rs.getLong(1), rs.getTimestamp(2)); }, user, app);
         return result;
     }
     /** The user's current assignments in one domain (role id to expiry, null when permanent), locked for replacement. */
     public Map<Long,Timestamp> lockedAssignments(long user, long dept, long app) {
         var result = new LinkedHashMap<Long,Timestamp>();
-        db.query("SELECT role_id,expires_at FROM user_roles WHERE user_id=? AND department_id=? AND application_id=? ORDER BY role_id FOR UPDATE",
-                rs -> { result.put(rs.getLong(1), rs.getTimestamp(2)); }, user, dept, app);
+        db.query("SELECT role_id,expires_at FROM user_roles WHERE user_id=? AND application_id=? ORDER BY role_id FOR UPDATE",
+                rs -> { result.put(rs.getLong(1), rs.getTimestamp(2)); }, user, app);
         return result;
     }
     public void removeUserRoles(long user, Collection<Long> roles) {
@@ -313,25 +322,26 @@ public class RbacDao {
     }
     public void addRoleMembers(long role, long dept, long app, Collection<Long> users, String actor) {
         db.batchUpdate("INSERT INTO user_roles(user_id,role_id,department_id,application_id,granted_by,grant_id) VALUES (?,?,?,?,?,UUID())",
-                users.stream().map(u -> new Object[]{u, role, dept, app, truncate(actor, 100)}).toList());
+                users.stream().map(u -> new Object[]{u, role, dept == 0 ? null : dept, app, truncate(actor, 100)}).toList());
     }
     public Page departmentMembers(long dept, String keyword, int page, int size) {
-        var where = new Where().and("m.department_id=?", dept);
+        var where = new Where();
+        if (dept > 0) where.and("EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.department_id=?)", dept);
         if (keyword != null && !keyword.isBlank()) {
             String pattern = like(keyword.strip());
             where.and("(u.name LIKE ? OR u.external_id LIKE ? OR u.email LIKE ?)", pattern, pattern, pattern);
         }
-        return page("SELECT u.id,u.name,u.external_id AS externalId,u.email,u.enabled", "FROM users u JOIN memberships m ON m.user_id=u.id", where, "u.id", page, size);
+        return page("SELECT u.id,u.name,u.external_id AS externalId,u.email,u.enabled", "FROM users u", where, "u.id", page, size);
     }
     public List<Map<String,Object>> domainRolePairs(long dept, long app, Collection<Long> users) {
         if (users.isEmpty()) return List.of();
-        return db.queryForList("SELECT user_id,role_id,expires_at FROM user_roles WHERE department_id=? AND application_id=? AND user_id IN (" + AuthDao.placeholders(users.size()) + ") ORDER BY role_id",
-                join(new Object[]{dept, app}, users));
+        return db.queryForList("SELECT user_id,role_id,expires_at FROM user_roles WHERE application_id=? AND user_id IN (" + AuthDao.placeholders(users.size()) + ") ORDER BY role_id",
+                join(new Object[]{app}, users));
     }
 
     public List<Map<String,Object>> userRolesInDomain(long user, long dept, long app) {
         return db.queryForList("SELECT r.id,r.name,r.code,r.enabled,ur.expires_at AS expiresAt FROM roles r JOIN user_roles ur ON ur.role_id=r.id "
-                + "WHERE ur.user_id=? AND r.department_id=? AND r.application_id=? ORDER BY r.id", user, dept, app);
+                + "WHERE ur.user_id=? AND r.application_id=? ORDER BY r.id", user, app);
     }
     public List<Map<String,Object>> grants(Collection<Long> roles) {
         if (roles.isEmpty()) return List.of();
@@ -367,13 +377,13 @@ public class RbacDao {
     }
     public Optional<Long> scopedIdByCode(String table, long dept, long app, String code) {
         if (!Set.of("roles", "permissions").contains(table)) throw new IllegalArgumentException();
-        return db.queryForList("SELECT id FROM " + table + " WHERE department_id=? AND application_id=? AND code=?", Long.class, dept, app, code).stream().findFirst();
+        return db.queryForList("SELECT id FROM " + table + " WHERE application_id=? AND code=?", Long.class, app, code).stream().findFirst();
     }
     /** Creates or replaces one assignment; granting a held role again sets its expiry and makes it a new grant. */
     public void grantRole(long user, long dept, long app, long role, Timestamp expires, String grantedBy) {
         db.update("INSERT INTO user_roles(user_id,role_id,department_id,application_id,expires_at,granted_by,grant_id) VALUES (?,?,?,?,?,?,UUID()) "
                 + "ON DUPLICATE KEY UPDATE expires_at=VALUES(expires_at),granted_by=VALUES(granted_by),granted_at=CURRENT_TIMESTAMP,grant_id=UUID()",
-                user, role, dept, app, expires, truncate(grantedBy, 100));
+                user, role, dept == 0 ? null : dept, app, expires, truncate(grantedBy, 100));
     }
     public int applicationRateLimit(long app, int fallback) {
         var rows = db.queryForList("SELECT rate_limit FROM applications WHERE id=?", Integer.class, app);
@@ -383,50 +393,40 @@ public class RbacDao {
     public Optional<Map<String,Object>> applicationRow(long app) {
         return db.queryForList("SELECT id,name,code,enabled FROM applications WHERE id=?", app).stream().findFirst();
     }
-    public List<Long> manifestDepartmentIds(long app) {
-        return db.queryForList("SELECT department_id FROM (SELECT department_id FROM permissions WHERE application_id=? "
-                + "UNION SELECT department_id FROM roles WHERE application_id=?) t ORDER BY department_id", Long.class, app, app);
-    }
+    public List<Long> manifestDepartmentIds(long app) { return List.of(); }
     private static final String HOLDERS = "FROM user_roles ur JOIN users u ON u.id=ur.user_id AND u.enabled=TRUE "
             + "JOIN roles r ON r.id=ur.role_id AND r.enabled=TRUE "
-            + "JOIN role_permissions rp ON rp.role_id=r.id JOIN permissions p ON p.id=rp.permission_id "
-            + "JOIN departments d ON d.id=ur.department_id "
-            + "WHERE p.application_id=? AND p.code=? AND r.department_id=p.department_id AND (ur.expires_at IS NULL OR ur.expires_at>CURRENT_TIMESTAMP)";
-    /** Number of distinct (user, department) holders of one permission code. */
-    public long permissionHolderCount(long app, String code, Long dept) {
-        var args = new ArrayList<Object>(List.of(app, code));
-        String filter = dept == null ? "" : " AND ur.department_id=?";
-        if (dept != null) args.add(dept);
-        return db.queryForObject("SELECT COUNT(*) FROM (SELECT DISTINCT ur.user_id,ur.department_id " + HOLDERS + filter + ") holders", Long.class, args.toArray());
+            + "JOIN role_permissions rp ON rp.role_id=r.id JOIN permissions p ON p.id=rp.permission_id AND p.role_id=r.id "
+            + "WHERE p.application_id=? AND p.code=? AND (ur.expires_at IS NULL OR ur.expires_at>CURRENT_TIMESTAMP)";
+    private static String holderFilter(Long dept, Long role) {
+        return (dept == null || dept == 0 ? "" : " AND EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=ur.user_id AND m.department_id=?)")
+                + (role == null ? "" : " AND r.id=?");
     }
-    /**
-     * Everyone currently holding one permission code through an enabled role and a non-expired assignment: the
-     * first {@code limit} (user, department) holders, each with every role that grants the code.
-     */
-    public List<Map<String,Object>> permissionHolders(long app, String code, Long dept, int limit) {
+    public long permissionHolderCount(long app, String code, Long dept, Long role) {
         var args = new ArrayList<Object>(List.of(app, code));
-        String filter = dept == null ? "" : " AND ur.department_id=?";
-        if (dept != null) args.add(dept);
+        if (dept != null && dept > 0) args.add(dept);
+        if (role != null) args.add(role);
+        return db.queryForObject("SELECT COUNT(DISTINCT ur.user_id) " + HOLDERS + holderFilter(dept, role), Long.class, args.toArray());
+    }
+    public List<Map<String,Object>> permissionHolders(long app, String code, Long dept, Long role, int limit) {
+        var args = new ArrayList<Object>(List.of(app, code));
+        if (dept != null && dept > 0) args.add(dept);
+        if (role != null) args.add(role);
         var keys = new ArrayList<Object>(args);
         keys.add(limit);
-        var holders = db.queryForList("SELECT DISTINCT ur.department_id,ur.user_id " + HOLDERS + filter + " ORDER BY ur.department_id,ur.user_id LIMIT ?", keys.toArray());
-        if (holders.isEmpty()) return List.of();
-        var pairs = new StringBuilder();
-        for (var holder : holders) {
-            pairs.append(pairs.isEmpty() ? "" : ",").append("(?,?)");
-            args.add(holder.get("user_id"));
-            args.add(holder.get("department_id"));
-        }
+        var users = db.queryForList("SELECT DISTINCT ur.user_id " + HOLDERS + holderFilter(dept, role) + " ORDER BY ur.user_id LIMIT ?", Long.class, keys.toArray());
+        if (users.isEmpty()) return List.of();
+        args.addAll(users);
         return db.queryForList("SELECT ur.user_id AS userId,u.name AS userName,u.external_id AS externalId,"
-                + "ur.department_id AS departmentId,d.name AS departmentName,r.id AS roleId,r.name AS roleName,r.code AS roleCode,ur.expires_at AS expiresAt "
-                + HOLDERS + filter + " AND (ur.user_id,ur.department_id) IN (" + pairs + ") ORDER BY ur.department_id,u.id,r.id", args.toArray());
+                + "0 AS departmentId,'全部成员' AS departmentName,r.id AS roleId,r.name AS roleName,r.code AS roleCode,ur.expires_at AS expiresAt "
+                + HOLDERS + holderFilter(dept, role) + " AND ur.user_id IN (" + AuthDao.placeholders(users.size()) + ") ORDER BY u.id,r.id", args.toArray());
     }
     public List<Map<String,Object>> expiringAssignments(Timestamp deadline, Collection<Long> visible, Long app) {
         var sql = new StringBuilder("SELECT ur.user_id AS userId,u.name AS userName,u.external_id AS externalId,ur.role_id AS roleId,r.name AS roleName,r.code AS roleCode,"
                 + "ur.department_id AS departmentId,d.name AS departmentName,ur.application_id AS applicationId,a.name AS applicationName,"
                 + "ur.expires_at AS expiresAt,ur.granted_by AS grantedBy,ur.granted_at AS grantedAt "
                 + "FROM user_roles ur JOIN users u ON u.id=ur.user_id JOIN roles r ON r.id=ur.role_id "
-                + "JOIN departments d ON d.id=ur.department_id JOIN applications a ON a.id=ur.application_id "
+                + "LEFT JOIN departments d ON d.id=ur.department_id JOIN applications a ON a.id=ur.application_id "
                 + "WHERE ur.expires_at IS NOT NULL AND ur.expires_at<=?");
         var args = new ArrayList<Object>(List.of(deadline));
         if (visible != null) {
@@ -473,8 +473,8 @@ public class RbacDao {
         return db.queryForList(sql.toString(), args.toArray());
     }
     public List<Map<String,Object>> searchRoles(String pattern, Collection<Long> visible) {
-        var sql = new StringBuilder("SELECT r.id,r.name,r.code,r.department_id AS departmentId,d.name AS departmentName,r.application_id AS applicationId,a.name AS applicationName "
-                + "FROM roles r JOIN departments d ON d.id=r.department_id JOIN applications a ON a.id=r.application_id WHERE (r.name LIKE ? OR r.code LIKE ?)");
+        var sql = new StringBuilder("SELECT r.id,r.name,r.code,NULL AS departmentId,NULL AS departmentName,r.application_id AS applicationId,a.name AS applicationName "
+                + "FROM roles r JOIN applications a ON a.id=r.application_id WHERE (r.name LIKE ? OR r.code LIKE ?)");
         var args = new ArrayList<Object>(List.of(pattern, pattern));
         if (visible != null) {
             if (visible.isEmpty()) return List.of();
@@ -498,14 +498,14 @@ public class RbacDao {
         result.put("departments", count("SELECT COUNT(*) FROM departments"));
         result.put("users", count("SELECT COUNT(*) FROM users"));
         result.put("enabledUsers", count("SELECT COUNT(*) FROM users WHERE enabled=TRUE"));
-        result.put("departmentMembers", count("SELECT COUNT(*) FROM memberships WHERE department_id=?", dept));
-        result.put("roles", count("SELECT COUNT(*) FROM roles WHERE department_id=? AND application_id=?", dept, app));
-        result.put("permissions", count("SELECT COUNT(*) FROM permissions WHERE department_id=? AND application_id=?", dept, app));
-        result.put("members", count("SELECT COUNT(DISTINCT user_id) FROM user_roles WHERE department_id=? AND application_id=?", dept, app));
+        result.put("departmentMembers", dept == 0 ? count("SELECT COUNT(*) FROM users") : count("SELECT COUNT(*) FROM memberships WHERE department_id=?", dept));
+        result.put("roles", count("SELECT COUNT(*) FROM roles WHERE application_id=?", app));
+        result.put("permissions", count("SELECT COUNT(*) FROM permissions WHERE application_id=?", app));
+        result.put("members", count("SELECT COUNT(DISTINCT ur.user_id) FROM user_roles ur WHERE ur.application_id=? AND (?=0 OR EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=ur.user_id AND m.department_id=?))", app, dept, dept));
         result.put("activeKeys", activeKeyCount(app));
         result.put("activeContexts", count("SELECT COUNT(*) FROM permission_contexts c JOIN users u ON u.id=c.user_id JOIN applications a ON a.id=c.application_id "
-                + "WHERE c.department_id=? AND c.application_id=? AND c.context_version=u.context_version AND c.department_id=u.active_department_id "
-                + "AND c.expires_at>CURRENT_TIMESTAMP AND u.enabled=TRUE AND a.enabled=TRUE", dept, app));
+                + "WHERE (?=0 OR EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=c.user_id AND m.department_id=?)) AND c.application_id=? AND c.context_version=u.context_version "
+                + "AND c.expires_at>CURRENT_TIMESTAMP AND u.enabled=TRUE AND a.enabled=TRUE", dept, dept, app));
         result.put("auditLast24h", count("SELECT COUNT(*) FROM audit_events WHERE created_at>TIMESTAMPADD(HOUR,-24,CURRENT_TIMESTAMP)"));
         return result;
     }

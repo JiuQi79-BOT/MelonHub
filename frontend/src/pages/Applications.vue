@@ -139,7 +139,7 @@ function exportRows() {
 
 <template>
   <div class="page">
-    <PageHead title="软件接入" description="选中软件，在配置抽屉中维护部门的角色与权限；配好一处后可复制到多个部门。">
+    <PageHead title="软件接入" description="选中软件，维护角色和角色权限，再为成员分配角色。">
       <a-button @click="exportRows"><ExportOutlined />导出列表</a-button>
       <a-button :loading="loading" @click="reload"><ReloadOutlined />刷新</a-button>
       <a-button v-if="hub.canPlatform" type="primary" @click="edit()"><PlusOutlined />接入软件</a-button>
@@ -203,7 +203,7 @@ function exportRows() {
         </a-row>
         <a-form-item label="负责人" name="owner"><a-input v-model:value="form.owner" :maxlength="100" placeholder="团队或联系人" /></a-form-item>
         <a-form-item label="描述" name="description"><a-textarea v-model:value="form.description" :maxlength="500" :rows="3" show-count /></a-form-item>
-        <p v-if="!editing" class="hint">创建后保存 API Key，即可在配置抽屉中设置角色与权限，并复制给多个部门。</p>
+        <p v-if="!editing" class="hint">创建后保存 API Key，即可在配置抽屉中设置角色与权限，并按部门批量分配角色。</p>
       </a-form>
     </a-modal>
 

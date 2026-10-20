@@ -95,61 +95,61 @@ public class AdminController {
     }
 
     // ---- one isolation domain (department x application) ----
-    @GetMapping("/roles") Object roles(@RequestParam long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
+    @GetMapping("/roles") Object roles(@RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
         AdminAccess.readApplication(req, applicationId); return r.roles(departmentId, applicationId);
     }
-    @PostMapping("/roles") Object role(@RequestParam long departmentId, @RequestParam long applicationId, @Valid @RequestBody Requests.Role b, HttpServletRequest req) {
+    @PostMapping("/roles") Object role(@RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId, @Valid @RequestBody Requests.Role b, HttpServletRequest req) {
         return Map.of("id", r.role(b, null, departmentId, applicationId, AdminAccess.writeApplication(req, applicationId).actor()));
     }
-    @PutMapping("/roles/{id}") Object role(@PathVariable long id, @RequestParam long departmentId, @RequestParam long applicationId,
+    @PutMapping("/roles/{id}") Object role(@PathVariable long id, @RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId,
                                            @Valid @RequestBody Requests.Role b, HttpServletRequest req) {
         return Map.of("id", r.role(b, id, departmentId, applicationId, AdminAccess.writeApplication(req, applicationId).actor()));
     }
-    @PatchMapping("/roles/{id}/status") Object roleStatus(@PathVariable long id, @RequestParam long departmentId, @RequestParam long applicationId,
+    @PatchMapping("/roles/{id}/status") Object roleStatus(@PathVariable long id, @RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId,
                                                           @Valid @RequestBody Requests.Enabled b, HttpServletRequest req) {
         r.roleStatus(id, departmentId, applicationId, b.enabled(), AdminAccess.writeApplication(req, applicationId).actor()); return ok();
     }
-    @DeleteMapping("/roles/{id}") Object deleteRole(@PathVariable long id, @RequestParam long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
+    @DeleteMapping("/roles/{id}") Object deleteRole(@PathVariable long id, @RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
         r.deleteRole(id, departmentId, applicationId, AdminAccess.writeApplication(req, applicationId).actor()); return ok();
     }
-    @PutMapping("/roles/{id}/permissions") Object rolePermissions(@PathVariable long id, @RequestParam long departmentId, @RequestParam long applicationId,
+    @PutMapping("/roles/{id}/permissions") Object rolePermissions(@PathVariable long id, @RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId,
                                                                   @Valid @RequestBody Requests.Ids b, HttpServletRequest req) {
         r.rolePermissions(id, departmentId, applicationId, b.ids(), AdminAccess.writeApplication(req, applicationId).actor()); return ok();
     }
-    @GetMapping("/roles/{id}/members") Object roleMembers(@PathVariable long id, @RequestParam long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
+    @GetMapping("/roles/{id}/members") Object roleMembers(@PathVariable long id, @RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
         AdminAccess.readApplication(req, applicationId); return r.roleMembers(id, departmentId, applicationId);
     }
-    @PutMapping("/roles/{id}/members") Object roleMembers(@PathVariable long id, @RequestParam long departmentId, @RequestParam long applicationId,
+    @PutMapping("/roles/{id}/members") Object roleMembers(@PathVariable long id, @RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId,
                                                           @Valid @RequestBody Requests.Ids b, HttpServletRequest req) {
         r.roleMembers(id, departmentId, applicationId, b.ids(), AdminAccess.writeApplication(req, applicationId).actor()); return ok();
     }
-    @GetMapping("/permissions") Object permissions(@RequestParam long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
+    @GetMapping("/permissions") Object permissions(@RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
         AdminAccess.readApplication(req, applicationId); return r.permissions(departmentId, applicationId);
     }
-    @PostMapping("/permissions") Object permission(@RequestParam long departmentId, @RequestParam long applicationId,
+    @PostMapping("/permissions") Object permission(@RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId,
                                                    @Valid @RequestBody Requests.Permission b, HttpServletRequest req) {
         return Map.of("id", r.permission(b, null, departmentId, applicationId, AdminAccess.writeApplication(req, applicationId).actor()));
     }
-    @PutMapping("/permissions/{id}") Object permission(@PathVariable long id, @RequestParam long departmentId, @RequestParam long applicationId,
+    @PutMapping("/permissions/{id}") Object permission(@PathVariable long id, @RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId,
                                                        @Valid @RequestBody Requests.Permission b, HttpServletRequest req) {
         return Map.of("id", r.permission(b, id, departmentId, applicationId, AdminAccess.writeApplication(req, applicationId).actor()));
     }
-    @DeleteMapping("/permissions/{id}") Object deletePermission(@PathVariable long id, @RequestParam long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
+    @DeleteMapping("/permissions/{id}") Object deletePermission(@PathVariable long id, @RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
         r.deletePermission(id, departmentId, applicationId, AdminAccess.writeApplication(req, applicationId).actor()); return ok();
     }
-    @GetMapping("/users/{id}/roles") Object userRoles(@PathVariable long id, @RequestParam long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
+    @GetMapping("/users/{id}/roles") Object userRoles(@PathVariable long id, @RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
         AdminAccess.readApplication(req, applicationId); return r.assignments(id, departmentId, applicationId);
     }
-    @PutMapping("/users/{id}/roles") Object userRoles(@PathVariable long id, @RequestParam long departmentId, @RequestParam long applicationId,
+    @PutMapping("/users/{id}/roles") Object userRoles(@PathVariable long id, @RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId,
                                                       @Valid @RequestBody Requests.UserRoles b, HttpServletRequest req) {
         r.userRoles(id, departmentId, applicationId, b.ids(), b.expiresInDays(), b.expiries(), AdminAccess.writeApplication(req, applicationId).actor()); return ok();
     }
-    @GetMapping("/assignments") Object assignments(@RequestParam long departmentId, @RequestParam long applicationId, @RequestParam(required=false) String keyword,
+    @GetMapping("/assignments") Object assignments(@RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId, @RequestParam(required=false) String keyword,
                                                    @RequestParam(defaultValue="1") int page, @RequestParam(defaultValue="20") int size, HttpServletRequest req) {
         AdminAccess.readApplication(req, applicationId);
         return r.domainAssignments(departmentId, applicationId, keyword, page(page), size(size));
     }
-    @PostMapping("/assignments/batch") Object addUserRoles(@RequestParam long departmentId, @RequestParam long applicationId,
+    @PostMapping("/assignments/batch") Object addUserRoles(@RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId,
                                                            @Valid @RequestBody Requests.BatchUserRoles b, HttpServletRequest req) {
         return r.addUserRoles(departmentId, applicationId, b, AdminAccess.writeApplication(req, applicationId).actor());
     }
@@ -159,7 +159,7 @@ public class AdminController {
     @PostMapping("/simulate") Object simulate(@Valid @RequestBody Requests.Simulation b, HttpServletRequest req) {
         AdminAccess.readApplication(req, b.applicationId()); return r.simulate(b);
     }
-    @GetMapping("/overview") Object overview(@RequestParam long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
+    @GetMapping("/overview") Object overview(@RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
         AdminAccess.readApplication(req, applicationId); return r.overview(departmentId, applicationId);
     }
 

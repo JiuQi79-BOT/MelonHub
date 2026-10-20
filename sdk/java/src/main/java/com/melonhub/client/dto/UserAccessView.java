@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.List;
 
-/** 用户在某部门的授权视图（只读，不创建上下文）。 */
+/** 用户在当前软件的授权视图（只读，不创建上下文）。 */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class UserAccessView {
 

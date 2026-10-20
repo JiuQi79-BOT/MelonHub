@@ -79,21 +79,11 @@ class MelonHubAuthorizerTest {
     }
 
     @Test
-    void normalChecksNeverMoveTheCurrentDepartment() {
+    void departmentSelectionReusesTheApplicationContext() {
         allowChecks();
-        stub.on("POST", "/api/v1/contexts", (ex, body) -> {
-            if (body.contains("\"switchDepartment\":false")) {
-                return StubServer.Response.json(409, "{\"code\":\"DEPARTMENT_MISMATCH\",\"message\":\"用户当前部门为 #1\"}");
-            }
-            int n = issues.incrementAndGet();
-            return StubServer.Response.json(200, "{\"contextToken\":\"tok" + n + "\",\"expiresAt\":\"" + futureExpiry() + "\"}");
-        });
-        assertThatThrownBy(() -> authorizer.hasPermission("u1", 2L, "item:read"))
-                .isInstanceOfSatisfying(DepartmentMismatchException.class, e -> assertThat(e.getStatus()).isEqualTo(409));
-        assertThat(issues.get()).isZero();
-        // Only the explicit call switches; afterwards checks reuse its context.
-        assertThat(authorizer.switchDepartment("u1", 2L)).isEqualTo("tok1");
+        assertThat(authorizer.hasPermission("u1", 1L, "item:read")).isTrue();
         assertThat(authorizer.hasPermission("u1", 2L, "item:read")).isTrue();
+        assertThat(authorizer.switchDepartment("u1", 2L)).isEqualTo("tok1");
         assertThat(issues.get()).isEqualTo(1);
     }
 
@@ -103,10 +93,10 @@ class MelonHubAuthorizerTest {
         authorizer.hasPermission("u1", 1L, "item:read");
         authorizer.hasPermission("u2", 1L, "item:read");
         authorizer.switchDepartment("u1", 2L);
-        assertThat(issues.get()).isEqualTo(3);
+        assertThat(issues.get()).isEqualTo(2);
         authorizer.hasPermission("u1", 1L, "item:read");
         authorizer.hasPermission("u2", 1L, "item:read");
-        assertThat(issues.get()).isEqualTo(4); // u1 的旧部门上下文已在平台失效，需重建；u2 不受影响
+        assertThat(issues.get()).isEqualTo(2); // 部门只管理成员，不结束软件上下文
     }
 
     @Test
@@ -158,12 +148,12 @@ class MelonHubAuthorizerTest {
         authorizer.token("u1", 1L);
         authorizer.token("u2", 1L);
         authorizer.token("u1", 2L);
-        assertThat(issues.get()).isEqualTo(5);
+        assertThat(issues.get()).isEqualTo(4);
         authorizer.handleWebhookEvent("application.disabled", mapper.createObjectNode());
         authorizer.token("u1", 1L);
         authorizer.token("u2", 1L);
         authorizer.token("u1", 2L);
-        assertThat(issues.get()).isEqualTo(8);
+        assertThat(issues.get()).isEqualTo(6);
     }
 
     @Test

@@ -61,15 +61,16 @@ public class MelonHubClient {
 
     /**
      * 创建上下文；activeRoleIds 传 null 表示激活全部已分配启用角色，空列表表示无激活角色。
-     * 与平台默认行为一致：部门与用户当前部门不同时会切换部门。
+     * 上下文按当前客户端软件创建，部门参数仅供兼容。
      */
+    public ContextView issueContext(String externalId, List<Long> activeRoleIds) { return issueContext(externalId, 0, activeRoleIds, false); }
+
     public ContextView issueContext(String externalId, long departmentId, List<Long> activeRoleIds) {
         return issueContext(externalId, departmentId, activeRoleIds, true);
     }
 
     /**
-     * 创建上下文。switchDepartment=false 时只在用户当前部门（或尚无当前部门时）创建，
-     * 当前部门不同则抛 {@link DepartmentMismatchException}，不会让其他部门的上下文失效。
+     * 创建当前软件的角色上下文；departmentId/switchDepartment 仅为旧版本兼容字段。
      */
     public ContextView issueContext(String externalId, long departmentId, List<Long> activeRoleIds, boolean switchDepartment) {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -102,7 +103,7 @@ public class MelonHubClient {
         send("DELETE", "/api/v1/contexts", contextToken, null, JsonNode.class);
     }
 
-    /** 只读查询用户在某部门的授权，不创建上下文。 */
+    /** 只读查询用户在当前软件的授权，不创建上下文。 */
     public UserAccessView userAccess(String externalId, long departmentId) {
         String query = "?externalId=" + encode(externalId) + "&departmentId=" + departmentId;
         return send("GET", "/api/v1/users/access" + query, null, null, UserAccessView.class);

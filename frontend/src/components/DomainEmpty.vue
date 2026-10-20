@@ -6,8 +6,8 @@ const hub = useHub()
 
 <template>
   <div class="panel">
-    <EmptyState :title="hub.departments.length ? '还没有可管理的软件' : '还没有部门'"
-                description="先创建部门并接入软件，再在页面顶部选择部门和软件。">
+    <EmptyState title="还没有可管理的软件"
+                description="接入软件后即可配置角色和权限。">
       <router-link to="/departments"><a-button>管理部门</a-button></router-link>
       <router-link to="/applications"><a-button type="primary">接入软件</a-button></router-link>
     </EmptyState>

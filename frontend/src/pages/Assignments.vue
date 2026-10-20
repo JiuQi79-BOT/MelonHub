@@ -89,8 +89,8 @@ async function save() {
       <a-card v-if="tab === 'members'" :bordered="false">
         <div class="toolbar">
           <a-input-search v-model:value="keyword" placeholder="姓名、外部标识或邮箱" allow-clear class="toolbar-search" @search="table.load(true)" />
-          <span class="muted">本部门共 {{ table.total.value }} 名成员</span>
-          <a @click="navigate('members')">管理本部门成员</a>
+          <span class="muted">{{ scope.departmentId ? '本部门' : '全部' }}共 {{ table.total.value }} 名成员</span>
+          <a @click="navigate('members')">管理成员</a>
         </div>
         <div v-if="scope.canDomain" class="toolbar">
           <a-button type="primary" :disabled="!selected.length" @click="bulkOpen = true">批量分配软件角色</a-button>
@@ -99,7 +99,7 @@ async function save() {
           <a v-if="!roles.rows.value.length" @click="navigate('roles')">先创建角色并配置权限</a>
         </div>
         <a-table :columns="columns" :data-source="table.rows.value" :row-selection="rowSelection" row-key="id" size="small" :loading="table.loading.value" :pagination="table.pagination.value" :scroll="{ x: 900 }" @change="table.onChange">
-          <template #emptyText><a-empty :image-style="{ height: '60px' }" :description="keyword.trim() ? '没有匹配的成员' : '该部门还没有成员，请先添加部门成员。'"><a-button v-if="!keyword.trim()" @click="navigate('members')">管理本部门成员</a-button></a-empty></template>
+          <template #emptyText><a-empty :image-style="{ height: '60px' }" :description="keyword.trim() ? '没有匹配的成员' : '当前没有成员，请先添加用户。'"><a-button v-if="!keyword.trim()" @click="navigate('members')">管理成员</a-button></a-empty></template>
           <template #bodyCell="{ column, record }">
             <template v-if="column.key === 'externalId'"><code>{{ record.externalId }}</code></template>
             <template v-else-if="column.key === 'enabled'"><a-badge :status="record.enabled ? 'success' : 'default'" :text="record.enabled ? '启用' : '停用'" /></template>

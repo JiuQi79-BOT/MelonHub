@@ -94,13 +94,13 @@ const columns: TableColumnsType<Member> = [
         <a-button type="primary" :disabled="!ready || !dirty" :loading="saving" @click="save">保存</a-button>
       </a-space>
     </template>
-    <p class="hint">{{ hub.departmentName(departmentId) }} × {{ hub.applicationName(applicationId) }}。只能添加该部门的成员，保存后变动用户的现有上下文失效。</p>
+    <p class="hint">{{ hub.applicationName(applicationId) }}。角色成员来自整个软件，部门仅用于筛选待添加用户，保存后变动用户的现有上下文失效。</p>
     <p class="hint">这里按一个角色维护成员。给多人分配多个软件的角色，可使用
       <a v-if="embedded" @click="open = false; emit('navigate', 'assignments')">成员授权</a>
       <router-link v-else to="/assignments" @click="open = false">用户授权</router-link>。
     </p>
     <div v-if="canWrite" class="toolbar">
-      <UserPicker v-model:value="adding" :disabled="!ready" multiple @picks="(users: User[]) => (picked = users)" :department-id="departmentId" :exclude="members.map(m => m.id)" placeholder="搜索并选择要加入的部门成员" class="grow" />
+      <UserPicker v-model:value="adding" :disabled="!ready" multiple @picks="(users: User[]) => (picked = users)" :department-id="departmentId" :exclude="members.map(m => m.id)" placeholder="搜索并选择要加入的用户" class="grow" />
       <a-button :disabled="!ready || !adding.length" @click="add">添加</a-button>
     </div>
     <a-table :columns="columns" :data-source="members" row-key="id" size="small" :loading="loading" :pagination="{ size: 'small', pageSize: 50, hideOnSinglePage: true }">

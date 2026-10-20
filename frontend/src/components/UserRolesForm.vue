@@ -32,7 +32,7 @@ const saving = ref(false)
 
 const roleMap = computed(() => new Map(props.roles.map(r => [r.id, r])))
 const roleOptions = computed(() => props.roles.map(r => ({ value: r.id, label: `${r.name}（${r.code}）${r.enabled ? '' : ' · 已停用'}` })))
-const scope = computed(() => `${hub.departmentName(props.departmentId)} × ${hub.applicationName(props.applicationId)}`)
+const scope = computed(() => hub.applicationName(props.applicationId))
 
 function fill(days: number | null) {
   const at = days ? dayjs().add(days, 'day').second(0).millisecond(0) : null
@@ -63,8 +63,8 @@ defineExpose({ submit, saving })
 </script>
 
 <template>
-  <p class="muted">保存后替换该用户在“{{ scope }}”中的全部角色，其在此范围内的现有权限上下文立即失效。其他部门或软件的授权不受影响。</p>
-  <a-empty v-if="!roleOptions.length" description="该部门在此软件中还没有角色，请在配置抽屉的「角色」中创建" :image-style="{ height: '40px' }" />
+  <p class="muted">保存后替换该用户在“{{ scope }}”中的全部角色，该软件的现有权限上下文立即失效。其他软件的授权不受影响。</p>
+  <a-empty v-if="!roleOptions.length" description="该软件还没有角色，请在配置抽屉的「角色」中创建" :image-style="{ height: '40px' }" />
   <template v-else>
     <a-space class="block-gap">
       <span class="muted">已选 {{ chosen.length }} 个角色</span>

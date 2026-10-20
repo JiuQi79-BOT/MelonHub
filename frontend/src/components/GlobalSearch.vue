@@ -30,7 +30,7 @@ function search(value: string) {
       if (r.users.length) groups.push({ label: '用户', options: r.users.map(u => ({ value: `user:${u.id}`, label: `${u.name}（${u.externalId}）${u.enabled ? '' : ' · 已停用'}` })) })
       if (r.departments.length) groups.push({ label: '部门', options: r.departments.map(d => ({ value: `department:${d.id}`, label: `${d.name}（${d.code}）` })) })
       if (r.applications.length) groups.push({ label: '软件', options: r.applications.map(a => ({ value: `application:${a.id}`, label: `${a.name}（${a.code}）${a.enabled ? '' : ' · 已停用'}` })) })
-      if (r.roles.length) groups.push({ label: '角色', options: r.roles.map(x => ({ value: `role:${x.id}:${x.departmentId}:${x.applicationId}`, label: `${x.name} · ${x.departmentName} × ${x.applicationName}` })) })
+      if (r.roles.length) groups.push({ label: '角色', options: r.roles.map(x => ({ value: `role:${x.id}:0:${x.applicationId}`, label: `${x.name} · ${x.applicationName}` })) })
       options.value = groups
     } catch {
       if (current === sequence) options.value = []

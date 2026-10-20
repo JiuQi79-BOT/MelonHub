@@ -69,7 +69,7 @@ const createableApps = computed(() => hub.applicationOptions.filter(o => hub.can
             <div class="cell-main">{{ record.name }}</div>
             <div v-if="record.summary" class="cell-sub">{{ record.summary }}</div>
           </template>
-          <template v-else-if="column.key === 'scope'">{{ record.applicationName }}<span class="muted"> × </span>{{ record.departmentName ?? '全部部门' }}</template>
+          <template v-else-if="column.key === 'scope'">{{ record.applicationName }}<span class="muted"> · </span>{{ record.departmentName ?? '全部用户' }}</template>
           <template v-else-if="column.key === 'status'"><a-tag :color="reviewStatus[record.status]?.color">{{ reviewStatus[record.status]?.text ?? record.status }}</a-tag></template>
           <template v-else-if="column.key === 'pending'"><span :class="{ 'warn-text': record.status === 'OPEN' && record.pending }">{{ record.pending }}</span></template>
           <template v-else-if="column.key === 'revoked'"><span :class="{ 'warn-text': record.revoked }">{{ record.revoked }}</span></template>
@@ -88,8 +88,8 @@ const createableApps = computed(() => hub.applicationOptions.filter(o => hub.can
       <a-form ref="formRef" layout="vertical" :model="form" :rules="rules">
         <a-form-item label="复核名称" name="name"><a-input v-model:value="form.name" :maxlength="100" placeholder="例如：2026Q4 季度复核" /></a-form-item>
         <a-form-item label="软件" name="applicationId"><a-select v-model:value="form.applicationId" :options="createableApps" placeholder="选择软件" show-search option-filter-prop="label" /></a-form-item>
-        <a-form-item label="部门" name="departmentId" extra="不选则覆盖该软件在全部部门的授权">
-          <a-select v-model:value="form.departmentId" :options="hub.departmentOptions" placeholder="全部部门" allow-clear show-search option-filter-prop="label" />
+        <a-form-item label="部门" name="departmentId" extra="不选则覆盖该软件全部用户的授权（含无部门用户）">
+          <a-select v-model:value="form.departmentId" :options="hub.departmentOptions" placeholder="全部用户" allow-clear show-search option-filter-prop="label" />
         </a-form-item>
         <a-form-item label="截止天数" name="dueDays" extra="留空则不设截止时间">
           <a-input-number v-model:value="form.dueDays" :min="1" :max="365" :precision="0" placeholder="不设截止" class="grow" />

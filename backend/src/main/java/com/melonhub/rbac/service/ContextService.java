@@ -16,7 +16,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,22 +62,10 @@ public class ContextService {
         long userId = ((Number) user.get("id")).longValue();
         if (!Boolean.TRUE.equals(user.get("enabled"))) throw ApiException.forbidden("用户已停用");
         if (!dao.applicationEnabled(app)) throw ApiException.forbidden("软件已停用");
-        if (!dao.member(userId, input.departmentId())) throw ApiException.forbidden("用户不属于目标部门");
         var assigned = dao.assignedRoles(userId, input.departmentId(), app);
         List<Long> active = input.activeRoleIds() == null ? assigned : new ArrayList<>(new LinkedHashSet<>(input.activeRoleIds()));
-        if (!new HashSet<>(assigned).containsAll(active)) throw ApiException.forbidden("激活角色必须为用户在当前隔离域内已分配的角色");
+        if (!new HashSet<>(assigned).containsAll(active)) throw ApiException.forbidden("激活角色必须为用户在当前软件内已分配的角色");
         long version = ((Number) user.get("context_version")).longValue();
-        Object current = user.get("active_department_id");
-        // A user has one active department. Switching it invalidates contexts in every application.
-        boolean switched = current == null || ((Number) current).longValue() != input.departmentId();
-        if (switched && current != null && Boolean.FALSE.equals(input.switchDepartment()))
-            throw new ApiException(HttpStatus.CONFLICT, "DEPARTMENT_MISMATCH",
-                    "用户当前部门为 #" + current + "，在部门 #" + input.departmentId() + " 创建上下文需要显式切换部门");
-        if (switched) {
-            version++;
-            dao.switchDepartment(userId, input.departmentId(), version);
-            cache.touchUser(userId);
-        }
         dao.clearStaleContexts(userId, version);
         String token = Credentials.token();
         String hash = Credentials.hash(token);
@@ -87,7 +74,7 @@ public class ContextService {
         dao.create(hash, userId, input.departmentId(), app, version, expires);
         dao.activateRoles(hash, active);
         rbac.audit(actor, "CONTEXT_ISSUED", input.externalId(), input.departmentId(), app,
-                "激活角色 " + active.size() + " 个" + (switched ? "，切换当前部门" : ""));
+                "激活角色 " + active.size() + " 个");
         var meta = new Meta(String.valueOf(userId), String.valueOf(input.departmentId()), String.valueOf(app), version, expires.getEpochSecond());
         var access = new Access(meta, compute(hash, meta));
         cache.putContextAfterCommit(hash, write(meta), CONTEXT_SECONDS);

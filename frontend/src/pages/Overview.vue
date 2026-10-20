@@ -64,12 +64,12 @@ const domainStats = computed(() => [
   { label: '角色', value: overview.value?.roles, to: '/roles' },
   { label: '权限', value: overview.value?.permissions, to: '/permissions' },
   { label: '已授权用户', value: overview.value?.members, to: '/assignments' },
-  { label: '部门成员', value: overview.value?.departmentMembers, to: '/assignments' },
+  { label: hub.departmentId ? '部门成员' : '全部用户', value: overview.value?.departmentMembers, to: '/assignments' },
   { label: '有效 API Key', value: overview.value?.activeKeys, to: '/applications' },
   { label: '有效上下文', value: overview.value?.activeContexts, to: '/simulate' },
 ])
 const steps = [
-  { title: '创建部门', to: '/departments' },
+  { title: '管理部门（可选）', to: '/departments' },
   { title: '接入软件并保存 API Key', to: '/applications' },
   { title: '在软件配置中定义权限和角色', to: '/applications' },
   { title: '在部门配置中给成员分配角色', to: '/departments' },

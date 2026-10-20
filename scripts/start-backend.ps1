@@ -4,6 +4,4 @@ Set-Location -LiteralPath $script:MelonRoot
 Import-MelonRuntimeConfiguration (Read-MelonConfiguration)
 $jarPath = Join-Path $script:MelonRoot 'backend/target/rbac-service-1.0.0.jar'
 if (-not (Test-Path $jarPath)) { throw 'Run mvn -f backend/pom.xml package first.' }
-Start-MelonDatabase
-Start-MelonRedis
 & (Join-Path $PSScriptRoot 'run-service.ps1') -Service backend -Port 8080

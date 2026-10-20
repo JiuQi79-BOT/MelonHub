@@ -58,17 +58,17 @@ class PermissionCacheIntegrationTest {
         a1 = ((Number) app.get("id")).longValue();
         key = (String) app.get("apiKey");
         u1 = r.user(new Requests.User("Cache User", external, "", List.of(d1, d2)), null, ACTOR);
-        long p1 = r.permission(new Requests.Permission("Read", "item:read", "item", "read"), null, d1, a1, ACTOR);
-        long p2 = r.permission(new Requests.Permission("Write", "item:write", "item", "write"), null, d1, a1, ACTOR);
-        long pOther = r.permission(new Requests.Permission("Read", "item:read", "item", "read"), null, d2, a1, ACTOR);
         long r1 = r.role(new Requests.Role("Reader", "reader", ""), null, d1, a1, ACTOR);
         r2 = r.role(new Requests.Role("Writer", "writer", ""), null, d1, a1, ACTOR);
-        long rOther = r.role(new Requests.Role("Reader", "reader", ""), null, d2, a1, ACTOR);
+        long rOther = r.role(new Requests.Role("Reader", "reader-other", ""), null, d2, a1, ACTOR);
+        long p1 = r.permission(new Requests.Permission(r1, "Read", "item:read", "item", "read"), null, d1, a1, ACTOR);
+        long p2 = r.permission(new Requests.Permission(r2, "Write", "item:write", "item", "write"), null, d1, a1, ACTOR);
+        long pOther = r.permission(new Requests.Permission(rOther, "Read", "item:read", "item", "read"), null, d2, a1, ACTOR);
         r.rolePermissions(r1, d1, a1, List.of(p1), ACTOR);
         r.rolePermissions(r2, d1, a1, List.of(p2), ACTOR);
         r.rolePermissions(rOther, d2, a1, List.of(pOther), ACTOR);
-        r.userRoles(u1, d1, a1, List.of(r1, r2), ACTOR);
-        r.userRoles(u1, d2, a1, List.of(rOther), ACTOR);
+        r.userRoles(u1, d1, a1, List.of(r1, r2, rOther), ACTOR);
+
     }
 
     @AfterEach void cleanup() {
@@ -97,13 +97,16 @@ class PermissionCacheIntegrationTest {
         assertThat(c.check(a1, token, List.of("item:read")).get("allowed")).isEqualTo(true);
     }
 
-    @Test void departmentSwitchAndUserDisableApplyDespiteCachedDecisions() {
+    @Test void departmentFilterPreservesCachedContextsAndRoleChangesInvalidateAcrossFilters() {
         String token = issue(d1);
         c.effective(a1, token);
         c.effective(a1, token);
         String next = issue(d2);
-        assertThatThrownBy(() -> c.effective(a1, token)).isInstanceOf(ApiException.class);
-        assertThat(c.effective(a1, next).get("permissions")).isEqualTo(List.of("item:read"));
+        assertThat(c.effective(a1, token).get("permissions")).isEqualTo(List.of("item:read", "item:write"));
+        assertThat(c.effective(a1, next).get("permissions")).isEqualTo(List.of("item:read", "item:write"));
+        r.rolePermissions(r2, d1, a1, List.of(), ACTOR);
+        assertThat(c.check(a1, next, List.of("item:write")).get("allowed")).isEqualTo(false);
+        assertThat(c.check(a1, token, List.of("item:write")).get("allowed")).isEqualTo(false);
         double hits = count("context", "hit");
         c.effective(a1, next);
         c.effective(a1, next);

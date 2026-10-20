@@ -1,7 +1,0 @@
-spring:
-  datasource:
-    url: jdbc:mysql://${LOCAL_DB_HOST}:${LOCAL_DB_PORT:3306}/${LOCAL_DB_NAME}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=SERVER&connectTimeout=5000&socketTimeout=30000&sslMode=REQUIRED
-    username: ${LOCAL_DB_USERNAME}
-    password: ${LOCAL_DB_PASSWORD}
-melonhub:
-  seed-demo: false

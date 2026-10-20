@@ -80,7 +80,7 @@ async function save() {
           </div>
           <a-checkbox-group v-model:value="selected[id]" :disabled="saving || loading" class="check-list"
                             :options="(roles[id] ?? []).map(r => ({ value: r.id, label: `${r.name}（${r.code}）${r.enabled ? '' : ' · 已停用'}` }))" />
-          <p v-if="!loading && !roles[id]?.length" class="muted">该部门在此软件下还没有角色，请先在配置抽屉的「角色」中添加或复制配置。</p>
+          <p v-if="!loading && !roles[id]?.length" class="muted">该软件还没有角色，请先在「角色」中创建。</p>
         </section>
       </a-spin>
       <a-form-item label="新增分配的有效天数" extra="留空为永久，不改变已有有效分配的期限。">

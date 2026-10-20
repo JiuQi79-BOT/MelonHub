@@ -2,12 +2,11 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Modal, message, type FormInstance, type TableColumnsType } from 'ant-design-vue'
-import { CopyOutlined, DownOutlined, ExportOutlined, ImportOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { DownOutlined, ExportOutlined, ImportOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { errorText, get, send } from '../api'
 import { attempt, useList } from '../composables'
 import { fmt } from '../labels'
 import { downloadCsv } from '../csv'
-import { useHub } from '../store'
 import { useAuthorizationScope } from '../authorizationScope'
 import type { ManifestImportResult, Permission, PermissionManifest, Role } from '../types'
 import PageHead from '../components/PageHead.vue'
@@ -19,7 +18,6 @@ import PermissionEditor from '../components/PermissionEditor.vue'
 const scope = useAuthorizationScope()
 const props = defineProps<{ embedded?: boolean }>()
 const emit = defineEmits<{ navigate: [tab: string] }>()
-const hub = useHub()
 const router = useRouter()
 function navigate(tab: string) { if (props.embedded) emit('navigate', tab); else router.push('/' + tab) }
 const roles = useList<Role>(() => get<Role[]>('/admin/roles', scope.domainQuery))
@@ -75,7 +73,7 @@ async function save() {
 const grantOpen = ref(false), grantRole = ref<Role | null>(null), grantKeys = ref<string[]>([]), granting = ref(false)
 const permissionOpen = ref(false)
 async function permissionCreated(id: number) { await permissions.load(); grantKeys.value.push(String(id)) }
-const transferData = computed(() => permissions.rows.value.map(p => ({ key: String(p.id), title: p.code, description: p.name })))
+const transferData = computed(() => permissions.rows.value.filter(p => p.roleId === grantRole.value?.id).map(p => ({ key: String(p.id), title: p.code, description: p.name })))
 function grant(row: Role) { grantRole.value = row; grantKeys.value = row.permissionIds.map(String); grantOpen.value = true }
 async function saveGrant(assignMembers = false) {
   const ok = await attempt(granting, () => send('PUT', `/admin/roles/${grantRole.value!.id}/permissions`, { ids: grantKeys.value.map(Number) }, scope.domainQuery), '角色权限已更新')
@@ -119,25 +117,23 @@ const membersOpen = ref(false), membersRole = ref<Role>()
 function showMembers(row: Role) { membersRole.value = row; membersOpen.value = true }
 function exportRows() {
   const codes = new Map(permissions.rows.value.map(p => [p.id, p.code]))
-  downloadCsv('roles', ['部门', '软件', '角色名称', '编码', '描述', '状态', '权限', '成员数'],
-    rows.value.map(r => [scope.department?.name, scope.application?.name, r.name, r.code, r.description, r.enabled ? '启用' : '停用', r.permissionIds.map(id => codes.get(id)).join('、'), r.memberCount]))
+  downloadCsv('roles', ['软件', '角色名称', '编码', '描述', '状态', '权限', '成员数'],
+    rows.value.map(r => [scope.application?.name, r.name, r.code, r.description, r.enabled ? '启用' : '停用', r.permissionIds.map(id => codes.get(id)).join('、'), r.memberCount]))
 }
 
 const exporting = ref(false)
-async function exportManifest(allDepartments: boolean) {
+async function exportManifest() {
   exporting.value = true
   try {
-    const department = scope.department
-    const query = allDepartments ? { applicationId: scope.applicationId } : { applicationId: scope.applicationId, departmentId: scope.departmentId }
+    const query = { applicationId: scope.applicationId }
     const manifest = await get<PermissionManifest>('/admin/manifest', query)
     const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json;charset=utf-8' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
-    const filenameScope = allDepartments ? 'all' : department?.code ?? String(scope.departmentId)
-    link.download = `manifest-${manifest.application.code}-${filenameScope}-${new Date().toISOString().slice(0, 10)}.json`
+    link.download = `manifest-${manifest.application.code}-${new Date().toISOString().slice(0, 10)}.json`
     link.click()
     URL.revokeObjectURL(link.href)
-    message.success(allDepartments ? `已导出 ${manifest.departments.length} 个部门的清单` : `已导出「${department?.name ?? ''}」的清单`)
+    message.success('软件角色权限清单已导出')
   } catch (e) {
     message.error(errorText(e))
   } finally {
@@ -163,33 +159,14 @@ async function importManifest() {
   importOpen.value = false
   Modal.success({
     title: '权限清单已导入',
-    content: `新建权限 ${result.permissionsCreated} 个、更新权限 ${result.permissionsUpdated} 个；新建角色 ${result.rolesCreated} 个、更新角色 ${result.rolesUpdated} 个。同编码按编码合并，不会删除任何已有配置。`,
+    content: `新建权限 ${result.permissionsCreated} 个、更新权限 ${result.permissionsUpdated} 个；新建角色 ${result.rolesCreated} 个、更新角色 ${result.rolesUpdated} 个。角色按软件内编码匹配，权限按角色内编码匹配，不会删除任何已有配置。`,
   })
   reload()
 }
 
-const copyOpen = ref(false), copySource = ref<number>(), copying = ref(false)
-const copySources = computed(() => hub.departmentOptions.filter(o => o.value !== scope.departmentId))
-function openCopy() { copySource.value = undefined; copyOpen.value = true }
 function headAction(key: string) {
-  if (key === 'export') exportManifest(false)
-  else if (key === 'export-all') exportManifest(true)
+  if (key === 'export') exportManifest()
   else if (key === 'import') openImport()
-  else if (key === 'copy') openCopy()
-}
-async function copy() {
-  if (!copySource.value) { message.warning('请选择源部门'); return }
-  let result: Record<string, number> = {}
-  const ok = await attempt(copying, async () => {
-    result = await send<Record<string, number>>('POST', '/admin/domains/copy', { applicationId: scope.applicationId, sourceDepartmentId: copySource.value, targetDepartmentId: scope.departmentId })
-  })
-  if (!ok) return
-  copyOpen.value = false
-  Modal.success({
-    title: '授权配置已复制',
-    content: `新建权限 ${result.permissionsCreated} 个、角色 ${result.rolesCreated} 个；同编码已存在而跳过权限 ${result.permissionsSkipped} 个、角色 ${result.rolesSkipped} 个。`,
-  })
-  reload()
 }
 </script>
 
@@ -200,13 +177,11 @@ async function copy() {
       <a-button :disabled="!scope.hasDomain" @click="exportRows"><ExportOutlined />导出列表</a-button>
       <a-button :disabled="!scope.hasDomain" @click="reload"><ReloadOutlined />刷新</a-button>
       <a-dropdown :disabled="!scope.hasDomain" :trigger="['click']" placement="bottomRight">
-        <a-button :loading="exporting">清单与复制 <DownOutlined /></a-button>
+        <a-button :loading="exporting">权限清单 <DownOutlined /></a-button>
         <template #overlay>
           <a-menu @click="(e: { key: string }) => headAction(e.key)">
-            <a-menu-item key="export"><ExportOutlined /> 导出本部门清单</a-menu-item>
-            <a-menu-item key="export-all"><ExportOutlined /> 导出全部部门清单</a-menu-item>
+            <a-menu-item key="export"><ExportOutlined /> 导出软件清单</a-menu-item>
             <a-menu-item v-if="scope.canDomain" key="import"><ImportOutlined /> 导入清单</a-menu-item>
-            <a-menu-item v-if="scope.canDomain" key="copy" :disabled="copySources.length === 0"><CopyOutlined /> 从其他部门复制</a-menu-item>
           </a-menu>
         </template>
       </a-dropdown>
@@ -224,7 +199,7 @@ async function copy() {
                  :pagination="{ size: 'small', defaultPageSize: 20, showSizeChanger: true, showTotal: (t: number) => `共 ${t} 条` }">
           <template #emptyText>
             <a-empty :image-style="{ height: '60px' }"
-                     :description="keyword || status ? '没有匹配的角色' : '还没有角色。新建后可直接添加权限，再分配给部门成员。'">
+                     :description="keyword || status ? '没有匹配的角色' : '还没有角色。新建后可直接添加权限，再分配给用户。'">
               <a-space v-if="!keyword && !status">
                 <a-button v-if="scope.canDomain" type="primary" @click="edit()">新建角色</a-button>
               </a-space>
@@ -268,7 +243,7 @@ async function copy() {
     <a-modal v-model:open="open" :title="editing ? '编辑角色' : '新建角色'" :confirm-loading="saving" ok-text="保存" destroy-on-close :mask-closable="false" @ok="save">
       <a-form ref="formRef" layout="vertical" :model="form" :rules="rules">
         <a-form-item label="角色名称" name="name"><a-input v-model:value="form.name" :maxlength="100" placeholder="例如：项目经理" /></a-form-item>
-        <a-form-item label="编码" name="code" extra="同一部门、同一软件内唯一，区分大小写"><a-input v-model:value="form.code" :maxlength="100" placeholder="例如：project-manager" /></a-form-item>
+        <a-form-item label="编码" name="code" extra="同一软件内唯一，区分大小写"><a-input v-model:value="form.code" :maxlength="100" placeholder="例如：project-manager" /></a-form-item>
         <a-form-item label="描述" name="description"><a-textarea v-model:value="form.description" :maxlength="500" :rows="3" show-count /></a-form-item>
       </a-form>
     </a-modal>
@@ -294,20 +269,11 @@ async function copy() {
       </a-transfer>
     </a-modal>
 
-    <PermissionEditor v-model:open="permissionOpen" @saved="permissionCreated" />
-
-    <a-modal v-model:open="copyOpen" title="从其他部门复制授权配置" :confirm-loading="copying" ok-text="复制" destroy-on-close @ok="copy">
-      <p class="hint">复制到 {{ scope.department?.name }} × {{ scope.application?.name }}。同编码的权限复用、角色跳过，不复制用户的角色分配。</p>
-      <a-form layout="vertical">
-        <a-form-item label="源部门" required>
-          <a-select v-model:value="copySource" :options="copySources" placeholder="选择源部门" show-search option-filter-prop="label" />
-        </a-form-item>
-      </a-form>
-    </a-modal>
+    <PermissionEditor v-model:open="permissionOpen" :role-id="grantRole?.id" @saved="permissionCreated" />
 
     <a-modal v-model:open="importOpen" title="导入权限清单" :confirm-loading="importing" ok-text="导入" width="720px" destroy-on-close :mask-closable="false" @ok="importManifest">
       <p class="hint">导入到 {{ scope.application?.name }}。粘贴导出的清单 JSON，按编码创建或更新权限与角色，清单里没有的配置保持不变。</p>
-      <a-textarea v-model:value="importText" :rows="12" placeholder='{"version":1,"application":{"code":"oa","name":"OA"},"departments":[{"code":"rd","name":"研发","permissions":[],"roles":[]}]}' class="import-json" />
+      <a-textarea v-model:value="importText" :rows="12" placeholder='{"version":2,"permissions":[],"roles":[]}' class="import-json" />
     </a-modal>
 
     <RoleMembersDrawer v-model:open="membersOpen" :role="membersRole" :department-id="scope.departmentId" :application-id="scope.applicationId" :embedded="embedded" @changed="roles.load()" @navigate="navigate" />

@@ -32,9 +32,8 @@ MelonHubClient client = MelonHubClient.builder("http://127.0.0.1:8080", "mh_xxx"
         .build();
 
 // 创建上下文（activeRoleIds 传 null = 全部已分配启用角色）。
-// 第四个参数 false 表示不切换部门：用户当前部门不是 1 时抛 DepartmentMismatchException。
-ContextView ctx = client.issueContext("u1001", 1L, null, false);
-// 三个参数的重载与平台默认一致，部门不同时会切换部门，使该用户在其他部门的上下文全部失效。
+ContextView ctx = client.issueContext("u1001", null);
+// 旧含 departmentId/switchDepartment 的重载继续兼容，部门不影响授权。
 
 // 校验权限
 CheckResult result = client.check(ctx.getContextToken(), List.of("item:read", "item:write"));
@@ -69,17 +68,15 @@ melonhub:
 public List<Item> list() { ... }
 ```
 
-缺少身份头返回 401 `{"code":"UNAUTHORIZED"}`，无权限返回 403 `{"code":"FORBIDDEN"}`，用户当前部门不是请求头中的部门返回 409 `{"code":"DEPARTMENT_MISMATCH"}`（由业务系统引导用户显式切换部门）。
+缺少用户身份头返回 401，部门头可省略；无权限返回 403。软件由配置的 API Key 确定。
 
 也可以注入 `MelonHubAuthorizer` 自行判断：
 
 ```java
-boolean ok = authorizer.hasPermission("u1001", 1L, "item:write");
-// 用户在界面上主动切换部门时：
-authorizer.switchDepartment("u1001", 2L);
+boolean ok = authorizer.hasPermission("u1001", "item:write");
 ```
 
-`hasPermission` 与 `token` 只在用户的当前部门内创建上下文，不会切换部门；用户已在其他部门时抛 `DepartmentMismatchException`。只有 `switchDepartment` 会切换部门，并清理该用户的本地上下文缓存。
+`hasPermission` 与 `token` 按用户和当前客户端软件复用上下文。旧含部门参数的重载与 `switchDepartment` 为兼容入口，不产生部门隔离，也不撤销其他软件上下文。
 
 ## Webhook 验签
 
@@ -99,13 +96,13 @@ authorizer.handleWebhookEvent(event.path("type").asText(), event.path("data"));
 | 场景 | 行为 |
 | --- | --- |
 | 429 / 503（带 `Retry-After` 秒数头） | `MelonHubClient` 内部按秒退避重试，默认最多 2 次；耗尽后抛 `MelonHubApiException` |
-| 401 且 `code=CONTEXT_INVALID`（失效/过期/跨软件） | 抛 `ContextInvalidException`；`MelonHubAuthorizer.hasPermission` 自动在同一部门重建上下文重试一次 |
-| 409 且 `code=DEPARTMENT_MISMATCH` | 抛 `DepartmentMismatchException`（`MelonHubApiException` 子类）；`hasPermission` 不吞掉它，也不会把部门切回来 |
+| 401 且 `code=CONTEXT_INVALID`（失效/过期/跨软件） | 抛 `ContextInvalidException`；`MelonHubAuthorizer.hasPermission` 自动在该软件重建上下文重试一次 |
+| 历史服务返回 DEPARTMENT_MISMATCH | SDK 保留异常类型兼容；V6 服务不再因部门不同返回该错误 |
 | 其他 4xx / 5xx | 抛 `MelonHubApiException`（含 status/code/message/requestId） |
 | 网络中断、超时 | 抛 `MelonHubException`（无状态码）；单次请求超时覆盖响应头和完整响应体，收到头后响应体停滞也会结束请求 |
 | `hasPermission` 遇 5xx / 网络故障 | **fail-closed**：返回 false 并记 SLF4J warn |
 | 上下文缓存 | 按 (externalId, departmentId) 内存缓存，距过期 60 秒内视为过期；可 `evict` / `evictAll` / Webhook 事件清理 |
 
-Webhook 按 `externalId`、`departmentId` 清理对应缓存；只有部门时清理该部门的全部用户，两者都没有时清理当前客户端的全部缓存。角色启停、删除、权限编码修改或删除以及强制下线均会通知。无 Spring MVC 或 Servlet 的 Spring Boot 应用只装配客户端和授权器。
+Webhook 按 `externalId` 清理当前软件的用户缓存；没有 externalId 时清理当前客户端软件的全部缓存，部门不限制失效范围。角色启停、删除、权限编码修改或删除以及强制下线均会通知。无 Spring MVC 或 Servlet 的 Spring Boot 应用只装配客户端和授权器。
 
 注意：平台不撤回已执行的外部业务操作；业务侧应对关键操作在执行为止前调用 `check`，而不是只依赖缓存结果。

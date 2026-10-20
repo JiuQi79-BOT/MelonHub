@@ -31,6 +31,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -87,10 +88,10 @@ class GovernanceIntegrationTest {
         key1 = (String) app.get("apiKey");
         u1 = r.user(new Requests.User("GovUser", external, "", List.of(d1, d2)), null, ACTOR);
         u2 = r.user(new Requests.User("GovSecond", external2, "", List.of(d1)), null, ACTOR);
-        long p1 = r.permission(new Requests.Permission("Read", "item:read", "item", "read"), null, d1, a1, ACTOR);
-        long p2 = r.permission(new Requests.Permission("Write", "item:write", "item", "write"), null, d1, a1, ACTOR);
         r1 = r.role(new Requests.Role("Reader", "reader", ""), null, d1, a1, ACTOR);
         r2 = r.role(new Requests.Role("Writer", "writer", ""), null, d1, a1, ACTOR);
+        long p1 = r.permission(new Requests.Permission(r1, "Read", "item:read", "item", "read"), null, d1, a1, ACTOR);
+        long p2 = r.permission(new Requests.Permission(r2, "Write", "item:write", "item", "write"), null, d1, a1, ACTOR);
         r.rolePermissions(r1, d1, a1, List.of(p1), ACTOR);
         r.rolePermissions(r2, d1, a1, List.of(p2), ACTOR);
         r.userRoles(u1, d1, a1, List.of(r1), ACTOR);
@@ -98,6 +99,32 @@ class GovernanceIntegrationTest {
 
     private String issue() { return (String) c.issue(a1, new Requests.Context(external, d1, null), ACTOR).get("contextToken"); }
     private long requestId(Map<String,Object> request) { return ((Number) request.get("id")).longValue(); }
+
+    @Test @SuppressWarnings("unchecked") void permissionHoldersCanBeRestrictedToOwningRole() {
+        long other = r.permission(new Requests.Permission(r2, "Other read", "item:read", "item", "read"), null, 0, a1, ACTOR);
+        r.rolePermissions(r2, 0, a1, List.of(other), ACTOR);
+        r.userRoles(u2, 0, a1, List.of(r2), ACTOR);
+        assertThat(g.permissionHolders(a1, "item:read", null).get("total")).isEqualTo(2L);
+        var holders = (List<Map<String,Object>>) g.permissionHolders(a1, "item:read", 0L, r1).get("holders");
+        assertThat(holders).singleElement().satisfies(h -> assertThat(h.get("userId")).isEqualTo(u1));
+        assertThat(g.permissionHolders(a1, "item:read", d1, r2).get("total")).isEqualTo(1L);
+        assertThat(g.permissionHolders(a1, "item:read", d2, r2).get("total")).isEqualTo(0L);
+    }
+
+    @Test void requestsAndContextsWorkWithoutDepartmentMembership() throws Exception {
+        r.user(new Requests.User("GovSecond", external2, "", List.of()), u2, ACTOR);
+        mvc.perform(post("/api/v1/access-requests").header("X-API-Key", key1).contentType("application/json")
+                .content(mapper.writeValueAsString(Map.of("externalId", external2, "roleId", r2, "reason", "需要写权限"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("PENDING"));
+        var pending = g.myRequests(a1, external2).get(0);
+        assertThat(pending.get("departmentId")).isNull();
+        g.approve(requestId(pending), new Requests.RequestApprove(null, "同意"), "admin");
+        mvc.perform(post("/api/v1/contexts").header("X-API-Key", key1).contentType("application/json")
+                .content(mapper.writeValueAsString(Map.of("externalId", external2))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.permissions[0]").value("item:write"));
+        mvc.perform(get("/api/v1/roles").header("X-API-Key", key1))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
+    }
 
     @Test void approvedRequestGrantsRoleUntilItsExpiry() throws Exception {
         var submitted = g.submit(a1, new Requests.AccessRequestSubmit(external, d1, r2, "月末报表需要写权限", 30), "app:" + a1);
@@ -315,7 +342,7 @@ class GovernanceIntegrationTest {
 
     @Test void manifestExportAndImportRoundTrip() {
         var exported = g.exportManifest(a1, d1);
-        assertThat((List<?>) exported.get("departments")).hasSize(1);
+        assertThat((List<?>) exported.get("roles")).hasSize(2);
         var manifest = mapper.convertValue(exported, Requests.Manifest.class);
         db.update("UPDATE roles SET name='改名',description='漂移' WHERE id=?", r1);
         db.update("DELETE FROM role_permissions WHERE role_id=?", r2);
@@ -329,10 +356,7 @@ class GovernanceIntegrationTest {
         assertThat((List<?>) writer.get("permissionIds")).hasSize(1);
         // Importing into another department creates the configuration there.
         var second = g.importManifest(a1, manifest, "admin");
-        var target = new Requests.ManifestDepartment(code2, manifest.departments().get(0).permissions(), manifest.departments().get(0).roles());
-        var copied = g.importManifest(a1, new Requests.Manifest(1, List.of(target)), "admin");
-        assertThat(((Number) copied.get("permissionsCreated")).intValue()).isEqualTo(2);
-        assertThat(((Number) copied.get("rolesCreated")).intValue()).isEqualTo(2);
+        assertThat(second.get("rolesCreated")).isEqualTo(0);
         assertThat(r.roles(d2, a1)).hasSize(2);
         assertThat(second.get("rolesUpdated")).isEqualTo(2);
     }
@@ -387,20 +411,13 @@ class GovernanceIntegrationTest {
         try { return console.status(null).get("cache").toString(); } catch (RuntimeException e) { return "DOWN"; }
     }
 
-    @Test void contextCreationCanRefuseToSwitchTheCurrentDepartment() throws Exception {
-        // The very first context has no current department to protect, so it may set one.
-        String token = (String) c.issue(a1, new Requests.Context(external, d1, null, false), ACTOR).get("contextToken");
-        assertThatThrownBy(() -> c.issue(a1, new Requests.Context(external, d2, null, false), ACTOR))
-                .isInstanceOf(ApiException.class).extracting("code").isEqualTo("DEPARTMENT_MISMATCH");
-        mvc.perform(post("/api/v1/contexts").header("X-API-Key", key1).contentType("application/json")
-                        .content(mapper.writeValueAsString(Map.of("externalId", external, "departmentId", d2, "switchDepartment", false))))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("DEPARTMENT_MISMATCH"));
-        c.issue(a1, new Requests.Context(external, d1, null, false), ACTOR);
-        assertThat(c.effective(a1, token).get("departmentId")).isEqualTo(d1);
-        // Only an explicit switch moves the user and ends the old department's contexts.
-        c.issue(a1, new Requests.Context(external, d2, null, true), ACTOR);
-        assertThatThrownBy(() -> c.effective(a1, token)).isInstanceOf(ApiException.class);
+    @Test void legacyDepartmentMetadataNeverChangesApplicationAccess() throws Exception {
+        String token = (String)c.issue(a1,new Requests.Context(external,d1,null,false),ACTOR).get("contextToken");
+        mvc.perform(post("/api/v1/contexts").header("X-API-Key",key1).contentType("application/json")
+                .content(mapper.writeValueAsString(Map.of("externalId",external,"departmentId",d2,"switchDepartment",false))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.permissions[0]").value("item:read"));
+        c.issue(a1,new Requests.Context(external,d2,null,true),ACTOR);
+        assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read"));
     }
 
     @Test void disabledWebhookKeepsItsQueueUntilEnabledAgain() {
@@ -420,21 +437,24 @@ class GovernanceIntegrationTest {
     @Test void manifestImportAnnouncesRolesItDisablesOrRegrants() {
         long hook = ((Number) webhooks.create(a1, new Requests.Webhook("清单通知", "http://127.0.0.1:1/hook", null, List.of("*"), true), ACTOR)
                 .get("id")).longValue();
-        var section = mapper.convertValue(g.exportManifest(a1, d1), Requests.Manifest.class).departments().get(0);
+        var section = mapper.convertValue(g.exportManifest(a1, d1), Requests.Manifest.class);
         var roles = section.roles().stream().map(role -> switch (role.code()) {
             case "reader" -> new Requests.ManifestRole(role.code(), role.name(), role.description(), false, role.permissions());
             case "writer" -> new Requests.ManifestRole(role.code(), role.name(), role.description(), true, List.of("item:read", "item:write"));
             default -> role;
         }).toList();
-        var manifest = new Requests.Manifest(1, List.of(new Requests.ManifestDepartment(section.code(), section.permissions(), roles)));
+        var definitions = new ArrayList<>(section.permissions());
+        definitions.add(new Requests.ManifestPermission("item:read", "Read", "item", "read", "writer"));
+        var manifest = new Requests.Manifest(2, definitions, roles);
         g.importManifest(a1, manifest, "admin");
         var events = db.queryForList("SELECT payload FROM webhook_deliveries WHERE webhook_id=? ORDER BY id", String.class, hook);
-        assertThat(events).hasSize(2);
+        assertThat(events).anySatisfy(payload -> assertThat(payload).contains("\"permission.updated\""));
         assertThat(events).anySatisfy(payload -> assertThat(payload).contains("\"role.disabled\"").contains("\"roleId\":" + r1));
         assertThat(events).anySatisfy(payload -> assertThat(payload).contains("\"role.permissions.changed\"").contains("\"roleId\":" + r2));
-        // Importing the same manifest again changes nothing, so nothing is announced.
+        // Re-import preserves grants and still notifies permission definition updates.
+        long announced = events.size();
         g.importManifest(a1, manifest, "admin");
-        assertThat(db.queryForObject("SELECT COUNT(*) FROM webhook_deliveries WHERE webhook_id=?", Long.class, hook)).isEqualTo(2);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM webhook_deliveries WHERE webhook_id=?", Long.class, hook)).isEqualTo(announced + definitions.size());
     }
 
     @Test @SuppressWarnings("unchecked") void simulationReportsLapsedRolesWithoutBlocking() {
@@ -582,9 +602,10 @@ class GovernanceIntegrationTest {
     }
 
     @Test void permissionHoldersAreCountedPerUserAndDepartment() {
-        long read = db.queryForObject("SELECT id FROM permissions WHERE department_id=? AND application_id=? AND code='item:read'", Long.class, d1, a1);
-        long write = db.queryForObject("SELECT id FROM permissions WHERE department_id=? AND application_id=? AND code='item:write'", Long.class, d1, a1);
-        r.rolePermissions(r2, d1, a1, List.of(read, write), ACTOR);
+        long read = db.queryForObject("SELECT id FROM permissions WHERE role_id=? AND application_id=? AND code='item:read'", Long.class, r1, a1);
+        long write = db.queryForObject("SELECT id FROM permissions WHERE role_id=? AND application_id=? AND code='item:write'", Long.class, r2, a1);
+        long ownRead = r.permission(new Requests.Permission(r2, "Read", "item:read", "item", "read"), null, d1, a1, ACTOR);
+        r.rolePermissions(r2, d1, a1, List.of(ownRead, write), ACTOR);
         r.userRoles(u1, d1, a1, List.of(r1, r2), ACTOR);
         r.userRoles(u2, d1, a1, List.of(r2), ACTOR);
         var holders = g.permissionHolders(a1, "item:read", null);
@@ -631,7 +652,8 @@ class GovernanceIntegrationTest {
 
     @Test void batchCannotAssignAcrossDepartmentsOrRolesOutsideTheDomain() {
         long outsider = r.user(new Requests.User("Outside", external + "-outside", "", List.of(d2)), null, ACTOR);
-        long otherRole = r.role(new Requests.Role("Other", "other", ""), null, d2, a1, ACTOR);
+        long otherApp = ((Number)r.application(new Requests.Application("Other app", "batch-other-" + external, ""), ACTOR).get("id")).longValue();
+        long otherRole = r.role(new Requests.Role("Other", "other", ""), null, d2, otherApp, ACTOR);
         assertThatThrownBy(() -> r.addUserRoles(d1, a1, new Requests.BatchUserRoles(List.of(u2, outsider), List.of(r1), null), ACTOR))
                 .isInstanceOf(ApiException.class);
         assertThatThrownBy(() -> r.addUserRoles(d1, a1, new Requests.BatchUserRoles(List.of(u2), List.of(r1, otherRole), null), ACTOR))
@@ -659,8 +681,8 @@ class GovernanceIntegrationTest {
         assertThat(webhooks.webhooks(a1).get(0).get("events")).isEqualTo(List.of("*"));
         webhooks.update(hook, new Requests.Webhook("变更", "http://127.0.0.1:1/hook", null, List.of("permission.updated", "permission.deleted", "role.enabled", "role.deleted", "user.contexts.revoked"), true), ACTOR);
         assertThat((List<?>) webhooks.webhooks(a1).get(0).get("events")).hasSize(5);
-        long permission = db.queryForObject("SELECT id FROM permissions WHERE department_id=? AND application_id=? AND code='item:write'", Long.class, d1, a1);
-        r.permission(new Requests.Permission("Write", "item:edit", "item", "edit"), permission, d1, a1, ACTOR);
+        long permission = db.queryForObject("SELECT id FROM permissions WHERE role_id=? AND application_id=? AND code='item:write'", Long.class, r2, a1);
+        r.permission(new Requests.Permission(r2, "Write", "item:edit", "item", "edit"), permission, d1, a1, ACTOR);
         r.deletePermission(permission, d1, a1, ACTOR);
         r.roleStatus(r2, d1, a1, true, ACTOR);
         r.deleteRole(r2, d1, a1, ACTOR);

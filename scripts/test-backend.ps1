@@ -16,7 +16,6 @@ if ($env:TEST_DB_URL -notmatch '^jdbc:mysql://[^/]+/melonhub_rbac_test(?:\?|$)')
 if (-not $env:TEST_DB_USERNAME -or -not $env:TEST_DB_PASSWORD) {
     throw 'Configure TEST_DB_USERNAME and TEST_DB_PASSWORD in .env.'
 }
-Start-MelonRedis
 $java = Get-MelonJava
 $env:JAVA_HOME = Split-Path (Split-Path $java -Parent) -Parent
 & (Get-MelonMaven) -f (Join-Path $projectRoot 'backend/pom.xml') test -B -ntp

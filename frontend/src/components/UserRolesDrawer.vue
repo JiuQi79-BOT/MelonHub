@@ -19,7 +19,6 @@ const loading = ref(false), loaded = ref(false), version = ref(0)
 const form = ref<InstanceType<typeof UserRolesForm>>()
 let sequence = 0
 
-const departmentOptions = computed(() => (props.user?.departmentIds ?? []).map(id => ({ value: id, label: hub.departmentName(id) })))
 const canWrite = computed(() => hub.canWriteApp(applicationId.value))
 
 watch(() => [open.value, props.user?.id], () => {
@@ -33,10 +32,10 @@ watch(() => [open.value, props.user?.id], () => {
   const preferredDepartment = props.departmentId ?? scope.departmentId
   departmentId.value = user.departmentIds.includes(preferredDepartment) ? preferredDepartment : user.departmentIds[0] ?? 0
   applicationId.value = hub.applications.some(a => a.id === scope.applicationId) ? scope.applicationId : hub.applications[0]?.id ?? 0
-  if (departmentId.value && applicationId.value) load()
+  if (applicationId.value) load()
 }, { immediate: true })
 
-watch([departmentId, applicationId], () => { if (open.value && departmentId.value && applicationId.value) load() })
+watch([departmentId, applicationId], () => { if (open.value && applicationId.value) load() })
 
 async function load() {
   const current = ++sequence
@@ -69,15 +68,11 @@ async function save() {
 <template>
   <a-drawer v-model:open="open" :title="`分配角色：${user?.name ?? ''}`" width="640" destroy-on-close>
     <template #extra>
-      <a-button v-if="user?.departmentIds.length" type="primary" :disabled="!canWrite || !loaded" :loading="form?.saving" @click="save">保存</a-button>
+      <a-button v-if="user" type="primary" :disabled="!canWrite || !loaded" :loading="form?.saving" @click="save">保存</a-button>
     </template>
     <template v-if="user">
-      <a-empty v-if="!user.departmentIds.length" :image-style="{ height: '60px' }"
-               description="该用户还没有加入任何部门。先在「编辑」中把用户加入部门，再来分配角色。" />
-      <template v-else>
+      <template>
         <div class="grant-scope">
-          <a-select v-model:value="departmentId" :options="departmentOptions" class="grow" aria-label="部门" />
-          <span class="domain-x">×</span>
           <a-select v-model:value="applicationId" :options="hub.applicationOptions" class="grow" aria-label="软件" />
         </div>
         <a-alert v-if="!canWrite" type="info" show-icon class="block-gap" message="你对所选软件只有只读权限，这里只能查看。" />
