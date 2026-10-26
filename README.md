@@ -27,12 +27,44 @@
 
 ## 快速使用
 
-1. 按 `.env.example` 配置忽略的根目录 `.env`。当前电脑使用 `BACKEND_MODE=server`，经 SSH 连接服务器后端；新电脑按[启动指南](docs/服务器部署与启动.md)配置。本机 Java 调试使用 `BACKEND_MODE=local`。初始管理员密码 12–100 字符且 UTF-8 不超过 72 字节。
-2. 双击 `start-all.cmd`，或执行 `./scripts/start-all.ps1 -NoBrowser`。
-3. 访问 `http://127.0.0.1:5174`，使用配置中的初始管理员登录。
-4. 双击 `stop-all.cmd` 或执行 `./scripts/stop-all.ps1` 停止本机进程；服务器模式下服务器后端继续运行。
+当前运行方式为 **服务器后端 + 本机前端 + SSH 加密通道**，本机 `.env` 已设置 `BACKEND_MODE=server`。后端部署后在服务器持续运行，不依赖本机电脑；日常启动不会重复部署后端。
 
-脚本不创建、启动或停止 MySQL/Redis 容器，不修改其他应用。服务器模式需要 Node.js/npm 和 Python/Paramiko；本机构建、测试或 Java 模式需要 Java/Maven。首次可执行 `npm --prefix frontend ci --ignore-scripts`。前端 5174、本机 API 8080 绑定回环；服务器后端发布到服务器回环 18080，经 SSH 加密访问。更新服务器后端执行 `./scripts/deploy-backend.ps1`，查询状态执行 `./scripts/server-backend.ps1 status`。IDEA 配置见 `.run/`，图形运行按钮未实测。
+1. 在项目根目录双击 `start-all.cmd`，等待启动成功；脚本启动本机前端和 SSH 通道。
+2. 访问 `http://127.0.0.1:5174`，使用原有管理员账号登录。
+3. 用完双击 `stop-all.cmd`，停止本机前端和 SSH 通道。服务器后端继续运行，关闭电脑也不会停止它。
+4. 下次使用时再次双击 `start-all.cmd` 即可，电脑需能联网连接服务器。
+
+也可在项目根目录的 PowerShell 中执行：
+
+```powershell
+# 日常启动，不自动打开浏览器
+./scripts/start-all.ps1 -NoBrowser
+
+# 停止本机前端和 SSH 通道，不停止服务器后端
+./scripts/stop-all.ps1
+```
+
+服务器模式下不需要在 IDEA 启动本机 Java，也不需要手动启动 MySQL 或 Docker。本机 8080 用于 SSH 通道，不要同时启动占用该端口的本机后端。前端 5174、本机 API 8080 和服务器 API 18080 均绑定各自回环地址，服务器 API 经 SSH 加密访问。
+
+### 更新代码与管理后端
+
+| 场景 | 操作 |
+| --- | --- |
+| 修改前端页面 | 本机项目启动后由 Vite 自动更新，必要时刷新浏览器 |
+| 修改后端 Java 代码 | 先测试，再执行 `./scripts/deploy-backend.ps1` 构建并更新服务器；仅重启本机项目不会部署新代码 |
+| 修改本机 `.env` | 先执行 `./scripts/stop-all.ps1`，再启动；更改服务器运行配置还需重新部署 |
+| 查看服务器后端状态 | `./scripts/server-backend.ps1 status` |
+| 重启服务器后端 | `./scripts/server-backend.ps1 restart` |
+| 主动停止服务器后端 | `./scripts/server-backend.ps1 stop`，此时控制台和业务 API 暂时不可用 |
+| 启动已停止的服务器后端 | `./scripts/server-backend.ps1 start`，稍后查询状态；本机启动脚本不会代替这一步 |
+
+容器已设置重启策略，服务器 Docker 已启用开机启动；手动停止服务器后端后需要显式启动。服务器模式更新后端使用部署脚本，不使用 `start-all -Rebuild`。完整说明见[服务器部署与启动](docs/服务器部署与启动.md)。
+
+### 首次配置与本机调试
+
+新电脑按 `.env.example` 配置忽略的根目录 `.env`，并按[启动指南](docs/服务器部署与启动.md)安装 Node.js/npm 和 Python/Paramiko、填写 SSH 配置及设置 `BACKEND_MODE=server`。首次前端依赖安装可执行 `npm --prefix frontend ci --ignore-scripts`。初始管理员密码 12–100 字符且 UTF-8 不超过 72 字节。
+
+需要本机 Java 调试时，先停止本机项目，将 `BACKEND_MODE` 改为 `local` 再启动；此模式和本机构建、测试需要 Java/Maven。IDEA 配置见 `.run/`，图形运行按钮未实测。启停脚本不管理 MySQL/Redis 容器，不修改其他应用。
 
 ## 数据库与升级
 
