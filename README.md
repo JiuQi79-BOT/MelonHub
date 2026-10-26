@@ -13,6 +13,79 @@
 - 14 页控制台、明暗主题、手机适配、全局搜索、健康检查与监控。
 - 可选 Redis 授权缓存、全局限流与故障回退；Java 业务侧 SDK。
 
+## 项目结构
+
+下面列出主要源码与维护入口；标为“生成”或“忽略”的内容不会随 Git 仓库提供。
+
+```text
+MelonHub/
+|-- backend/                              # Spring Boot 后端：授权、治理、鉴权与审计
+|   |-- pom.xml                           # 后端依赖、打包及 JaCoCo coverage profile
+|   |-- src/main/java/com/melonhub/rbac/
+|   |   |-- RbacApplication.java          # 应用入口，启用定时任务
+|   |   |-- controller/                   # HTTP 接口与管理员访问范围校验
+|   |   |-- service/                      # 授权规则、事务、审批复核及后台任务
+|   |   |-- dao/                          # JDBC 查询、写入与数据库锁
+|   |   |-- security/                     # 鉴权、管理员权限、限流、TOTP 与凭据
+|   |   |-- cache/                        # 可选 Redis 权限缓存与失效协议
+|   |   |-- dto/                          # 接口请求类型与参数校验
+|   |   |-- exception/                    # 业务异常与统一错误响应
+|   |   `-- config/                       # 云数据库保护、Redis 与示例数据配置
+|   |-- src/main/resources/
+|   |   |-- application*.yml              # 公共、云运行及测试配置
+|   |   `-- db/migration/                 # Flyway V1-V7 数据库迁移
+|   |-- src/test/java/                    # 后端单元、集成、并发与迁移测试
+|   `-- target/                           # 生成：运行包、测试明细及 site/jacoco/ 报告
+|-- frontend/                             # Vue 3 + TypeScript 管理控制台
+|   |-- src/
+|   |   |-- main.ts                       # 应用初始化、路由与导航守卫
+|   |   |-- App.vue                       # 控制台布局、菜单和全局交互
+|   |   |-- pages/                        # 软件、用户、授权、审批、审计等页面
+|   |   |-- components/                   # 配置抽屉、选人器、权限编辑等共用组件
+|   |   |-- api.ts                        # HTTP 请求、会话与错误处理
+|   |   |-- store.ts                      # 身份与当前管理范围状态
+|   |   |-- authorizationScope.ts         # 对象内配置的局部软件管理范围
+|   |   `-- theme.ts / style.css / ...    # 主题、响应式布局、类型与共用工具
+|   |-- public/                           # 品牌等静态资源
+|   |-- tests/                            # 会话及异步交互回归测试
+|   `-- vite.config.ts                    # 开发服务、/api 代理与构建配置
+|-- sdk/java/                             # 独立 Java SDK：业务接入、权限注解与验签
+|   |-- pom.xml                           # SDK 独立依赖与构建
+|   `-- src/main/ / src/test/             # SDK 实现、自动装配配置与测试
+|-- scripts/                              # 本机启停、服务器部署、运维与测试工具
+|   |-- start-all.ps1 / stop-all.ps1       # 按 BACKEND_MODE 管理本机项目进程
+|   |-- deploy-backend.ps1                # 构建、上传并更新服务器后端
+|   |-- server-backend.ps1 / .py          # 服务器后端管理与 SSH 转发实现
+|   |-- service-tools.ps1 / run-service.ps1 # 配置加载、进程识别及后台运行
+|   |-- test-backend.ps1                  # 后端测试，-Coverage 生成 JaCoCo 报告
+|   `-- tests/                            # 部署保护与凭据工具的单元测试
+|-- docs/                                 # 使用、API、架构、数据库及详细设计文档
+|   `-- UML/                              # 类图、数据流图与通信图
+|-- .run/                                 # IDEA 后端、前端、整栈与测试运行配置
+|-- .env.example                          # 配置示例，不包含真实凭据
+|-- .env                                  # 忽略：本机真实配置与凭据
+|-- .local/                               # 忽略：本机日志、运行状态及工具环境
+|-- output/                               # 忽略：验收截图等生成证据
+|-- pom.xml                               # Maven 根工程，仅聚合 backend
+|-- start-all.cmd / stop-all.cmd           # Windows 双击启动与停止入口
+|-- AGENTS.md                             # 开发约定、维护边界与交接信息
+`-- README.md                             # 项目概览、目录导航与运行入口
+```
+
+### 核心职责与阅读入口
+
+| 位置 | 对应功能与主要文件 |
+| --- | --- |
+| `backend/.../controller/` | `BusinessController` 提供业务授权 API；`AdminController` 提供基础配置；`GovernanceController` 提供审批、复核等治理接口；`AuthController` 和 `AccountController` 管理登录及管理员账号 |
+| `backend/.../service/` | `RbacService` 维护配置和分配；`ContextService` 创建上下文并计算权限；`GovernanceService` 处理申请、复核及清单；`WebhookService`、`AuditSealService` 和 `MaintenanceService` 负责通知、审计封存和维护任务 |
+| `backend/.../dao/` | 与各服务配套的数据访问实现；SQL 和数据库锁放在此层，Controller/Service 不直接使用 JdbcTemplate |
+| `backend/.../security/`、`cache/` | `ApiGuard` 统一鉴权入口；`AdminAccess` 校验管理员范围；限流器保护请求；`PermissionCache` 提供可选缓存及事务失效协调 |
+| `frontend/src/main.ts` → `App.vue` → `pages/` | 从路由和布局进入具体页面；页面调用 `api.ts`，由 `store.ts` 和 `authorizationScope.ts` 提供身份及管理范围 |
+| `sdk/java/` | 业务软件通过 `MelonHubClient`、`MelonHubAuthorizer` 调用平台，支持 Spring Boot 自动装配、权限注解和 Webhook 验签；详细用法见 SDK README |
+| `docs/` | 先看使用说明及启动指南；理解模型看数据库设计，理解逐类职责和事务边界看详细设计，验证结果看验证记录 |
+
+根 Maven 工程不聚合 Java SDK，SDK 需使用 `mvn -f sdk/java/pom.xml ...` 单独构建或测试。服务器运行目录为 `/opt/melonhub/`，不属于上述本地源码目录；日常启动只建立连接，不会将服务器文件下载到本机。
+
 ## 文档
 
 - [服务器部署与启动](docs/服务器部署与启动.md)：已部署后端、本机启动、更新和服务器管理。
