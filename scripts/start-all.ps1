@@ -6,11 +6,15 @@ $started = @()
 try {
     $lock = Enter-MelonServiceLock
     Set-Location -LiteralPath $script:MelonRoot
-    Import-MelonRuntimeConfiguration (Read-MelonConfiguration)
+    $configuration = Read-MelonConfiguration
+    $backendMode = Get-MelonBackendMode $configuration
+    if ($backendMode -eq 'local') { Import-MelonRuntimeConfiguration $configuration }
     $services = @(Get-MelonProcesses)
     $backend = @($services | Where-Object Service -eq 'backend')
     $frontend = @($services | Where-Object Service -eq 'frontend')
     if ($backend.Count -gt 1 -or $frontend.Count -gt 1) { throw 'Multiple project instances detected. Stop them before starting the stack.' }
+    if ($backend -and $backend[0].Mode -ne $backendMode) { throw 'Backend mode changed. Run stop-all before starting again.' }
+    if ($backendMode -eq 'server' -and $Rebuild) { throw 'Use scripts/deploy-backend.ps1 to rebuild and deploy the server backend.' }
     if (-not $backend -and (Test-MelonPort 8080)) { throw 'Port 8080 belongs to another process. No process was stopped.' }
     $frontendPort = 5174
     if ($frontend) {
@@ -20,7 +24,7 @@ try {
     } else {
         if (Test-MelonPort $frontendPort) { throw 'Port 5174 belongs to another process. No process was stopped.' }
     }
-    if (-not $backend) {
+    if (-not $backend -and $backendMode -eq 'local') {
         $jar = Join-Path $script:MelonRoot 'backend/target/rbac-service-1.0.0.jar'
         $inputs = @(Get-ChildItem (Join-Path $script:MelonRoot 'backend/src/main') -Recurse -File) + @(Get-Item (Join-Path $script:MelonRoot 'backend/pom.xml'), (Join-Path $script:MelonRoot 'pom.xml'))
         $needsBuild = $Rebuild -or -not (Test-Path -LiteralPath $jar)
@@ -50,16 +54,17 @@ try {
     $url = "http://127.0.0.1:$frontendPort"
     Wait-MelonService $url 'frontend'
     Wait-MelonService "$url/api/health" 'backend' 15
-    @{ frontendUrl = $url; backendUrl = 'http://127.0.0.1:8080'; verifiedAt = (Get-Date -Format 'o') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:MelonRoot '.local/services.json') -Encoding UTF8
+    @{ frontendUrl = $url; backendUrl = 'http://127.0.0.1:8080'; backendMode = $backendMode; verifiedAt = (Get-Date -Format 'o') } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:MelonRoot '.local/services.json') -Encoding UTF8
     Write-Host "MelonHub ready: $url"
-    Write-Host 'Backend + cloud MySQL + frontend proxy: UP (Redis status is reported separately by health)'
+    Write-Host ("Backend mode: $backendMode; cloud MySQL + frontend proxy: UP")
     Write-Host 'Logs: .local/logs/backend.log and frontend.log'
     if (-not $NoBrowser) { Start-Process $url }
 } catch {
     foreach ($wrapper in $started) {
         $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($wrapper.Id)")
-        foreach ($child in $children) {
-            if (@(Get-MelonProcesses | Where-Object Id -eq $child.ProcessId)) { Stop-Process -Id $child.ProcessId -ErrorAction SilentlyContinue }
+        $childIds = @($children | ForEach-Object ProcessId)
+        foreach ($service in @(Get-MelonProcesses | Where-Object { $_.Id -in $childIds -or $_.ParentId -in $childIds })) {
+            Stop-Process -Id $service.Id -ErrorAction SilentlyContinue
         }
         if (-not $wrapper.HasExited) { Stop-Process -Id $wrapper.Id -ErrorAction SilentlyContinue }
     }

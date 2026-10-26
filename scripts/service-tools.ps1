@@ -52,21 +52,44 @@ function Get-MelonJava {
     return (Get-Command java.exe -ErrorAction Stop).Source
 }
 
+function Get-MelonBackendMode($Values) {
+    $mode = $Values['BACKEND_MODE']
+    if (-not $mode) { return 'local' }
+    if ($mode -notin @('local','server')) { throw 'BACKEND_MODE must be local or server.' }
+    return $mode
+}
+
+function Get-MelonPython {
+    $python = Join-Path $script:MelonRoot '.local/cloud-tools/Scripts/python.exe'
+    if (-not (Test-Path -LiteralPath $python)) {
+        throw 'Server mode requires .local/cloud-tools with Paramiko. See docs/服务器部署与启动.md.'
+    }
+    return $python
+}
+
 function Get-MelonProcesses {
     $marker = $script:MelonRoot.Replace('\','/').TrimEnd('/')
-    foreach ($process in Get-CimInstance Win32_Process -Filter "Name='java.exe' OR Name='node.exe'") {
+    $matched = @(foreach ($process in Get-CimInstance Win32_Process -Filter "Name='java.exe' OR Name='node.exe' OR Name='python.exe'") {
         if (-not $process.CommandLine) { continue }
         $command = $process.CommandLine.Replace('\','/') -replace '/+', '/'
         $command = $command.Replace('/node_modules/.bin/../','/node_modules/')
         $service = $null
+        $mode = 'local'
         if ($process.Name -eq 'node.exe' -and $command.IndexOf("$marker/frontend/node_modules/vite/bin/vite.js", [StringComparison]::OrdinalIgnoreCase) -ge 0) { $service = 'frontend' }
         if ($process.Name -eq 'java.exe' -and (
             $command.IndexOf("$marker/backend/target/rbac-service-1.0.0.jar", [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
             ($command.Contains('com.melonhub.rbac.RbacApplication') -and (
                 $command.IndexOf("$marker/backend/target/classes", [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
                 $command.IndexOf("$marker/out/production/", [StringComparison]::OrdinalIgnoreCase) -ge 0)))) { $service = 'backend' }
-        if ($service) { [pscustomobject]@{ Id = $process.ProcessId; Service = $service; Created = $process.CreationDate } }
-    }
+        if ($process.Name -eq 'python.exe' -and $command.IndexOf("$marker/scripts/server-backend.py", [StringComparison]::OrdinalIgnoreCase) -ge 0 -and $command -match '\s+tunnel(?:\s|$)') {
+            $service = 'backend'
+            $mode = 'server'
+        }
+        if ($service) { [pscustomobject]@{ Id = $process.ProcessId; ParentId = $process.ParentProcessId; Service = $service; Mode = $mode; Created = $process.CreationDate } }
+    })
+    # Windows virtual-environment launchers may wrap a second Python process.
+    $parentIds = @($matched | ForEach-Object ParentId)
+    $matched | Where-Object { $_.Id -notin $parentIds }
 }
 
 function Enter-MelonServiceLock {

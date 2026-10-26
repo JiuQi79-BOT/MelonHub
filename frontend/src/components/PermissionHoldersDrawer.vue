@@ -16,7 +16,7 @@ async function load() {
   loading.value = true
   data.value = null
   try {
-    const result = await get<PermissionHolders>('/admin/permissions/who', { applicationId: props.applicationId, code: props.permission.code, roleId: props.permission.roleId, departmentId: props.departmentId })
+    const result = await get<PermissionHolders>('/admin/permissions/who', { applicationId: props.applicationId, code: props.permission.code, departmentId: props.departmentId })
     if (current === sequence) data.value = result
   } catch (e) {
     if (current === sequence) message.error(errorText(e))
@@ -38,7 +38,7 @@ const columns: TableColumnsType = [
     <a-spin :spinning="loading">
       <template v-if="data">
         <p class="hint">
-          共 {{ data.total }} 名用户通过“{{ permission?.roleName }}”获得 <code>{{ permission?.code }}</code>，包括有期限和永久的授权。
+          共 {{ data.total }} 名用户通过角色获得 <code>{{ permission?.code }}</code>，包括有期限和永久的授权。
           <template v-if="data.truncated">这里只列出前 {{ data.holders.length }} 名，可按部门筛选后查看。</template>
         </p>
         <a-table :columns="columns" :data-source="data.holders" :row-key="(h: PermissionHolder) => `${h.userId}:${h.departmentId}`" size="small"

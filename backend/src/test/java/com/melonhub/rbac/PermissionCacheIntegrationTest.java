@@ -63,7 +63,7 @@ class PermissionCacheIntegrationTest {
         long rOther = r.role(new Requests.Role("Reader", "reader-other", ""), null, d2, a1, ACTOR);
         long p1 = r.permission(new Requests.Permission(r1, "Read", "item:read", "item", "read"), null, d1, a1, ACTOR);
         long p2 = r.permission(new Requests.Permission(r2, "Write", "item:write", "item", "write"), null, d1, a1, ACTOR);
-        long pOther = r.permission(new Requests.Permission(rOther, "Read", "item:read", "item", "read"), null, d2, a1, ACTOR);
+        long pOther = p1;
         r.rolePermissions(r1, d1, a1, List.of(p1), ACTOR);
         r.rolePermissions(r2, d1, a1, List.of(p2), ACTOR);
         r.rolePermissions(rOther, d2, a1, List.of(pOther), ACTOR);
@@ -147,6 +147,24 @@ class PermissionCacheIntegrationTest {
         r.addUserRoles(d1, a1, new Requests.BatchUserRoles(List.of(u1), List.of(r2), null), ACTOR);
         assertThatThrownBy(() -> c.effective(a1, token)).isInstanceOf(ApiException.class);
         assertThat(c.check(a1, issue(d1), List.of("item:write")).get("allowed")).isEqualTo(true);
+    }
+
+    @Test void sharedDefinitionChangesInvalidateEverySelectingRoleCache() {
+        long read = db.queryForObject("SELECT id FROM permissions WHERE application_id=? AND code='item:read'", Long.class, a1);
+        long other = db.queryForObject("SELECT id FROM roles WHERE application_id=? AND code='reader-other'", Long.class, a1);
+        r.rolePermissions(r2, 0, a1, List.of(read), ACTOR);
+        String writer = (String)c.issue(a1, new Requests.Context(external, 0, List.of(r2)), ACTOR).get("contextToken");
+        String reader = (String)c.issue(a1, new Requests.Context(external, 0, List.of(other)), ACTOR).get("contextToken");
+        for (int i = 0; i < 2; i++) {
+            c.effective(a1, writer);
+            c.effective(a1, reader);
+        }
+        r.permission(new Requests.Permission("Shared edit", "item:edit", "item", "edit"), read, 0, a1, ACTOR);
+        assertThat(c.effective(a1, writer).get("permissions")).isEqualTo(List.of("item:edit"));
+        assertThat(c.effective(a1, reader).get("permissions")).isEqualTo(List.of("item:edit"));
+        r.deletePermission(read, 0, a1, ACTOR);
+        assertThat(c.effective(a1, writer).get("permissions")).isEqualTo(List.of());
+        assertThat(c.effective(a1, reader).get("permissions")).isEqualTo(List.of());
     }
 
     @Test void revokedOrDisabledApiKeysStopWorkingImmediately() {

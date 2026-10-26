@@ -319,7 +319,7 @@ public class GovernanceService {
         var codesById = new HashMap<Long,String>();
         for (var p : dao.permissions(0, app)) {
             codesById.put(number(p.get("id")), (String) p.get("code"));
-            permissions.add(Map.of("roleCode", p.get("roleCode"), "code", p.get("code"),
+            permissions.add(Map.of("code", p.get("code"),
                     "name", p.get("name"), "resource", p.get("resource"), "action", p.get("action")));
         }
         var grantsByRole = new HashMap<Long,List<String>>();
@@ -336,14 +336,14 @@ public class GovernanceService {
             item.put("permissions", grantsByRole.getOrDefault(number(r.get("id")), List.of()));
             roles.add(item);
         }
-        return Map.of("version", 2, "application", Map.of("code", application.get("code"), "name", application.get("name")),
+        return Map.of("version", 3, "application", Map.of("code", application.get("code"), "name", application.get("name")),
                 "exportedAt", Instant.now().toString(), "permissions", permissions, "roles", roles);
     }
 
-    /** Import matches roles within the application and permissions within their owning role. */
+    /** Roles and shared permissions are matched by code within the application. */
     @Transactional public Map<String,Object> importManifest(long app, Requests.Manifest manifest, String actor) {
         if (!dao.applicationExists(app)) throw ApiException.missing("软件不存在");
-        if (!Integer.valueOf(2).equals(manifest.version())) throw ApiException.bad("请使用版本 2 的角色权限清单");
+        if (!Integer.valueOf(3).equals(manifest.version())) throw ApiException.bad("请使用版本 3 的软件共享权限清单");
         var roleIds = new LinkedHashMap<String,Long>();
         var previous = new HashMap<Long,Boolean>();
         int rolesCreated = 0, rolesUpdated = 0, permissionsCreated = 0, permissionsUpdated = 0;
@@ -367,16 +367,14 @@ public class GovernanceService {
         }
         var seen = new HashSet<String>();
         for (var permission : manifest.permissions()) {
-            Long role = roleIds.get(permission.roleCode());
-            if (role == null) throw ApiException.bad("权限所属角色不在清单中: " + permission.roleCode());
-            if (!seen.add(role + ":" + permission.code())) throw ApiException.bad("同一角色内权限编码重复: " + permission.code());
-            var existing = dao.permissionIdByCode(role, permission.code());
+            if (!seen.add(permission.code())) throw ApiException.bad("软件内权限编码重复: " + permission.code());
+            var existing = dao.permissionIdByCode(app, permission.code());
             if (existing.isPresent()) {
                 dao.updatePermission(existing.get(), permission.name(), permission.code(), permission.resource(), permission.action());
-                webhooks.emit(app, "permission.updated", Map.of("permissionId", existing.get(), "roleId", role));
+                webhooks.emit(app, "permission.updated", Map.of("permissionId", existing.get()));
                 permissionsUpdated++;
             } else {
-                dao.createPermission(role, 0, app, permission.name(), permission.code(), permission.resource(), permission.action());
+                dao.createPermission(app, permission.name(), permission.code(), permission.resource(), permission.action());
                 permissionsCreated++;
             }
         }
@@ -384,7 +382,7 @@ public class GovernanceService {
             long id = roleIds.get(role.code());
             var grants = new LinkedHashSet<Long>();
             for (String code : role.permissions())
-                grants.add(dao.permissionIdByCode(id, code).orElseThrow(() -> ApiException.bad("角色 " + role.code() + " 没有权限 " + code)));
+                grants.add(dao.permissionIdByCode(app, code).orElseThrow(() -> ApiException.bad("软件中没有权限 " + code)));
             var before = new HashSet<>(dao.lockedRolePermissionIds(id));
             dao.replaceRolePermissions(id, 0, app, grants);
             if (!before.equals(grants)) webhooks.emit(app, "role.permissions.changed", Map.of("roleId", id));

@@ -19,7 +19,7 @@ export interface Member {
   roleExpiries?: Record<string, string>
 }
 export interface Role { id: number; name: string; code: string; description: string; enabled: boolean; createdAt: string; memberCount: number; permissionIds: number[] }
-export interface Permission { id: number; roleId: number; roleName: string; roleCode: string; name: string; code: string; resource: string; action: string; createdAt: string; roleCount: number }
+export interface Permission { id: number; name: string; code: string; resource: string; action: string; createdAt: string; roleCount: number }
 export interface AuditEvent {
   id: number; actor: string; action: string; target: string; detail: string; sourceIp: string; createdAt: string
   departmentId: number | null; departmentName: string | null; applicationId: number | null; applicationName: string | null
@@ -105,7 +105,7 @@ export interface AuditVerifyResult {
 }
 export interface PermissionManifest {
   version: number; application: { code: string; name: string }; exportedAt: string
-  permissions: { roleCode: string; code: string; name: string; resource: string; action: string }[]
+  permissions: { code: string; name: string; resource: string; action: string }[]
   roles: { code: string; name: string; description: string; enabled: boolean; permissions: string[] }[]
 }
 export interface ManifestImportResult { permissionsCreated: number; permissionsUpdated: number; rolesCreated: number; rolesUpdated: number }

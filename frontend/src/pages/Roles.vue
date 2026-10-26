@@ -73,7 +73,7 @@ async function save() {
 const grantOpen = ref(false), grantRole = ref<Role | null>(null), grantKeys = ref<string[]>([]), granting = ref(false)
 const permissionOpen = ref(false)
 async function permissionCreated(id: number) { await permissions.load(); grantKeys.value.push(String(id)) }
-const transferData = computed(() => permissions.rows.value.filter(p => p.roleId === grantRole.value?.id).map(p => ({ key: String(p.id), title: p.code, description: p.name })))
+const transferData = computed(() => permissions.rows.value.map(p => ({ key: String(p.id), title: p.code, description: p.name })))
 function grant(row: Role) { grantRole.value = row; grantKeys.value = row.permissionIds.map(String); grantOpen.value = true }
 async function saveGrant(assignMembers = false) {
   const ok = await attempt(granting, () => send('PUT', `/admin/roles/${grantRole.value!.id}/permissions`, { ids: grantKeys.value.map(Number) }, scope.domainQuery), '角色权限已更新')
@@ -159,7 +159,7 @@ async function importManifest() {
   importOpen.value = false
   Modal.success({
     title: '权限清单已导入',
-    content: `新建权限 ${result.permissionsCreated} 个、更新权限 ${result.permissionsUpdated} 个；新建角色 ${result.rolesCreated} 个、更新角色 ${result.rolesUpdated} 个。角色按软件内编码匹配，权限按角色内编码匹配，不会删除任何已有配置。`,
+    content: `新建权限 ${result.permissionsCreated} 个、更新权限 ${result.permissionsUpdated} 个；新建角色 ${result.rolesCreated} 个、更新角色 ${result.rolesUpdated} 个。角色和共享权限均按软件内编码匹配，未列出的配置保留。`,
   })
   reload()
 }
@@ -269,11 +269,11 @@ function headAction(key: string) {
       </a-transfer>
     </a-modal>
 
-    <PermissionEditor v-model:open="permissionOpen" :role-id="grantRole?.id" @saved="permissionCreated" />
+    <PermissionEditor v-model:open="permissionOpen" @saved="permissionCreated" />
 
     <a-modal v-model:open="importOpen" title="导入权限清单" :confirm-loading="importing" ok-text="导入" width="720px" destroy-on-close :mask-closable="false" @ok="importManifest">
       <p class="hint">导入到 {{ scope.application?.name }}。粘贴导出的清单 JSON，按编码创建或更新权限与角色，清单里没有的配置保持不变。</p>
-      <a-textarea v-model:value="importText" :rows="12" placeholder='{"version":2,"permissions":[],"roles":[]}' class="import-json" />
+      <a-textarea v-model:value="importText" :rows="12" placeholder='{"version":3,"permissions":[],"roles":[]}' class="import-json" />
     </a-modal>
 
     <RoleMembersDrawer v-model:open="membersOpen" :role="membersRole" :department-id="scope.departmentId" :application-id="scope.applicationId" :embedded="embedded" @changed="roles.load()" @navigate="navigate" />

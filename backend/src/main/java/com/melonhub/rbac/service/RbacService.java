@@ -332,15 +332,11 @@ public class RbacService {
     public List<Map<String,Object>> permissions(long dept, long app) { domain(dept, app); return dao.permissions(dept, app); }
     @Transactional public long permission(Requests.Permission body, Long id, long dept, long app, String actor) {
         domain(dept, app);
-        if (body.roleId() == null) throw ApiException.bad("请选择权限所属角色");
-        scoped("roles", body.roleId(), dept, app);
-        if (!dao.lockRole(body.roleId())) throw ApiException.missing("角色不存在");
         if (id == null) {
-            id = dao.createPermission(body.roleId(), dept, app, body.name(), body.code(), body.resource(), body.action());
+            id = dao.createPermission(app, body.name(), body.code(), body.resource(), body.action());
             audit(actor, "PERMISSION_CREATED", body.name() + " (" + body.code() + ")", dept, app);
         } else {
             scoped("permissions", id, dept, app);
-            if (!dao.permissionOwnedBy(id, body.roleId())) throw ApiException.forbidden("权限不属于当前角色，不能跨角色修改");
             dao.updatePermission(id, body.name(), body.code(), body.resource(), body.action());
             cache.touchApplication(app);
             webhooks.emit(app, "permission.updated", Map.of("permissionId", id, "departmentId", dept));
@@ -360,7 +356,7 @@ public class RbacService {
         scoped("roles", role, dept, app);
         var wanted = new LinkedHashSet<>(permissions);
         if (!dao.lockRole(role)) throw ApiException.missing("角色不存在");
-        if (dao.ownedPermissionCount(role, wanted) != wanted.size()) throw ApiException.forbidden("权限不属于当前角色");
+        if (dao.scopedCount("permissions", wanted, dept, app) != wanted.size()) throw ApiException.forbidden("权限不属于当前软件");
         var before = new HashSet<>(dao.lockedRolePermissionIds(role));
         dao.replaceRolePermissions(role, dept, app, wanted);
         cache.touchApplication(app);

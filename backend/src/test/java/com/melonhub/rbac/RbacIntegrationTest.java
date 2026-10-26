@@ -59,7 +59,7 @@ class RbacIntegrationTest {
         rOtherApp=r.role(new Requests.Role("Reader","reader",""),null,d1,a2,"test");
         p1=r.permission(new Requests.Permission(r1,"Read","item:read","item","read"),null,d1,a1,"test");
         p2=r.permission(new Requests.Permission(r2,"Write","item:write","item","write"),null,d1,a1,"test");
-        pOther=r.permission(new Requests.Permission(rOther,"Read","item:read","item","read"),null,d2,a1,"test");
+        pOther=p1;
         pOtherApp=r.permission(new Requests.Permission(rOtherApp,"Read","item:read","item","read"),null,d1,a2,"test");
         r.rolePermissions(r1,d1,a1,List.of(p1),"test");r.rolePermissions(r2,d1,a1,List.of(p2),"test");
         r.rolePermissions(rOther,d2,a1,List.of(pOther),"test");r.rolePermissions(rOtherApp,d1,a2,List.of(pOtherApp),"test");
@@ -102,12 +102,12 @@ class RbacIntegrationTest {
         assertThat((List<?>)c.effective(a1,empty).get("permissions")).isEmpty();
     }
     @Test void crossDomainRolePermissionAssignmentsAreRejectedAtomically() {
-        assertThatThrownBy(()->r.rolePermissions(r1,d1,a1,List.of(p1,pOther),"test")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->r.rolePermissions(r1,d1,a1,List.of(p1,pOtherApp),"test")).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->r.rolePermissions(r1,d1,a1,List.of(pOtherApp),"test")).isInstanceOf(ApiException.class);
         assertThat(r.roles(d1,a1).get(0).get("permissionIds")).isEqualTo(List.of(p1));
     }
-    @Test void databaseForeignKeysRejectCrossRoleAndCrossApplicationLinks() {
-        assertThatThrownBy(()->db.update("INSERT INTO role_permissions(role_id,permission_id,application_id) VALUES (?,?,?)",r1,pOther,a1)).isInstanceOf(DataIntegrityViolationException.class);
+    @Test void databaseForeignKeysRejectCrossApplicationLinks() {
+        assertThatThrownBy(()->db.update("INSERT INTO role_permissions(role_id,permission_id,application_id) VALUES (?,?,?)",r1,pOtherApp,a1)).isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(()->db.update("INSERT INTO user_roles(user_id,role_id,department_id,application_id) VALUES (?,?,?,?)",u2,rOtherApp,d1,a1)).isInstanceOf(DataIntegrityViolationException.class);
     }
     @Test void permissionRevocationIsVisibleInExistingContext() {
@@ -153,6 +153,9 @@ class RbacIntegrationTest {
         assertThat(r.roles(0,a1)).hasSize(3);
         assertThat(c.effective(a1,token).get("permissions")).isEqualTo(List.of("item:read","item:write"));
         r.deleteRole(rOtherApp,d1,a2,"test");
+        assertThat(r.permissions(0,a2)).singleElement().satisfies(p->assertThat(p).containsEntry("id",pOtherApp));
+        assertThatThrownBy(()->r.deleteApplication(a2,"test")).isInstanceOf(ApiException.class).hasMessageContaining("1 个权限");
+        r.deletePermission(pOtherApp,0,a2,"test");
         r.deleteApplication(a2,"test");
         assertThat(db.queryForObject("SELECT COUNT(*) FROM applications WHERE id=?",Long.class,a2)).isZero();
     }
@@ -199,12 +202,34 @@ class RbacIntegrationTest {
         assertThatThrownBy(()->r.copyDomain(new Requests.DomainCopy(a1,d1,d2),"test")).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->r.role(new Requests.Role("Duplicate","reader",""),null,d2,a1,"test")).isInstanceOf(DataIntegrityViolationException.class);
     }
-    @Test void identicalPermissionCodesRemainIndependentBetweenRoles() {
-        long other=r.permission(new Requests.Permission(r2,"Other read","item:read","other","read"),null,d2,a1,"test");
-        r.rolePermissions(r2,d2,a1,List.of(p2,other),"test");
-        r.permission(new Requests.Permission(r2,"Other edit","item:edit","other","edit"),other,d1,a1,"test");
-        assertThat(r.permissions(d2,a1)).anySatisfy(p->assertThat(p).containsEntry("id",p1).containsEntry("code","item:read"));
-        assertThatThrownBy(()->r.permission(new Requests.Permission(r1,"Wrong owner","item:edit","item","edit"),other,d1,a1,"test")).isInstanceOf(ApiException.class);
+    @Test void sharedPermissionChangesReachEveryRoleAndDeletingOneRoleKeepsTheDefinition() {
+        r.rolePermissions(r2,d2,a1,List.of(p2,p1),"test");
+        r.userRoles(u2,d1,a1,List.of(r2),"test");
+        String first=issue(a1,d1);
+        String second=(String)c.issue(a1,new Requests.Context(external+"-other",0,null),"test").get("contextToken");
+        r.permission(new Requests.Permission("Shared edit","item:edit","item","edit"),p1,0,a1,"test");
+        assertThat(c.effective(a1,first).get("permissions")).isEqualTo(List.of("item:edit","item:write"));
+        assertThat(c.effective(a1,second).get("permissions")).isEqualTo(List.of("item:edit","item:write"));
+        r.rolePermissions(r2,0,a1,List.of(p2),"test");
+        assertThat(c.check(a1,first,List.of("item:edit")).get("allowed")).isEqualTo(true);
+        assertThat(c.check(a1,second,List.of("item:edit")).get("allowed")).isEqualTo(false);
+        r.deleteRole(r1,0,a1,"test");
+        assertThat(r.permissions(0,a1)).anySatisfy(p->assertThat(p).containsEntry("id",p1));
+        r.deletePermission(p1,0,a1,"test");
+        assertThat(c.check(a1,first,List.of("item:edit")).get("allowed")).isEqualTo(false);
+    }
+    @Test void permissionCodesAreUniqueWithinSoftwareAndIndependentAcrossSoftware() {
+        assertThatThrownBy(()->r.permission(new Requests.Permission("Duplicate","item:read","item","read"),null,0,a1,"test"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(pOtherApp).isNotEqualTo(p1);
+    }
+    @Test void apiCreatesSoftwarePermissionWithoutRoleAndRejectsForeignSoftwareEdits() throws Exception {
+        mvc.perform(post("/api/v1/permissions").header("X-API-Key",key1).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("name","Unassigned","code","item:new","resource","item","action","new"))))
+                .andExpect(status().isOk());
+        mvc.perform(put("/api/v1/permissions/"+p1).header("X-API-Key",key2).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("name","Foreign","code","item:foreign","resource","item","action","foreign"))))
+                .andExpect(status().isForbidden());
     }
     @Test void usersArePagedAndSearchable() {
         var page=r.users(external,null,null,1,1);

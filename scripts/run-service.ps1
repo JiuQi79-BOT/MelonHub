@@ -16,9 +16,13 @@ try {
     Write-ServiceLog ("--- " + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + ' starting ' + $Service + ' ---')
     $ErrorActionPreference = 'Continue'
     if ($Service -eq 'backend') {
-        Import-MelonRuntimeConfiguration $configuration
-        $java = Get-MelonJava
-        & $java -jar (Join-Path $script:MelonRoot 'backend/target/rbac-service-1.0.0.jar') 2>&1 | ForEach-Object { Write-ServiceLog $_ }
+        if ((Get-MelonBackendMode $configuration) -eq 'server') {
+            & (Get-MelonPython) (Join-Path $script:MelonRoot 'scripts/server-backend.py') tunnel 2>&1 | ForEach-Object { Write-ServiceLog $_ }
+        } else {
+            Import-MelonRuntimeConfiguration $configuration
+            $java = Get-MelonJava
+            & $java -jar (Join-Path $script:MelonRoot 'backend/target/rbac-service-1.0.0.jar') 2>&1 | ForEach-Object { Write-ServiceLog $_ }
+        }
     } else {
         $node = (Get-Command node.exe -ErrorAction Stop).Source
         Set-Location -LiteralPath (Join-Path $script:MelonRoot 'frontend')

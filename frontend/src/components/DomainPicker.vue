@@ -5,7 +5,7 @@ const hub = useHub()
 
 <template>
   <div class="domain-picker">
-    <a-tooltip title="软件隔离角色，权限归属角色；部门只筛选成员">
+    <a-tooltip title="软件隔离角色和权限，角色可共享权限；部门只筛选成员">
       <span class="domain-label">管理范围</span>
     </a-tooltip>
     <a-select :value="hub.departmentId" :options="[{ value: 0, label: '全部成员' }, ...hub.departmentOptions]" placeholder="选择部门" size="small" :bordered="false" show-search

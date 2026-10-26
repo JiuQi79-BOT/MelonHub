@@ -43,7 +43,7 @@ API Key 对应的软件由服务端决定，调用方无法通过参数切换到
 | GET、POST | `/roles` | 查询或创建本软件的角色；创建体为 `{"name":"只读角色","code":"reader","description":""}`，返回 `{"id":...}` |
 | PUT、DELETE | `/roles/{roleId}` | 更新或删除角色；更新字段与创建一致 |
 | PATCH | `/roles/{roleId}/status` | 启停角色；`{"enabled":false}` |
-| GET、POST | `/permissions` | 查询或创建权限；创建体为 `{"roleId":11,"name":"查看项目","code":"project:read","resource":"project","action":"read"}` |
+| GET、POST | `/permissions` | 查询或创建权限；创建体为 `{"name":"查看项目","code":"project:read","resource":"project","action":"read"}` |
 | PUT、DELETE | `/permissions/{permissionId}` | 更新或删除权限；更新字段与创建一致 |
 | PUT | `/roles/{roleId}/permissions` | `{"ids":[1,2]}`，整体替换该角色的权限集合 |
 | GET、PUT | `/users/{userId}/roles` | 查询（返回 `{"roleIds":[...]}`）或整体替换该用户在本软件的角色；更新体与控制台相同（第 5.5 节）：`{"ids":[1,2],"expiresInDays":30,"expiries":[{"roleId":2,"expiresAt":"2026-12-31T18:00:00+08:00"}]}`，`expiresInDays`、`expiries` 均可省略 |
@@ -104,7 +104,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/contexts/check \
 
 一次最多校验 100 个权限编码。`decisions` 逐项给出结果，只有全部通过时 `allowed` 才为 true；不存在或未授权的权限一律为 false。
 
-旧部门路径的角色、权限、用户角色接口保留兼容，但范围统一为软件。权限必须携带 roleId，编辑不能更换所属角色。
+旧部门路径的角色、权限、用户角色接口保留兼容，但范围统一为软件。权限归属软件，创建无需 roleId；旧请求中的 roleId 仅作兼容字段，不产生角色关联。
 
 ### 3.3 上下文与失效
 
@@ -261,7 +261,7 @@ POST /api/v1/access-requests
 | GET | `/api/admin/users/{id}/access` | 授权详情：用户信息、各授权域的角色与权限、当前有效上下文；按调用者可见的软件过滤 |
 | DELETE | `/api/admin/users/{id}/contexts` | 强制下线该用户的全部上下文，返回 `{"revoked":n}` |
 
-修改外部标识会使该用户现有的全部上下文失效；移出某个部门会同时删除该用户在该部门的角色分配。
+修改外部标识会使该用户现有的全部上下文失效；移出部门只改变组织成员关系，保留软件角色分配及上下文。
 
 批量导入一次最多 500 行：
 
@@ -283,12 +283,12 @@ POST /api/v1/access-requests
 | PUT | `/api/admin/roles/{id}/permissions` | `{"ids":[...]}` 整体替换角色权限 |
 | GET、PUT | `/api/admin/roles/{id}/members` | 查询或整体替换角色成员 `{"ids":[用户 ID...]}`；成员来自整个软件，可通过部门筛选待添加用户；变动用户在该软件的上下文失效。保存期间如有用户被同时加入该角色，服务会自动重试；连续 3 次仍冲突时返回 `503 SERVICE_BUSY`，稍后重试即可 |
 | GET、POST | `/api/admin/permissions` | 权限列表（含 `roleCount`）或创建权限 |
-| PUT、DELETE | `/api/admin/permissions/{id}` | 更新或删除权限 |
+| PUT、DELETE | `/api/admin/permissions/{id}` | 更新共享定义影响全部引用角色；删除权限移除全部角色关联 |
 | GET、PUT | `/api/admin/users/{id}/roles` | 查询或整体替换某用户在本软件的角色；更新体见下文 |
 | GET | `/api/admin/assignments` | 分页列出该部门成员及其在本软件的 `roleIds`，以及 `roleExpiries`（`{角色 ID: 到期时间}`，只含有到期时间的角色）；参数 `keyword`、`page`、`size` |
 | POST | `/api/admin/assignments/batch` | 为一批部门成员追加多个角色；参数需要 `applicationId`；`departmentId` 可省略或为 0 表示全部成员，需要该软件写权限；请求体见下文 |
 | GET | `/api/admin/assignments/expiring` | 参数 `days`（1–365，默认 7）、可选 `applicationId`，不需要 `departmentId`；列出到期时间在该范围内的角色分配（最多 500 条），含用户、角色、部门、软件、到期时间和授予人 |
-| GET | `/api/admin/permissions/who` | 参数 `applicationId`、`code`（权限编码）、可选 `departmentId`（当前成员筛选）和 `roleId`（权限所属角色）；反查哪些用户通过哪些启用且未到期的角色持有该权限。`holders` 每项为一个用户，含授予该权限的全部角色及到期时间，最多返回 500 项；`total` 为实际用户数，`truncated` 为 true 表示未全部返回 |
+| GET | `/api/admin/permissions/who` | 参数 `applicationId`、`code`（权限编码）、可选 `departmentId`（当前成员筛选）和 `roleId`（授予角色筛选）；反查哪些用户通过哪些启用且未到期的角色持有该权限。`holders` 每项为一个用户，含授予该权限的全部角色及到期时间，最多返回 500 项；`total` 为实际用户数，`truncated` 为 true 表示未全部返回 |
 | GET | `/api/admin/overview` | 当前授权域与平台的统计概览 |
 
 批量追加角色：
@@ -329,15 +329,15 @@ POST /api/v1/access-requests
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/admin/manifest?applicationId=3` | 导出整个软件，旧 departmentId 不限制范围 |
-| POST | `/api/admin/manifest/import?applicationId=3` | 导入 v2，需要软件写权限 |
+| POST | `/api/admin/manifest/import?applicationId=3` | 导入 v3，需要软件写权限 |
 
 ```json
-{"version":2,
- "permissions":[{"roleCode":"reader","code":"order:read","name":"查看订单","resource":"order","action":"read"}],
+{"version":3,
+ "permissions":[{"code":"order:read","name":"查看订单","resource":"order","action":"read"}],
  "roles":[{"code":"reader","name":"阅读者","description":"","enabled":true,"permissions":["order:read"]}]}
 ```
 
-导入按软件角色编码、角色内权限编码匹配，列出角色的启用权限整体替换；未列出的配置及用户分配、期限保留。拒绝旧 v1 部门清单。响应含 permissionsCreated/permissionsUpdated/rolesCreated/rolesUpdated，事务整体成功或失败，变更触发软件缓存失效和通知。
+导入按软件角色编码、软件内权限编码匹配，列出角色的启用权限整体替换；未列出的配置及用户分配、期限保留。拒绝旧 v1/v2 清单，升级后重新导出或转换为 v3。共享定义修改影响所有引用角色。响应含 permissionsCreated/permissionsUpdated/rolesCreated/rolesUpdated，事务整体成功或失败，变更触发软件缓存失效和通知。
 
 ### 5.7 审计与哈希链
 

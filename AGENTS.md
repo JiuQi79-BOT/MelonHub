@@ -1,14 +1,22 @@
 # MelonHub 开发规范与任务交接
 
-## 2026-10-20 当前规则（覆盖下文历史描述）
+## 2026-10-26 服务器后端与启动（覆盖历史运行方式）
 
-用户确认“角色 × 软件”：软件隔离角色，权限归属角色且编码在角色内唯一。部门仅用于成员管理、筛选、批量设置软件角色；无部门用户也可申请和授权。部门变化不撤销软件角色或上下文。分配期限、grant_id、复核保护保留。
+后端已部署到 `.env` 中工作节点对应服务器的独立 `melonhub-backend` 容器，服务器回环 18080，配置和版本包在 `/opt/melonhub/`，Docker 重启策略 unless-stopped。当前本机 `.env` 为 BACKEND_MODE=server，一键启动只启动本机前端及 SSH API 通道（本机回环 8080）；stop-all 不停止服务器后端。BACKEND_MODE=local 保留本机 Java 调试。真实地址、凭据不输出，不提交 .env；不管理其他应用容器或 Swarm。
 
-V1–V5 不修改，V6 拆分共享权限、保留同编码旧角色并改名、移除角色/权限部门字段、建立复合外键、清除旧上下文。清单为软件级 v2，跨部门复制取消。详见 [数据库设计](doc/数据库设计.md)。
+`scripts/deploy-backend.ps1` 构建/更新后端（自身不跑测试，部署前先测试）；`scripts/server-backend.ps1 status/start/stop/restart` 管理服务器后端。服务器 Docker Hub 不通，复用既有 Java 21 镜像的项目专用标签 melonhub-runtime:21，具体选择在忽略配置 BACKEND_IMAGE。服务器工具依赖 `.local/cloud-tools` 中的 Paramiko，版本见 scripts/requirements-server.txt。SSH 主机密钥沿用 .local/cloud_known_hosts；部署只操作有项目标签的容器。
+
+JaCoCo 入口 `scripts/test-backend.ps1 -Coverage`，使用 JDK 21；本次 134 项、127 通过、7 项 Redis 跳过、0 失败/错误，行覆盖率 80.36%。完整命令、云测试参数和启动说明见 docs/JaCoCo测试指南.md、docs/服务器部署与启动.md，证据见 docs/验证记录.md。
+
+## 2026-10-22 当前规则（覆盖下文历史描述）
+
+软件隔离角色和权限：权限归属软件，编码在软件内唯一；同一软件角色可通过 role_permissions 多对多共享权限。部门仅用于成员管理、筛选、批量设置软件角色；无部门用户也可申请和授权。部门变化不撤销软件角色或上下文。分配期限、grant_id、复核保护保留。
+
+V1–V6 不修改。V7 合并同软件同编码权限（完整归档重复组，保留最小 ID 及其元数据），移除权限 role_id，复合外键只约束同软件关联；不改用户分配期限。清单升级软件级 v3，权限无 roleCode。跨部门复制取消。详见 [数据库设计](docs/数据库设计.md)。
 
 仅使用云 MySQL，正式/测试库分别为 melonhub_rbac/melonhub_rbac_test。本地 MySQL/Redis 容器管理代码和 application-local.yml 已移除，Redis 默认关闭，服务器部署后配置启用。脚本只管理项目 Java/Vite，不根据历史记录启动本地容器。当前工作目录为 D:/PersonalStudy/MelonHub。
 
-下文保留历史交接信息，其中“部门 × 软件”、全局部门切换失效、本地 Docker、TEST_DB_TARGET 的描述已过时；其他安全和工程规则继续有效。最新证据见 doc/验证记录.md。
+下文保留历史交接信息，其中“部门 × 软件”、角色独立权限、全局部门切换失效、本地 Docker、TEST_DB_TARGET 的描述已过时；其他安全和工程规则继续有效。文档目录已迁移至 docs/，最新证据见 docs/验证记录.md。
 
 
 最后更新：2026-10-19（Asia/Shanghai）。当前工作目录：`D:\MelonHub`。本地 Git 仓库的功能分支为 `rbac-platform`；既有改动按运行环境、控制台、鉴权、缓存限流、RBAC 授权、授权治理、Webhook、审计监控、Java SDK 和文档拆分提交。`origin` 指向个人 fork `https://github.com/xqy2006/MelonHub`，`upstream` 指向原仓库 `https://github.com/JiuQi79-BOT/MelonHub`；后续改动推送到个人 fork，通过 PR 向上游贡献。

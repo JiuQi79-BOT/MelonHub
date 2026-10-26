@@ -243,8 +243,8 @@ public class RbacDao {
         return db.queryForList("SELECT role_id,permission_id FROM role_permissions WHERE application_id=? ORDER BY permission_id", app);
     }
     public List<Map<String,Object>> permissions(long dept, long app) {
-        return db.queryForList("SELECT p.id,p.role_id AS roleId,r.name AS roleName,r.code AS roleCode,p.name,p.code,p.resource,p.action,p.created_at AS createdAt,"
-                + "(SELECT COUNT(*) FROM role_permissions rp WHERE rp.permission_id=p.id) AS roleCount FROM permissions p JOIN roles r ON r.id=p.role_id WHERE p.application_id=? ORDER BY p.id", app);
+        return db.queryForList("SELECT p.id,p.name,p.code,p.resource,p.action,p.created_at AS createdAt,"
+                + "(SELECT COUNT(*) FROM role_permissions rp WHERE rp.permission_id=p.id) AS roleCount FROM permissions p WHERE p.application_id=? ORDER BY p.id", app);
     }
     public long createRole(long dept, long app, String name, String code, String description) {
         return insert("INSERT INTO roles(application_id,name,code,description) VALUES (?,?,?,?)", app, name, code, description);
@@ -255,18 +255,11 @@ public class RbacDao {
     public void updateRole(long id, String name, String code, String description) { db.update("UPDATE roles SET name=?,code=?,description=? WHERE id=?", name, code, description, id); }
     public int roleStatus(long id, boolean enabled) { return db.update("UPDATE roles SET enabled=? WHERE id=?", enabled, id); }
     public int deleteRole(long id) { return db.update("DELETE FROM roles WHERE id=?", id); }
-    public long createPermission(long role, long dept, long app, String name, String code, String resource, String action) {
-        return insert("INSERT INTO permissions(role_id,application_id,name,code,resource,action) VALUES (?,?,?,?,?,?)", role, app, name, code, resource, action);
+    public long createPermission(long app, String name, String code, String resource, String action) {
+        return insert("INSERT INTO permissions(application_id,name,code,resource,action) VALUES (?,?,?,?,?)", app, name, code, resource, action);
     }
-    public boolean permissionOwnedBy(long permission, long role) {
-        return count("SELECT COUNT(*) FROM permissions WHERE id=? AND role_id=?", permission, role) == 1;
-    }
-    public long ownedPermissionCount(long role, Collection<Long> ids) {
-        if (ids.isEmpty()) return 0;
-        return count("SELECT COUNT(*) FROM permissions WHERE role_id=? AND id IN (" + AuthDao.placeholders(ids.size()) + ")", join(new Object[]{role}, ids));
-    }
-    public Optional<Long> permissionIdByCode(long role, String code) {
-        return db.queryForList("SELECT id FROM permissions WHERE role_id=? AND code=?", Long.class, role, code).stream().findFirst();
+    public Optional<Long> permissionIdByCode(long app, String code) {
+        return db.queryForList("SELECT id FROM permissions WHERE application_id=? AND code=?", Long.class, app, code).stream().findFirst();
     }
     public void updatePermission(long id, String name, String code, String resource, String action) {
         db.update("UPDATE permissions SET name=?,code=?,resource=?,action=? WHERE id=?", name, code, resource, action, id);
@@ -396,7 +389,7 @@ public class RbacDao {
     public List<Long> manifestDepartmentIds(long app) { return List.of(); }
     private static final String HOLDERS = "FROM user_roles ur JOIN users u ON u.id=ur.user_id AND u.enabled=TRUE "
             + "JOIN roles r ON r.id=ur.role_id AND r.enabled=TRUE "
-            + "JOIN role_permissions rp ON rp.role_id=r.id JOIN permissions p ON p.id=rp.permission_id AND p.role_id=r.id "
+            + "JOIN role_permissions rp ON rp.role_id=r.id JOIN permissions p ON p.id=rp.permission_id "
             + "WHERE p.application_id=? AND p.code=? AND (ur.expires_at IS NULL OR ur.expires_at>CURRENT_TIMESTAMP)";
     private static String holderFilter(Long dept, Long role) {
         return (dept == null || dept == 0 ? "" : " AND EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=ur.user_id AND m.department_id=?)")

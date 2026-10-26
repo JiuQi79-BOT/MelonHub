@@ -15,7 +15,7 @@ try {
     while (@(Get-MelonProcesses).Count -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 300 }
     if (@(Get-MelonProcesses).Count) { throw 'Some project processes are still running.' }
     Remove-Item -LiteralPath (Join-Path $script:MelonRoot '.local/services.json') -ErrorAction SilentlyContinue
-    Write-Host 'MelonHub stopped. Shared databases and unrelated services were not stopped.'
+    Write-Host 'Local frontend/backend connection stopped. The deployed server backend continues running.'
 } catch {
     Write-Host ('Stop failed: ' + $_.Exception.Message) -ForegroundColor Red
     exit 1

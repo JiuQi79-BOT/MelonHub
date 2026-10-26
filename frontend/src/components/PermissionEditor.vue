@@ -1,37 +1,27 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
-import { message, type FormInstance } from 'ant-design-vue'
-import { errorText, get, send } from '../api'
+import { reactive, ref, watch } from 'vue'
+import { type FormInstance } from 'ant-design-vue'
+import { send } from '../api'
 import { attempt } from '../composables'
 import { useAuthorizationScope } from '../authorizationScope'
-import type { Permission, Role } from '../types'
+import type { Permission } from '../types'
 
 const open = defineModel<boolean>('open', { required: true })
-const props = defineProps<{ permission?: Permission | null; roleId?: number }>()
+const props = defineProps<{ permission?: Permission | null }>()
 const emit = defineEmits<{ saved: [id: number] }>()
 const scope = useAuthorizationScope()
 const saving = ref(false), formRef = ref<FormInstance>()
-const roles = ref<Role[]>([])
-const roleOptions = computed(() => roles.value.map(r => ({ value: r.id, label: `${r.name}（${r.code}）` })))
-const form = reactive({ roleId: undefined as number | undefined, name: '', code: '', resource: '', action: '' })
-let sequence = 0
+const form = reactive({ name: '', code: '', resource: '', action: '' })
 const rules = {
-  roleId: [{ required: true, message: '请选择所属角色' }],
   name: [{ required: true, whitespace: true, max: 100, message: '请输入名称（最多 100 字）' }],
   code: [{ required: true, pattern: /^[a-zA-Z0-9_.:-]{1,100}$/, message: '1-100 位字母、数字或 _ . : -' }],
   resource: [{ required: true, whitespace: true, max: 100, message: '请输入资源标识（最多 100 字）' }],
   action: [{ required: true, whitespace: true, max: 64, message: '请输入操作标识（最多 64 字）' }],
 }
-watch(() => [open.value, props.permission, props.roleId, scope.applicationId], async () => {
-  const current = ++sequence
-  roles.value = []
+watch(() => [open.value, props.permission, scope.applicationId], () => {
   if (!open.value) return
   const row = props.permission
-  Object.assign(form, { roleId: row?.roleId ?? props.roleId, name: row?.name ?? '', code: row?.code ?? '', resource: row?.resource ?? '', action: row?.action ?? '' })
-  try {
-    const rows = await get<Role[]>('/admin/roles', scope.domainQuery)
-    if (current === sequence) roles.value = rows
-  } catch (e) { if (current === sequence) message.error(errorText(e)) }
+  Object.assign(form, { name: row?.name ?? '', code: row?.code ?? '', resource: row?.resource ?? '', action: row?.action ?? '' })
 }, { immediate: true })
 function suggest() {
   const parts = form.code.trim().split(':')
@@ -41,7 +31,7 @@ function suggest() {
 }
 async function save() {
   await formRef.value?.validate()
-  const body = { roleId: form.roleId, name: form.name.trim(), code: form.code.trim(), resource: form.resource.trim(), action: form.action.trim() }
+  const body = { name: form.name.trim(), code: form.code.trim(), resource: form.resource.trim(), action: form.action.trim() }
   let id = 0
   const ok = await attempt(saving, async () => {
     const result = props.permission
@@ -56,10 +46,8 @@ async function save() {
 <template>
   <a-modal v-model:open="open" :title="permission ? '编辑权限' : '新建权限'" :confirm-loading="saving" ok-text="保存" destroy-on-close :mask-closable="false" @ok="save">
     <a-form ref="formRef" layout="vertical" :model="form" :rules="rules">
-      <a-form-item label="所属角色" name="roleId">
-        <a-select v-model:value="form.roleId" :options="roleOptions" :disabled="!!permission || !!roleId" show-search option-filter-prop="label" placeholder="选择角色" />
-      </a-form-item>
-      <a-form-item label="权限编码" name="code" extra="业务系统校验时使用的值，所属角色内唯一，区分大小写。建议“资源:操作”格式">
+      <a-alert v-if="permission?.roleCount" type="warning" show-icon :message="`修改将影响使用此权限的 ${permission.roleCount} 个角色`" style="margin-bottom: 16px" />
+      <a-form-item label="权限编码" name="code" extra="软件内唯一，区分大小写。建议“资源:操作”格式">
         <a-input v-model:value="form.code" :maxlength="100" placeholder="例如：order:approve" @blur="suggest" />
       </a-form-item>
       <a-form-item label="名称" name="name"><a-input v-model:value="form.name" :maxlength="100" placeholder="例如：审批订单" /></a-form-item>

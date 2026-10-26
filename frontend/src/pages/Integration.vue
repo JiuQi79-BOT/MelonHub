@@ -149,7 +149,7 @@ async function revoke() { if (needToken() && await call('注销上下文', 'DELE
               <a-timeline class="flow">
                 <a-timeline-item><b>接入软件，保存 API Key</b><p>在“软件接入”创建软件，把一次性显示的 API Key 保存到业务后端的密钥配置中。</p></a-timeline-item>
                 <a-timeline-item><b>同步用户与部门</b><p>用户的“外部标识”应与业务系统的用户 ID 一致，可按管理需要加入部门。</p></a-timeline-item>
-                <a-timeline-item><b>定义权限和角色</b><p>在软件中创建角色，在角色内定义权限，再为用户分配软件角色。部门用于成员筛选和批量授权。</p></a-timeline-item>
+                <a-timeline-item><b>定义权限和角色</b><p>在软件中创建共享权限，为角色勾选权限，再为用户分配软件角色。部门用于成员筛选和批量授权。</p></a-timeline-item>
                 <a-timeline-item><b>登录时创建上下文</b><p>业务后端完成自身登录认证后，调用 <code>POST /api/v1/contexts</code>，把返回的 <code>contextToken</code> 存入业务会话。</p></a-timeline-item>
                 <a-timeline-item><b>操作前校验</b><p>每次受保护操作前调用 <code>POST /api/v1/contexts/check</code>，<code>allowed</code> 为 true 才执行。</p></a-timeline-item>
                 <a-timeline-item><b>退出时注销</b><p>用户退出时调用 <code>DELETE /api/v1/contexts</code>。</p></a-timeline-item>
@@ -158,7 +158,7 @@ async function revoke() { if (needToken() && await call('注销上下文', 'DELE
             <a-col :xs="24" :lg="11">
               <div class="section-title flush">注意事项</div>
               <ul class="notes">
-                <li><b>软件隔离角色。</b>权限归属角色，部门仅用于成员管理与批量授权。创建上下文可以省略部门，部门变化不影响已有授权。</li>
+                <li><b>软件隔离角色和权限。</b>同一软件内的角色可以共享权限，部门仅用于成员管理与批量授权。创建上下文可以省略部门，部门变化不影响已有授权。</li>
                 <li><b>每次受保护操作前实时校验。</b>角色停用、权限移除、重新分配或用户停用后，下一次校验即返回新结果，不要在业务侧长期缓存结果。</li>
                 <li><b>只按权限编码匹配。</b>编码区分大小写；平台不解析资源、操作或业务规则，也不会撤回已执行的业务操作。</li>
               </ul>

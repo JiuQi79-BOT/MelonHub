@@ -1,3 +1,4 @@
+param([switch]$Coverage)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'service-tools.ps1')
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -18,5 +19,7 @@ if (-not $env:TEST_DB_USERNAME -or -not $env:TEST_DB_PASSWORD) {
 }
 $java = Get-MelonJava
 $env:JAVA_HOME = Split-Path (Split-Path $java -Parent) -Parent
-& (Get-MelonMaven) -f (Join-Path $projectRoot 'backend/pom.xml') test -B -ntp
+$goals = @('test')
+if ($Coverage) { $goals = @('clean', 'verify', '-Pcoverage') }
+& (Get-MelonMaven) -f (Join-Path $projectRoot 'backend/pom.xml') @goals -B -ntp
 exit $LASTEXITCODE

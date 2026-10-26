@@ -100,8 +100,8 @@ class GovernanceIntegrationTest {
     private String issue() { return (String) c.issue(a1, new Requests.Context(external, d1, null), ACTOR).get("contextToken"); }
     private long requestId(Map<String,Object> request) { return ((Number) request.get("id")).longValue(); }
 
-    @Test @SuppressWarnings("unchecked") void permissionHoldersCanBeRestrictedToOwningRole() {
-        long other = r.permission(new Requests.Permission(r2, "Other read", "item:read", "item", "read"), null, 0, a1, ACTOR);
+    @Test @SuppressWarnings("unchecked") void sharedPermissionHoldersCanBeFilteredByGrantingRole() {
+        long other = db.queryForObject("SELECT id FROM permissions WHERE application_id=? AND code='item:read'", Long.class, a1);
         r.rolePermissions(r2, 0, a1, List.of(other), ACTOR);
         r.userRoles(u2, 0, a1, List.of(r2), ACTOR);
         assertThat(g.permissionHolders(a1, "item:read", null).get("total")).isEqualTo(2L);
@@ -354,7 +354,7 @@ class GovernanceIntegrationTest {
         assertThat(restored.get("name")).isEqualTo("Reader");
         var writer = roles.stream().filter(role -> ((Number) role.get("id")).longValue() == r2).findFirst().orElseThrow();
         assertThat((List<?>) writer.get("permissionIds")).hasSize(1);
-        // Importing into another department creates the configuration there.
+        // Department selection does not duplicate the application's shared configuration.
         var second = g.importManifest(a1, manifest, "admin");
         assertThat(second.get("rolesCreated")).isEqualTo(0);
         assertThat(r.roles(d2, a1)).hasSize(2);
@@ -443,9 +443,8 @@ class GovernanceIntegrationTest {
             case "writer" -> new Requests.ManifestRole(role.code(), role.name(), role.description(), true, List.of("item:read", "item:write"));
             default -> role;
         }).toList();
-        var definitions = new ArrayList<>(section.permissions());
-        definitions.add(new Requests.ManifestPermission("item:read", "Read", "item", "read", "writer"));
-        var manifest = new Requests.Manifest(2, definitions, roles);
+        var definitions = section.permissions();
+        var manifest = new Requests.Manifest(3, definitions, roles);
         g.importManifest(a1, manifest, "admin");
         var events = db.queryForList("SELECT payload FROM webhook_deliveries WHERE webhook_id=? ORDER BY id", String.class, hook);
         assertThat(events).anySatisfy(payload -> assertThat(payload).contains("\"permission.updated\""));
@@ -602,10 +601,9 @@ class GovernanceIntegrationTest {
     }
 
     @Test void permissionHoldersAreCountedPerUserAndDepartment() {
-        long read = db.queryForObject("SELECT id FROM permissions WHERE role_id=? AND application_id=? AND code='item:read'", Long.class, r1, a1);
-        long write = db.queryForObject("SELECT id FROM permissions WHERE role_id=? AND application_id=? AND code='item:write'", Long.class, r2, a1);
-        long ownRead = r.permission(new Requests.Permission(r2, "Read", "item:read", "item", "read"), null, d1, a1, ACTOR);
-        r.rolePermissions(r2, d1, a1, List.of(ownRead, write), ACTOR);
+        long read = db.queryForObject("SELECT id FROM permissions WHERE application_id=? AND code='item:read'", Long.class, a1);
+        long write = db.queryForObject("SELECT id FROM permissions WHERE application_id=? AND code='item:write'", Long.class, a1);
+        r.rolePermissions(r2, d1, a1, List.of(read, write), ACTOR);
         r.userRoles(u1, d1, a1, List.of(r1, r2), ACTOR);
         r.userRoles(u2, d1, a1, List.of(r2), ACTOR);
         var holders = g.permissionHolders(a1, "item:read", null);
@@ -681,7 +679,7 @@ class GovernanceIntegrationTest {
         assertThat(webhooks.webhooks(a1).get(0).get("events")).isEqualTo(List.of("*"));
         webhooks.update(hook, new Requests.Webhook("变更", "http://127.0.0.1:1/hook", null, List.of("permission.updated", "permission.deleted", "role.enabled", "role.deleted", "user.contexts.revoked"), true), ACTOR);
         assertThat((List<?>) webhooks.webhooks(a1).get(0).get("events")).hasSize(5);
-        long permission = db.queryForObject("SELECT id FROM permissions WHERE role_id=? AND application_id=? AND code='item:write'", Long.class, r2, a1);
+        long permission = db.queryForObject("SELECT id FROM permissions WHERE application_id=? AND code='item:write'", Long.class, a1);
         r.permission(new Requests.Permission(r2, "Write", "item:edit", "item", "edit"), permission, d1, a1, ACTOR);
         r.deletePermission(permission, d1, a1, ACTOR);
         r.roleStatus(r2, d1, a1, true, ACTOR);

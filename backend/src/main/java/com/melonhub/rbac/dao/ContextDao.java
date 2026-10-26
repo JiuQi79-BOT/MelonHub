@@ -57,7 +57,7 @@ public class ContextDao {
         return db.queryForList("SELECT DISTINCT p.code FROM permissions p JOIN role_permissions rp ON rp.permission_id=p.id JOIN roles r ON r.id=rp.role_id "
                 + "JOIN context_roles cr ON cr.role_id=r.id JOIN user_roles ur ON ur.role_id=r.id AND ur.user_id=? "
                 + "AND (ur.expires_at IS NULL OR ur.expires_at>CURRENT_TIMESTAMP) "
-                + "WHERE cr.context_id=? AND r.enabled=TRUE AND p.role_id=r.id AND p.application_id=? ORDER BY p.code", String.class, user, hash, app);
+                + "WHERE cr.context_id=? AND r.enabled=TRUE AND p.application_id=? ORDER BY p.code", String.class, user, hash, app);
     }
     public int revoke(String hash, long app) { return db.update("DELETE FROM permission_contexts WHERE id=? AND application_id=?", hash, app); }
     public int revokeDomain(long user, long dept, long app) {
