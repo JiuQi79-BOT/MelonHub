@@ -58,6 +58,7 @@ MelonHub/
 |   |-- server-backend.ps1 / .py          # 服务器后端管理与 SSH 转发实现
 |   |-- service-tools.ps1 / run-service.ps1 # 配置加载、进程识别及后台运行
 |   |-- test-backend.ps1                  # 后端测试，-Coverage 生成 JaCoCo 报告
+|   |-- prepare-demo.cjs                  # 通过 API 准备使用手册配套演示数据
 |   `-- tests/                            # 部署保护与凭据工具的单元测试
 |-- docs/                                 # 使用、API、架构、数据库及详细设计文档
 |   `-- UML/                              # 类图、数据流图与通信图
@@ -94,7 +95,7 @@ MelonHub/
 - [详细设计](docs/详细设计.md)：需求追踪、逐类职责、前端与 SDK、事务并发及设计边界。
 - [数据库设计](docs/数据库设计.md)：当前关系、唯一键和复合外键、V7 共享权限迁移。
 - [当前设计图](docs/UML/README.md)：V7 类图、数据流图、通信图及重建入口。
-- [使用说明书](docs/使用说明书.md)：控制台与授权工作流。
+- [使用说明书](docs/使用说明书.md)：可照做的功能演示、配套数据、部门授权、审批复核及重演恢复。
 - [云数据库运行](docs/云数据库运行.md)：配置、启停、IDEA 和测试。
 - [接口说明](docs/API.md)、[架构说明](docs/ARCHITECTURE.md)。
 - [验证记录](docs/验证记录.md)、[Java SDK](sdk/java/README.md)。
