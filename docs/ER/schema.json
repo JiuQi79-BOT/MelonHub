@@ -1,0 +1,2347 @@
+{
+  "columns": [
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "user_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "department_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "role_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "reason",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "duration_days",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "status",
+      "COLUMN_TYPE": "varchar(16)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "requested_by",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "decided_by",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "decided_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "decision_comment",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "grant_expires_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "user_name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "external_id",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "role_code",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "role_name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "department_name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "pending_role_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "review_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "user_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "role_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "department_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "decision",
+      "COLUMN_TYPE": "varchar(16)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "comment",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "decided_by",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "decided_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "applied",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "grant_id",
+      "COLUMN_TYPE": "char(36)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "skipped",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "user_name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "external_id",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "role_code",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "role_name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "department_name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "department_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "status",
+      "COLUMN_TYPE": "varchar(16)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "due_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "created_by",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "closed_by",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "closed_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "summary",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "department_name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_account_applications",
+      "COLUMN_NAME": "username",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "admin_account_applications",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "username",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "password_hash",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "display_name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "role",
+      "COLUMN_TYPE": "varchar(32)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "enabled",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "failed_attempts",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "locked_until",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "last_login_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "password_changed_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "mfa_secret",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "mfa_pending_secret",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "mfa_last_step",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "credential_version",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_sessions",
+      "COLUMN_NAME": "token_hash",
+      "COLUMN_TYPE": "char(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "admin_sessions",
+      "COLUMN_NAME": "username",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "admin_sessions",
+      "COLUMN_NAME": "expires_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "admin_sessions",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_sessions",
+      "COLUMN_NAME": "last_seen_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_sessions",
+      "COLUMN_NAME": "source_ip",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "admin_sessions",
+      "COLUMN_NAME": "credential_version",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "key_prefix",
+      "COLUMN_TYPE": "varchar(16)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "key_hash",
+      "COLUMN_TYPE": "char(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "created_by",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "expires_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "last_used_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "revoked_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "applications",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "applications",
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "applications",
+      "COLUMN_NAME": "code",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "TABLE_NAME": "applications",
+      "COLUMN_NAME": "description",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "applications",
+      "COLUMN_NAME": "enabled",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "applications",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "applications",
+      "COLUMN_NAME": "owner",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "applications",
+      "COLUMN_NAME": "rate_limit",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "actor",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "action",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "target",
+      "COLUMN_TYPE": "varchar(200)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "department_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "detail",
+      "COLUMN_TYPE": "varchar(1000)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "source_ip",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "prev_hash",
+      "COLUMN_TYPE": "char(64)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "chain_hash",
+      "COLUMN_TYPE": "char(64)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "seal_seq",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "TABLE_NAME": "audit_seal",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "tinyint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "audit_seal",
+      "COLUMN_NAME": "last_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_seal",
+      "COLUMN_NAME": "last_hash",
+      "COLUMN_TYPE": "char(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_seal",
+      "COLUMN_NAME": "sealed_count",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_seal",
+      "COLUMN_NAME": "updated_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_seal",
+      "COLUMN_NAME": "last_seq",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_seal",
+      "COLUMN_NAME": "anchor_seq",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_seal",
+      "COLUMN_NAME": "anchor_hash",
+      "COLUMN_TYPE": "char(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "audit_seal",
+      "COLUMN_NAME": "v2_from_seq",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "context_roles",
+      "COLUMN_NAME": "context_id",
+      "COLUMN_TYPE": "char(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "context_roles",
+      "COLUMN_NAME": "role_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "departments",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "departments",
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "departments",
+      "COLUMN_NAME": "code",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "TABLE_NAME": "departments",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "flyway_schema_history",
+      "COLUMN_NAME": "installed_rank",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "flyway_schema_history",
+      "COLUMN_NAME": "version",
+      "COLUMN_TYPE": "varchar(50)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "flyway_schema_history",
+      "COLUMN_NAME": "description",
+      "COLUMN_TYPE": "varchar(200)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "flyway_schema_history",
+      "COLUMN_NAME": "type",
+      "COLUMN_TYPE": "varchar(20)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "flyway_schema_history",
+      "COLUMN_NAME": "script",
+      "COLUMN_TYPE": "varchar(1000)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "flyway_schema_history",
+      "COLUMN_NAME": "checksum",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "flyway_schema_history",
+      "COLUMN_NAME": "installed_by",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "flyway_schema_history",
+      "COLUMN_NAME": "installed_on",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "flyway_schema_history",
+      "COLUMN_NAME": "execution_time",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "flyway_schema_history",
+      "COLUMN_NAME": "success",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "memberships",
+      "COLUMN_NAME": "user_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "memberships",
+      "COLUMN_NAME": "department_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "permission_contexts",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "char(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "permission_contexts",
+      "COLUMN_NAME": "user_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "permission_contexts",
+      "COLUMN_NAME": "department_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "permission_contexts",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "permission_contexts",
+      "COLUMN_NAME": "context_version",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_contexts",
+      "COLUMN_NAME": "expires_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "permission_contexts",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_merge_archive",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_merge_archive",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_merge_archive",
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_merge_archive",
+      "COLUMN_NAME": "code",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_merge_archive",
+      "COLUMN_NAME": "resource",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_merge_archive",
+      "COLUMN_NAME": "action",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_merge_archive",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_merge_archive",
+      "COLUMN_NAME": "role_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_merge_archive",
+      "COLUMN_NAME": "canonical_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_migration_archive",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_migration_archive",
+      "COLUMN_NAME": "department_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_migration_archive",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_migration_archive",
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_migration_archive",
+      "COLUMN_NAME": "code",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_migration_archive",
+      "COLUMN_NAME": "resource",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_migration_archive",
+      "COLUMN_NAME": "action",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permission_migration_archive",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "code",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "resource",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "action",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "role_migration_archive",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "role_migration_archive",
+      "COLUMN_NAME": "department_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "role_migration_archive",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "role_migration_archive",
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "role_migration_archive",
+      "COLUMN_NAME": "code",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "role_migration_archive",
+      "COLUMN_NAME": "description",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "role_migration_archive",
+      "COLUMN_NAME": "enabled",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "role_migration_archive",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "role_permissions",
+      "COLUMN_NAME": "role_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "role_permissions",
+      "COLUMN_NAME": "permission_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "role_permissions",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "code",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "description",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "enabled",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "user_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "role_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "department_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "expires_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "granted_by",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "granted_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "grant_id",
+      "COLUMN_TYPE": "char(36)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "users",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "users",
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "users",
+      "COLUMN_NAME": "external_id",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "UNI"
+    },
+    {
+      "TABLE_NAME": "users",
+      "COLUMN_NAME": "email",
+      "COLUMN_TYPE": "varchar(150)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "users",
+      "COLUMN_NAME": "enabled",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "users",
+      "COLUMN_NAME": "active_department_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "users",
+      "COLUMN_NAME": "context_version",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "users",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "webhook_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "event_id",
+      "COLUMN_TYPE": "char(36)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "event_type",
+      "COLUMN_TYPE": "varchar(64)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "payload",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "status",
+      "COLUMN_TYPE": "varchar(16)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "attempts",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "next_attempt_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "last_status",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "last_error",
+      "COLUMN_TYPE": "varchar(300)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "delivered_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "YES",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhooks",
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "PRI"
+    },
+    {
+      "TABLE_NAME": "webhooks",
+      "COLUMN_NAME": "application_id",
+      "COLUMN_TYPE": "bigint",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": "MUL"
+    },
+    {
+      "TABLE_NAME": "webhooks",
+      "COLUMN_NAME": "name",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhooks",
+      "COLUMN_NAME": "url",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhooks",
+      "COLUMN_NAME": "secret",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhooks",
+      "COLUMN_NAME": "events",
+      "COLUMN_TYPE": "varchar(500)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhooks",
+      "COLUMN_NAME": "enabled",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhooks",
+      "COLUMN_NAME": "created_by",
+      "COLUMN_TYPE": "varchar(100)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    },
+    {
+      "TABLE_NAME": "webhooks",
+      "COLUMN_NAME": "created_at",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_KEY": ""
+    }
+  ],
+  "keys": [
+    {
+      "CONSTRAINT_NAME": "fk_access_requests_application",
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "applications",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_access_requests_department",
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "department_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "departments",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_access_requests_role",
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "role_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "roles",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_access_requests_user",
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "user_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "users",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uk_access_requests_pending",
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "user_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uk_access_requests_pending",
+      "TABLE_NAME": "access_requests",
+      "COLUMN_NAME": "pending_role_id",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "fk_review_items_review",
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "review_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "access_reviews",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_review_items_role",
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "role_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "roles",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_review_items_user",
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "user_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "users",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uk_access_review_items",
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "review_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uk_access_review_items",
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "user_id",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uk_access_review_items",
+      "TABLE_NAME": "access_review_items",
+      "COLUMN_NAME": "role_id",
+      "ORDINAL_POSITION": 3,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "fk_access_reviews_application",
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "applications",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_access_reviews_department",
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "department_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "departments",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "access_reviews",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "fk_account_apps_account",
+      "TABLE_NAME": "admin_account_applications",
+      "COLUMN_NAME": "username",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "admin_accounts",
+      "REFERENCED_COLUMN_NAME": "username"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_account_apps_application",
+      "TABLE_NAME": "admin_account_applications",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "applications",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "admin_account_applications",
+      "COLUMN_NAME": "username",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "admin_account_applications",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "admin_accounts",
+      "COLUMN_NAME": "username",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "fk_admin_sessions_account",
+      "TABLE_NAME": "admin_sessions",
+      "COLUMN_NAME": "username",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "admin_accounts",
+      "REFERENCED_COLUMN_NAME": "username"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "admin_sessions",
+      "COLUMN_NAME": "token_hash",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "fk_application_keys_application",
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "applications",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uk_application_keys_hash",
+      "TABLE_NAME": "application_keys",
+      "COLUMN_NAME": "key_hash",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "code",
+      "TABLE_NAME": "applications",
+      "COLUMN_NAME": "code",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "applications",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uk_audit_events_seal_seq",
+      "TABLE_NAME": "audit_events",
+      "COLUMN_NAME": "seal_seq",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "audit_seal",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "context_roles_ibfk_1",
+      "TABLE_NAME": "context_roles",
+      "COLUMN_NAME": "context_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "permission_contexts",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "context_roles_ibfk_2",
+      "TABLE_NAME": "context_roles",
+      "COLUMN_NAME": "role_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "roles",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "context_roles",
+      "COLUMN_NAME": "context_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "context_roles",
+      "COLUMN_NAME": "role_id",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "code",
+      "TABLE_NAME": "departments",
+      "COLUMN_NAME": "code",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "departments",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "flyway_schema_history",
+      "COLUMN_NAME": "installed_rank",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "memberships_ibfk_1",
+      "TABLE_NAME": "memberships",
+      "COLUMN_NAME": "user_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "users",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "memberships_ibfk_2",
+      "TABLE_NAME": "memberships",
+      "COLUMN_NAME": "department_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "departments",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "memberships",
+      "COLUMN_NAME": "user_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "memberships",
+      "COLUMN_NAME": "department_id",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "fk_context_department",
+      "TABLE_NAME": "permission_contexts",
+      "COLUMN_NAME": "department_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "departments",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "permission_contexts_ibfk_1",
+      "TABLE_NAME": "permission_contexts",
+      "COLUMN_NAME": "user_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "users",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "permission_contexts_ibfk_3",
+      "TABLE_NAME": "permission_contexts",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "applications",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "permission_contexts",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "fk_permission_application",
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "applications",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uq_permission_application",
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uq_permission_application",
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uq_permission_application_code",
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uq_permission_application_code",
+      "TABLE_NAME": "permissions",
+      "COLUMN_NAME": "code",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "fk_role_permission_application",
+      "TABLE_NAME": "role_permissions",
+      "COLUMN_NAME": "permission_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "permissions",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_role_permission_application",
+      "TABLE_NAME": "role_permissions",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": "permissions",
+      "REFERENCED_COLUMN_NAME": "application_id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_role_permission_role",
+      "TABLE_NAME": "role_permissions",
+      "COLUMN_NAME": "role_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "roles",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_role_permission_role",
+      "TABLE_NAME": "role_permissions",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": "roles",
+      "REFERENCED_COLUMN_NAME": "application_id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "role_permissions",
+      "COLUMN_NAME": "role_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "role_permissions",
+      "COLUMN_NAME": "permission_id",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "roles_ibfk_2",
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "applications",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "uq_role_application",
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uq_role_application",
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uq_role_application_code",
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "uq_role_application_code",
+      "TABLE_NAME": "roles",
+      "COLUMN_NAME": "code",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "fk_assignment_origin",
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "department_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "departments",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_assignment_role",
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "role_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "roles",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_assignment_role",
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": "roles",
+      "REFERENCED_COLUMN_NAME": "application_id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_assignment_user",
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "user_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "users",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "user_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "user_roles",
+      "COLUMN_NAME": "role_id",
+      "ORDINAL_POSITION": 2,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "external_id",
+      "TABLE_NAME": "users",
+      "COLUMN_NAME": "external_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "users",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "users_ibfk_1",
+      "TABLE_NAME": "users",
+      "COLUMN_NAME": "active_department_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "departments",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_webhook_deliveries_webhook",
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "webhook_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "webhooks",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "webhook_deliveries",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    },
+    {
+      "CONSTRAINT_NAME": "fk_webhooks_application",
+      "TABLE_NAME": "webhooks",
+      "COLUMN_NAME": "application_id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": "applications",
+      "REFERENCED_COLUMN_NAME": "id"
+    },
+    {
+      "CONSTRAINT_NAME": "PRIMARY",
+      "TABLE_NAME": "webhooks",
+      "COLUMN_NAME": "id",
+      "ORDINAL_POSITION": 1,
+      "REFERENCED_TABLE_NAME": null,
+      "REFERENCED_COLUMN_NAME": null
+    }
+  ],
+  "foreignKeys": [
+    {
+      "CONSTRAINT_NAME": "fk_access_requests_application",
+      "TABLE_NAME": "access_requests",
+      "REFERENCED_TABLE_NAME": "applications",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_access_requests_department",
+      "TABLE_NAME": "access_requests",
+      "REFERENCED_TABLE_NAME": "departments",
+      "DELETE_RULE": "SET NULL",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_access_requests_role",
+      "TABLE_NAME": "access_requests",
+      "REFERENCED_TABLE_NAME": "roles",
+      "DELETE_RULE": "SET NULL",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_access_requests_user",
+      "TABLE_NAME": "access_requests",
+      "REFERENCED_TABLE_NAME": "users",
+      "DELETE_RULE": "SET NULL",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_review_items_review",
+      "TABLE_NAME": "access_review_items",
+      "REFERENCED_TABLE_NAME": "access_reviews",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_review_items_role",
+      "TABLE_NAME": "access_review_items",
+      "REFERENCED_TABLE_NAME": "roles",
+      "DELETE_RULE": "SET NULL",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_review_items_user",
+      "TABLE_NAME": "access_review_items",
+      "REFERENCED_TABLE_NAME": "users",
+      "DELETE_RULE": "SET NULL",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_access_reviews_application",
+      "TABLE_NAME": "access_reviews",
+      "REFERENCED_TABLE_NAME": "applications",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_access_reviews_department",
+      "TABLE_NAME": "access_reviews",
+      "REFERENCED_TABLE_NAME": "departments",
+      "DELETE_RULE": "SET NULL",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_account_apps_account",
+      "TABLE_NAME": "admin_account_applications",
+      "REFERENCED_TABLE_NAME": "admin_accounts",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_account_apps_application",
+      "TABLE_NAME": "admin_account_applications",
+      "REFERENCED_TABLE_NAME": "applications",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_admin_sessions_account",
+      "TABLE_NAME": "admin_sessions",
+      "REFERENCED_TABLE_NAME": "admin_accounts",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_application_keys_application",
+      "TABLE_NAME": "application_keys",
+      "REFERENCED_TABLE_NAME": "applications",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "context_roles_ibfk_1",
+      "TABLE_NAME": "context_roles",
+      "REFERENCED_TABLE_NAME": "permission_contexts",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "context_roles_ibfk_2",
+      "TABLE_NAME": "context_roles",
+      "REFERENCED_TABLE_NAME": "roles",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "memberships_ibfk_1",
+      "TABLE_NAME": "memberships",
+      "REFERENCED_TABLE_NAME": "users",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "memberships_ibfk_2",
+      "TABLE_NAME": "memberships",
+      "REFERENCED_TABLE_NAME": "departments",
+      "DELETE_RULE": "NO ACTION",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_context_department",
+      "TABLE_NAME": "permission_contexts",
+      "REFERENCED_TABLE_NAME": "departments",
+      "DELETE_RULE": "SET NULL",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "permission_contexts_ibfk_1",
+      "TABLE_NAME": "permission_contexts",
+      "REFERENCED_TABLE_NAME": "users",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "permission_contexts_ibfk_3",
+      "TABLE_NAME": "permission_contexts",
+      "REFERENCED_TABLE_NAME": "applications",
+      "DELETE_RULE": "NO ACTION",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_permission_application",
+      "TABLE_NAME": "permissions",
+      "REFERENCED_TABLE_NAME": "applications",
+      "DELETE_RULE": "NO ACTION",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_role_permission_application",
+      "TABLE_NAME": "role_permissions",
+      "REFERENCED_TABLE_NAME": "permissions",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_role_permission_role",
+      "TABLE_NAME": "role_permissions",
+      "REFERENCED_TABLE_NAME": "roles",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "roles_ibfk_2",
+      "TABLE_NAME": "roles",
+      "REFERENCED_TABLE_NAME": "applications",
+      "DELETE_RULE": "NO ACTION",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_assignment_origin",
+      "TABLE_NAME": "user_roles",
+      "REFERENCED_TABLE_NAME": "departments",
+      "DELETE_RULE": "SET NULL",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_assignment_role",
+      "TABLE_NAME": "user_roles",
+      "REFERENCED_TABLE_NAME": "roles",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_assignment_user",
+      "TABLE_NAME": "user_roles",
+      "REFERENCED_TABLE_NAME": "users",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "users_ibfk_1",
+      "TABLE_NAME": "users",
+      "REFERENCED_TABLE_NAME": "departments",
+      "DELETE_RULE": "NO ACTION",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_webhook_deliveries_webhook",
+      "TABLE_NAME": "webhook_deliveries",
+      "REFERENCED_TABLE_NAME": "webhooks",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    },
+    {
+      "CONSTRAINT_NAME": "fk_webhooks_application",
+      "TABLE_NAME": "webhooks",
+      "REFERENCED_TABLE_NAME": "applications",
+      "DELETE_RULE": "CASCADE",
+      "UPDATE_RULE": "NO ACTION"
+    }
+  ]
+}
