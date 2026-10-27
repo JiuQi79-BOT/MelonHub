@@ -292,7 +292,7 @@ public class RbacService {
         return revoked;
     }
 
-    // ---- roles and permissions in one isolation domain ----
+    // ---- application-owned roles and shared permissions ----
     public List<Map<String,Object>> roles(long dept, long app) {
         domain(dept, app);
         var roles = dao.roles(dept, app);
@@ -437,7 +437,7 @@ public class RbacService {
         for (var item : result.items()) item.put("roleExpiries", expiries.getOrDefault(number(item.get("id")), Map.of()));
         return page(result, page, size);
     }
-    /** Adds selected roles to department members, keeping every existing active grant and its expiry. */
+    /** Adds application roles to selected users, optionally filtering by department, and keeps active grants. */
     @Transactional public Map<String,Object> addUserRoles(long dept, long app, Requests.BatchUserRoles body, String actor) {
         domain(dept, app);
         var users = new TreeSet<>(body.userIds());
@@ -472,7 +472,7 @@ public class RbacService {
         return Map.of("users", users.size(), "changedUsers", changedUsers, "grantsAdded", grants);
     }
 
-    /** Replaces a user's roles in one domain and ends that user's contexts there; other domains are untouched. */
+    /** Replaces a user's application roles and ends contexts for that application; other applications are untouched. */
     @Transactional public void userRoles(long user, long dept, long app, List<Long> roles, String actor) {
         userRoles(user, dept, app, roles, null, null, actor);
     }
@@ -480,7 +480,7 @@ public class RbacService {
         userRoles(user, dept, app, roles, expiresInDays, null, actor);
     }
     /**
-     * Sets the complete role set of a user in one domain. An entry in expiries sets that role's expiry (null for
+     * Sets the complete role set of a user in one application. An entry in expiries sets that role's expiry (null for
      * permanent); otherwise expiresInDays, when given, applies to the role. A role with neither keeps the expiry
      * and grant it already has, and a newly added one is permanent. Removed roles are revoked.
      */

@@ -53,7 +53,7 @@ public final class Requests {
     public record MfaCode(@NotBlank @Pattern(regexp="\\d{6}") String code) {}
     public record MfaDisable(@NotBlank @Size(max=100) String password, @NotBlank @Pattern(regexp="\\d{6}") String code) {}
     /**
-     * The complete role set of one user in one domain. expiries sets individual roles' expiry (expiresAt null is
+     * The complete role set of one user in one application. expiries sets individual roles' expiry (expiresAt null is
      * permanent); expiresInDays applies to every listed role without an entry there. A role covered by neither
      * keeps its current expiry, and a new one is permanent.
      */

@@ -76,7 +76,7 @@ export interface WebhookDelivery {
 }
 export interface PermissionHolderRole { id: number; name: string; code: string; expiresAt: string | null }
 export interface PermissionHolder { userId: number; userName: string; externalId: string; departmentId: number; departmentName: string; roles: PermissionHolderRole[] }
-/** total counts every (user, department) holder; holders is capped and truncated says whether some were left out. */
+/** total counts distinct users; holders is capped and truncated says whether some were left out. */
 export interface PermissionHolders { code: string; applicationId: number; total: number; truncated: boolean; holders: PermissionHolder[] }
 export interface ExpiringAssignment {
   userId: number; userName: string; externalId: string; roleId: number; roleName: string; roleCode: string

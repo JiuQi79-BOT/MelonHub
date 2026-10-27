@@ -16,7 +16,7 @@ export const useHub = defineStore('hub', () => {
   const department = computed(() => departments.value.find(d => d.id === departmentId.value))
   const application = computed(() => applications.value.find(a => a.id === applicationId.value))
   const hasDomain = computed(() => !!application.value)
-  /** Changes whenever the isolation domain changes; domain pages reload on it and drop stale responses. */
+  /** Reload pages when the application or optional department member filter changes. */
   const domainKey = computed(() => hasDomain.value ? `${departmentId.value}:${applicationId.value}` : '')
   const domainQuery = computed(() => ({ departmentId: departmentId.value, applicationId: applicationId.value }))
 

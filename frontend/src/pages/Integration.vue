@@ -51,7 +51,7 @@ API_KEY='<在“软件接入”中创建的 API Key>'
 curl -s -X POST "$MELONHUB/api/v1/contexts" \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: $API_KEY" \\
-  -d '{"externalId":"zhangsan","departmentId":${hub.departmentId || 1}}'
+  -d '{"externalId":"zhangsan"}'
 
 # 2. 每次受保护操作前校验
 curl -s -X POST "$MELONHUB/api/v1/contexts/check" \\
@@ -167,7 +167,7 @@ async function revoke() { if (needToken() && await call('注销上下文', 'DELE
         </a-tab-pane>
 
         <a-tab-pane key="api" tab="接口清单">
-          <p class="muted">所有业务接口都需要请求头 <code>X-API-Key</code>，上下文相关接口还需要 <code>X-Context-Token</code>。API Key 决定所属软件，只能访问本软件的数据。</p>
+          <p class="muted">所有业务接口都需要请求头 <code>X-API-Key</code>。创建上下文无需 <code>X-Context-Token</code>；查询、校验和注销已有上下文时才需要携带。API Key 决定所属软件，只能访问本软件的数据。</p>
           <a-table :columns="endpointColumns" :data-source="endpoints" :row-key="(r: Endpoint) => r.method + r.path" size="small" :pagination="false">
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'method'"><a-tag>{{ record.method }}</a-tag></template>

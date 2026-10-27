@@ -10,7 +10,7 @@ import jakarta.validation.Valid;
 import java.util.Map;
 import org.springframework.web.bind.annotation.*;
 
-/** API for business systems. The API key fixes the application, so every call stays inside that application's domains. */
+/** API for business systems. The API key fixes the application that owns the roles and shared permissions. */
 @RestController
 @RequestMapping("/api/v1")
 public class BusinessController {

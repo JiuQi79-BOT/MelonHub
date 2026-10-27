@@ -94,7 +94,7 @@ public class AdminController {
         return Map.of("revoked", r.revokeUserContexts(id, AdminAccess.platformWrite(req).actor()));
     }
 
-    // ---- one isolation domain (department x application) ----
+    // ---- application authorization; department only filters members ----
     @GetMapping("/roles") Object roles(@RequestParam(defaultValue="0") long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
         AdminAccess.readApplication(req, applicationId); return r.roles(departmentId, applicationId);
     }

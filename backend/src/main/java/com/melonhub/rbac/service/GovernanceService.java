@@ -127,7 +127,7 @@ public class GovernanceService {
         return gov.requestsOfUser(user, app);
     }
 
-    /** Read-only view of what a user currently holds in one domain, without creating a context. */
+    /** Read-only view of a user's application roles and permissions, without creating a context. */
     public Map<String,Object> myAccess(long app, String externalId, long dept) {
         long user = dao.userIdByExternal(externalId).orElseThrow(() -> ApiException.missing("用户不存在"));
         rbac.domain(dept, app);

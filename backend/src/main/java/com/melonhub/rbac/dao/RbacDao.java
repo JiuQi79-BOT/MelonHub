@@ -79,13 +79,13 @@ public class RbacDao {
         if (!Set.of("departments", "applications").contains(table)) throw new IllegalArgumentException();
         return db.query("SELECT name,code FROM " + table + " WHERE id=?", (rs, n) -> new String[] { rs.getString(1), rs.getString(2) }, id).stream().findFirst();
     }
-    /** Members, roles and permissions that keep a department from being deleted. */
+    /** Only members prevent department deletion; the trailing slots preserve the dependency summary shape. */
     public long[] departmentUsage(long id) {
         return new long[] {
             count("SELECT COUNT(*) FROM memberships WHERE department_id=?", id),
             0, 0 };
     }
-    /** Roles and permissions, across all departments, that keep an application from being deleted. */
+    /** Application-owned roles and permissions that prevent application deletion. */
     public long[] applicationUsage(long id) {
         return new long[] {
             count("SELECT COUNT(*) FROM roles WHERE application_id=?", id),
@@ -284,14 +284,14 @@ public class RbacDao {
     public List<Long> assignedRoles(long user, long dept, long app) {
         return db.queryForList("SELECT role_id FROM user_roles WHERE user_id=? AND application_id=? ORDER BY role_id", Long.class, user, app);
     }
-    /** The user's current assignments in one domain (role id to expiry, null when permanent), without locking. */
+    /** The user's application assignments (role id to expiry, null when permanent), without locking. */
     public Map<Long,Timestamp> assignmentExpiries(long user, long dept, long app) {
         var result = new LinkedHashMap<Long,Timestamp>();
         db.query("SELECT role_id,expires_at FROM user_roles WHERE user_id=? AND application_id=? ORDER BY role_id",
                 rs -> { result.put(rs.getLong(1), rs.getTimestamp(2)); }, user, app);
         return result;
     }
-    /** The user's current assignments in one domain (role id to expiry, null when permanent), locked for replacement. */
+    /** The user's application assignments (role id to expiry, null when permanent), locked for replacement. */
     public Map<Long,Timestamp> lockedAssignments(long user, long dept, long app) {
         var result = new LinkedHashMap<Long,Timestamp>();
         db.query("SELECT role_id,expires_at FROM user_roles WHERE user_id=? AND application_id=? ORDER BY role_id FOR UPDATE",
