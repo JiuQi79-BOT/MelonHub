@@ -1,9 +1,14 @@
 package com.melonhub.rbac.service;
 
+import cn.edu.xmu.clonefactory.util.CloneFactory;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.melonhub.rbac.cache.PermissionCache;
 import com.melonhub.rbac.dao.ContextDao;
+import com.melonhub.rbac.dto.ContextContracts.CheckResult;
+import com.melonhub.rbac.dto.ContextContracts.ContextResult;
+import com.melonhub.rbac.dto.ContextContracts.IssueCommand;
+import com.melonhub.rbac.dto.ContextContracts.Role;
 import com.melonhub.rbac.dto.Requests;
 import com.melonhub.rbac.exception.ApiException;
 import com.melonhub.rbac.security.Credentials;
@@ -36,7 +41,6 @@ public class ContextService {
         long application() { return Long.parseLong(a); }
         boolean usableFor(long app) { return application() == app && exp > Instant.now().getEpochSecond(); }
     }
-    record Role(long id, String name, String code) {}
     /** refreshAt: epoch second when the earliest included assignment lapses; the result must not be served after it. */
     record Payload(boolean valid, List<Role> roles, List<String> permissions, Long refreshAt) {
         static final Payload INVALID = new Payload(false, List.of(), List.of(), null);
@@ -56,27 +60,33 @@ public class ContextService {
     }
 
     @Transactional public Map<String,Object> issue(long app, Requests.Context input, String actor) {
-        rbac.domain(input.departmentId(), app);
-        var found = dao.lockUserByExternalId(input.externalId());
+        return view(issueContext(app, CloneFactory.copy(new IssueCommand(), input), actor));
+    }
+
+    @Transactional public ContextResult issueContext(long app, IssueCommand input, String actor) {
+        long departmentId = input.getDepartmentId();
+        String externalId = input.getExternalId();
+        rbac.domain(departmentId, app);
+        var found = dao.lockUserByExternalId(externalId);
         if (found.isEmpty()) throw ApiException.missing("用户不存在");
         var user = found.get(0);
         long userId = ((Number) user.get("id")).longValue();
         if (!Boolean.TRUE.equals(user.get("enabled"))) throw ApiException.forbidden("用户已停用");
         if (!dao.applicationEnabled(app)) throw ApiException.forbidden("软件已停用");
-        if (!dao.member(userId, input.departmentId())) throw ApiException.forbidden("用户不属于目标部门");
-        var assigned = dao.assignedRoles(userId, input.departmentId(), app);
-        List<Long> active = input.activeRoleIds() == null ? assigned : new ArrayList<>(new LinkedHashSet<>(input.activeRoleIds()));
+        if (!dao.member(userId, departmentId)) throw ApiException.forbidden("用户不属于目标部门");
+        var assigned = dao.assignedRoles(userId, departmentId, app);
+        List<Long> active = input.getActiveRoleIds() == null ? assigned : new ArrayList<>(new LinkedHashSet<>(input.getActiveRoleIds()));
         if (!new HashSet<>(assigned).containsAll(active)) throw ApiException.forbidden("激活角色必须为用户在当前隔离域内已分配的角色");
         long version = ((Number) user.get("context_version")).longValue();
         Object current = user.get("active_department_id");
         // A user has one active department. Switching it invalidates contexts in every application.
-        boolean switched = current == null || ((Number) current).longValue() != input.departmentId();
-        if (switched && current != null && Boolean.FALSE.equals(input.switchDepartment()))
+        boolean switched = current == null || ((Number) current).longValue() != departmentId;
+        if (switched && current != null && Boolean.FALSE.equals(input.getSwitchDepartment()))
             throw new ApiException(HttpStatus.CONFLICT, "DEPARTMENT_MISMATCH",
-                    "用户当前部门为 #" + current + "，在部门 #" + input.departmentId() + " 创建上下文需要显式切换部门");
+                    "用户当前部门为 #" + current + "，在部门 #" + departmentId + " 创建上下文需要显式切换部门");
         if (switched) {
             version++;
-            dao.switchDepartment(userId, input.departmentId(), version);
+            dao.switchDepartment(userId, departmentId, version);
             cache.touchUser(userId);
         }
         dao.clearStaleContexts(userId, version);
@@ -84,31 +94,35 @@ public class ContextService {
         String hash = Credentials.hash(token);
         // MySQL TIMESTAMP rounds fractions; whole seconds keep the stored and cached expiry identical.
         Instant expires = Instant.now().truncatedTo(ChronoUnit.SECONDS).plusSeconds(CONTEXT_SECONDS);
-        dao.create(hash, userId, input.departmentId(), app, version, expires);
+        dao.create(hash, userId, departmentId, app, version, expires);
         dao.activateRoles(hash, active);
-        rbac.audit(actor, "CONTEXT_ISSUED", input.externalId(), input.departmentId(), app,
+        rbac.audit(actor, "CONTEXT_ISSUED", externalId, departmentId, app,
                 "激活角色 " + active.size() + " 个" + (switched ? "，切换当前部门" : ""));
-        var meta = new Meta(String.valueOf(userId), String.valueOf(input.departmentId()), String.valueOf(app), version, expires.getEpochSecond());
+        var meta = new Meta(String.valueOf(userId), String.valueOf(departmentId), String.valueOf(app), version, expires.getEpochSecond());
         var access = new Access(meta, compute(hash, meta));
         cache.putContextAfterCommit(hash, write(meta), CONTEXT_SECONDS);
+        return contextResult(access, token);
+    }
+
+    public Map<String,Object> effective(long app, String token) { return view(effectiveContext(app, token)); }
+
+    public ContextResult effectiveContext(long app, String token) { return contextResult(resolve(app, token), null); }
+
+    public Map<String,Object> check(long app, String token, List<String> requested) {
+        var check = checkPermissions(app, token, requested);
         var result = new LinkedHashMap<String,Object>();
-        result.put("contextToken", token);
-        result.putAll(view(access));
+        result.put("allowed", check.allowed());
+        result.put("decisions", check.decisions());
+        result.put("contextVersion", check.contextVersion());
         return result;
     }
 
-    public Map<String,Object> effective(long app, String token) { return view(resolve(app, token)); }
-
-    public Map<String,Object> check(long app, String token, List<String> requested) {
+    public CheckResult checkPermissions(long app, String token, List<String> requested) {
         var access = resolve(app, token);
         var granted = new HashSet<>(access.payload().permissions());
         Map<String,Boolean> decisions = new LinkedHashMap<>();
         for (String permission : requested) decisions.put(permission, granted.contains(permission));
-        var result = new LinkedHashMap<String,Object>();
-        result.put("allowed", decisions.values().stream().allMatch(Boolean::booleanValue));
-        result.put("decisions", decisions);
-        result.put("contextVersion", access.meta().v());
-        return result;
+        return new CheckResult(decisions.values().stream().allMatch(Boolean::booleanValue), decisions, access.meta().v());
     }
 
     @Transactional public void revoke(long app, String token, String actor) {
@@ -171,16 +185,22 @@ public class ContextService {
         return new Payload(true, roles, dao.effectivePermissions(meta.user(), hash, meta.department(), meta.application()), refreshAt);
     }
 
-    private static Map<String,Object> view(Access access) {
+    private static ContextResult contextResult(Access access, String token) {
         var meta = access.meta();
+        return new ContextResult(token, meta.user(), meta.department(), meta.application(), meta.v(),
+                Instant.ofEpochSecond(meta.exp()), access.payload().roles(), access.payload().permissions());
+    }
+
+    private static Map<String,Object> view(ContextResult context) {
         var result = new LinkedHashMap<String,Object>();
-        result.put("userId", meta.user());
-        result.put("departmentId", meta.department());
-        result.put("applicationId", meta.application());
-        result.put("contextVersion", meta.v());
-        result.put("expiresAt", Instant.ofEpochSecond(meta.exp()));
-        result.put("roles", access.payload().roles());
-        result.put("permissions", access.payload().permissions());
+        if (context.contextToken() != null) result.put("contextToken", context.contextToken());
+        result.put("userId", context.userId());
+        result.put("departmentId", context.departmentId());
+        result.put("applicationId", context.applicationId());
+        result.put("contextVersion", context.contextVersion());
+        result.put("expiresAt", context.expiresAt());
+        result.put("roles", context.roles());
+        result.put("permissions", context.permissions());
         return result;
     }
 

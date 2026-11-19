@@ -1,0 +1,651 @@
+diff --git a/backend/src/main/java/cn/edu/xmu/projectmgt/api/currentuser/CurrentUserController.java b/backend/src/main/java/cn/edu/xmu/projectmgt/api/currentuser/CurrentUserController.java
+index d1592cf..24269f5 100644
+--- a/backend/src/main/java/cn/edu/xmu/projectmgt/api/currentuser/CurrentUserController.java
++++ b/backend/src/main/java/cn/edu/xmu/projectmgt/api/currentuser/CurrentUserController.java
+@@ -1,8 +1,10 @@
+ package cn.edu.xmu.projectmgt.api.currentuser;
+ 
+ import cn.edu.xmu.projectmgt.api.currentuser.vo.CurrentUserVO;
++import cn.edu.xmu.projectmgt.service.ddd.domain.model.CurrentIdentity;
+ import cn.edu.xmu.projectmgt.service.port.common.CurrentUserUseCase;
+ import lombok.RequiredArgsConstructor;
++import org.springframework.security.core.annotation.AuthenticationPrincipal;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+@@ -22,8 +24,8 @@ public class CurrentUserController {
+      * 获取当前统一身份用户对应的本地身份、角色和前端权限。
+      */
+     @GetMapping
+-    public CurrentUserVO getCurrentUser() {
+-        CurrentUserVO result = currentUserVoMapper.toVO(currentUserUseCase.getCurrentUser());
+-        return result;
++    public CurrentUserVO getCurrentUser(@AuthenticationPrincipal CurrentIdentity identity) {
++        var result = currentUserUseCase.getCurrentUser();
++        return currentUserVoMapper.toVO(result, identity == null ? result.permissions() : identity.permissions());
+     }
+ }
+diff --git a/backend/src/main/java/cn/edu/xmu/projectmgt/api/currentuser/CurrentUserVoMapper.java b/backend/src/main/java/cn/edu/xmu/projectmgt/api/currentuser/CurrentUserVoMapper.java
+index c4a3a36..f3dd485 100644
+--- a/backend/src/main/java/cn/edu/xmu/projectmgt/api/currentuser/CurrentUserVoMapper.java
++++ b/backend/src/main/java/cn/edu/xmu/projectmgt/api/currentuser/CurrentUserVoMapper.java
+@@ -4,6 +4,8 @@ import cn.edu.xmu.projectmgt.api.currentuser.vo.CurrentUserVO;
+ import cn.edu.xmu.projectmgt.service.port.common.CurrentUserResult;
+ import org.springframework.stereotype.Component;
+ 
++import java.util.List;
++
+ /**
+  * 当前用户应用结果到 HTTP VO 的映射器。
+  */
+@@ -14,6 +16,10 @@ public class CurrentUserVoMapper {
+      * 映射当前用户结果。
+      */
+     public CurrentUserVO toVO(CurrentUserResult result) {
++        return toVO(result, result.permissions());
++    }
++
++    public CurrentUserVO toVO(CurrentUserResult result, List<String> permissions) {
+         return new CurrentUserVO(
+                 result.userId(),
+                 result.teacherId(),
+@@ -21,7 +27,7 @@ public class CurrentUserVoMapper {
+                 result.number(),
+                 result.name(),
+                 result.roles(),
+-                result.permissions()
++                permissions
+         );
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/backend/src/main/java/cn/edu/xmu/projectmgt/infrastructure/security/BearerAuthenticationFilter.java b/backend/src/main/java/cn/edu/xmu/projectmgt/infrastructure/security/BearerAuthenticationFilter.java
+index 320476b..210478a 100644
+--- a/backend/src/main/java/cn/edu/xmu/projectmgt/infrastructure/security/BearerAuthenticationFilter.java
++++ b/backend/src/main/java/cn/edu/xmu/projectmgt/infrastructure/security/BearerAuthenticationFilter.java
+@@ -10,7 +10,6 @@ import jakarta.servlet.FilterChain;
+ import jakarta.servlet.ServletException;
+ import jakarta.servlet.http.HttpServletRequest;
+ import jakarta.servlet.http.HttpServletResponse;
+-import lombok.RequiredArgsConstructor;
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.MediaType;
+@@ -27,13 +26,24 @@ import java.util.Objects;
+ /**
+  * 从 Bearer Token 装载当前统一身份用户和权限的 Spring Security 过滤器。
+  */
+-@RequiredArgsConstructor
+ public class BearerAuthenticationFilter extends OncePerRequestFilter {
+ 
+     private static final String BEARER_PREFIX = "Bearer ";
+ 
+     private final UnifiedIdentityGateway identityGateway;
+     private final ObjectMapper objectMapper;
++    private final MelonHubAuthorization melonHub;
++
++    public BearerAuthenticationFilter(UnifiedIdentityGateway identityGateway, ObjectMapper objectMapper) {
++        this(identityGateway, objectMapper, null);
++    }
++
++    public BearerAuthenticationFilter(UnifiedIdentityGateway identityGateway, ObjectMapper objectMapper,
++                                      MelonHubAuthorization melonHub) {
++        this.identityGateway = identityGateway;
++        this.objectMapper = objectMapper;
++        this.melonHub = melonHub;
++    }
+ 
+     /**
+      * 校验 Bearer Token 并把身份权限放入当前请求的 SecurityContext。
+@@ -78,6 +88,9 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
+             writeError(response, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "请先登录。");
+             return;
+         }
++        if (melonHub != null && !"/login".equals(request.getServletPath())) {
++            identity = melonHub.authorize(identity);
++        }
+         List<SimpleGrantedAuthority> authorities = Objects.requireNonNullElse(identity.permissions(), List.<String>of()).stream()
+                 .filter(Objects::nonNull)
+                 .filter(permission -> !permission.isBlank())
+diff --git a/backend/src/main/java/cn/edu/xmu/projectmgt/infrastructure/security/MelonHubAuthorization.java b/backend/src/main/java/cn/edu/xmu/projectmgt/infrastructure/security/MelonHubAuthorization.java
+new file mode 100644
+index 0000000..2068ea8
+--- /dev/null
++++ b/backend/src/main/java/cn/edu/xmu/projectmgt/infrastructure/security/MelonHubAuthorization.java
+@@ -0,0 +1,160 @@
++package cn.edu.xmu.projectmgt.infrastructure.security;
++
++import cn.edu.xmu.projectmgt.infrastructure.http.ExternalRestClientFactory;
++import cn.edu.xmu.projectmgt.service.ddd.domain.model.CurrentIdentity;
++import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.springframework.beans.factory.annotation.Value;
++import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
++import org.springframework.http.MediaType;
++import org.springframework.stereotype.Component;
++import org.springframework.web.client.HttpClientErrorException;
++import org.springframework.web.client.RestClient;
++import org.springframework.web.client.RestClientException;
++
++import java.util.LinkedHashMap;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++
++import static cn.edu.xmu.projectmgt.infrastructure.security.AuthorityCodes.*;
++
++/** Resolves administrative permissions for the authenticated subject on each request. */
++@Component
++@ConditionalOnProperty(name = "app.melonhub.enabled", havingValue = "true")
++public class MelonHubAuthorization {
++    private static final Logger LOG = LoggerFactory.getLogger(MelonHubAuthorization.class);
++    private static final String CONTEXTS = "/api/v1/contexts";
++    private static final int MAX_CONTEXTS = 512;
++    private static final Set<String> COURSE_PERMISSIONS = Set.of(COURSE_VIEW, COURSE_REVIEW, COURSE_RESET,
++            COURSE_EDIT, COURSE_DELETE, COURSE_COPY, COURSE_TEAM_MANAGE);
++    private static final Set<String> TERM_PERMISSIONS = Set.of(TERM_CREATE, TERM_EDIT, TERM_DELETE, TERM_CURRENT_MANAGE);
++    private static final Set<String> TEACHER_PERMISSIONS = Set.of(TEACHER_VIEW, TEACHER_CREATE, TEACHER_EDIT, TEACHER_DELETE);
++    private static final Set<String> MENU_CODES = Set.of("MCO", "MTR", "MTE", "MLG");
++    private static final Map<String, String> BUTTON_CODES = Map.ofEntries(
++            Map.entry(COURSE_REVIEW, "MCOR"), Map.entry(COURSE_EDIT, "MCOE"),
++            Map.entry(COURSE_DELETE, "MCOD"), Map.entry(COURSE_TEAM_MANAGE, "MCOT"),
++            Map.entry(TERM_CREATE, "MTRC"), Map.entry(TERM_EDIT, "MTRE"),
++            Map.entry(TERM_DELETE, "MTRD"), Map.entry(TERM_CURRENT_MANAGE, "MTRM"),
++            Map.entry(TEACHER_CREATE, "MTEC"), Map.entry(TEACHER_EDIT, "MTEE"),
++            Map.entry(TEACHER_DELETE, "MTED"), Map.entry(USER_LOOKUP, "MTEL"));
++
++    private final RestClient client;
++    private final String apiKey;
++    private final long departmentId;
++    // Cache only context tokens. Permissions are always read from /check.
++    private final LinkedHashMap<String, String> contexts = new LinkedHashMap<>(16, 0.75f, true);
++
++    public MelonHubAuthorization(ExternalRestClientFactory clients,
++                                  @Value("${app.melonhub.base-url}") String baseUrl,
++                                  @Value("${app.melonhub.api-key}") String apiKey,
++                                  @Value("${app.melonhub.department-id}") long departmentId) {
++        if (apiKey.isBlank() || departmentId <= 0) {
++            throw new IllegalArgumentException("启用 MelonHub 时需配置 API Key 和业务部门 ID。");
++        }
++        this.client = clients.create(baseUrl);
++        this.apiKey = apiKey;
++        this.departmentId = departmentId;
++    }
++
++    public CurrentIdentity authorize(CurrentIdentity identity) {
++        Set<String> granted = readGrants(identity.userId());
++        var permissions = new LinkedHashSet<String>();
++        if (identity.permissions() != null) {
++            for (String permission : identity.permissions()) {
++                if (permission != null && !ALL_PERMISSIONS.contains(permission)
++                        && !MENU_CODES.contains(permission) && !BUTTON_CODES.containsValue(permission)) {
++                    permissions.add(permission);
++                }
++            }
++        }
++
++        permissions.addAll(granted);
++        granted.forEach(permission -> {
++            String button = BUTTON_CODES.get(permission);
++            if (button != null) permissions.add(button);
++        });
++        if (granted.stream().anyMatch(COURSE_PERMISSIONS::contains)) {
++            permissions.add(COURSE_VIEW);
++            permissions.add("MCO");
++        }
++        if (granted.stream().anyMatch(TERM_PERMISSIONS::contains)) permissions.add("MTR");
++        if (granted.stream().anyMatch(TEACHER_PERMISSIONS::contains)) {
++            permissions.add(TEACHER_VIEW);
++            permissions.add("MTE");
++        }
++        if (granted.contains(AUDIT_VIEW)) permissions.add("MLG");
++        return new CurrentIdentity(identity.userId(), identity.roles(), List.copyOf(permissions));
++    }
++
++    private Set<String> readGrants(String externalId) {
++        try {
++            String token = context(externalId);
++            try {
++                return check(token);
++            } catch (HttpClientErrorException.Unauthorized expired) {
++                synchronized (contexts) {
++                    contexts.remove(externalId, token);
++                }
++                return check(context(externalId));
++            }
++        } catch (HttpClientErrorException failure) {
++            int status = failure.getStatusCode().value();
++            // Unknown users, non-members and users active in another department have no grants in this domain.
++            if (status != 403 && status != 404 && status != 409) {
++                LOG.warn("MelonHub 权限校验失败，HTTP {}", status);
++            }
++            return Set.of();
++        } catch (RestClientException failure) {
++            LOG.warn("MelonHub 权限校验失败，{}", failure.getClass().getSimpleName());
++            return Set.of();
++        }
++    }
++
++    private String context(String externalId) {
++        synchronized (contexts) {
++            String token = contexts.get(externalId);
++            if (token != null) return token;
++        }
++
++        ContextReply reply = client.post().uri(CONTEXTS)
++                .header("X-API-Key", apiKey)
++                .contentType(MediaType.APPLICATION_JSON)
++                .body(new ContextRequest(externalId, departmentId, false))
++                .retrieve().body(ContextReply.class);
++        if (reply == null || reply.contextToken() == null || reply.contextToken().isBlank()) {
++            throw new RestClientException("MelonHub 未返回有效上下文。");
++        }
++        synchronized (contexts) {
++            String token = contexts.computeIfAbsent(externalId, ignored -> reply.contextToken());
++            if (contexts.size() > MAX_CONTEXTS) contexts.pollFirstEntry();
++            return token;
++        }
++    }
++
++    private Set<String> check(String token) {
++        CheckReply reply = client.post().uri(CONTEXTS + "/check")
++                .header("X-API-Key", apiKey)
++                .header("X-Context-Token", token)
++                .contentType(MediaType.APPLICATION_JSON)
++                .body(new CheckRequest(ALL_PERMISSIONS))
++                .retrieve().body(CheckReply.class);
++        if (reply == null || reply.decisions() == null) {
++            throw new RestClientException("MelonHub 未返回权限校验结果。");
++        }
++        var granted = new LinkedHashSet<String>();
++        for (String permission : ALL_PERMISSIONS) {
++            if (Boolean.TRUE.equals(reply.decisions().get(permission))) granted.add(permission);
++        }
++        return granted;
++    }
++
++    private record ContextRequest(String externalId, long departmentId, boolean switchDepartment) {}
++    @JsonIgnoreProperties(ignoreUnknown = true)
++    private record ContextReply(String contextToken) {}
++    private record CheckRequest(Set<String> permissions) {}
++    @JsonIgnoreProperties(ignoreUnknown = true)
++    private record CheckReply(Map<String, Boolean> decisions) {}
++}
+diff --git a/backend/src/main/java/cn/edu/xmu/projectmgt/infrastructure/security/SecurityConfiguration.java b/backend/src/main/java/cn/edu/xmu/projectmgt/infrastructure/security/SecurityConfiguration.java
+index c325028..e5e51e6 100644
+--- a/backend/src/main/java/cn/edu/xmu/projectmgt/infrastructure/security/SecurityConfiguration.java
++++ b/backend/src/main/java/cn/edu/xmu/projectmgt/infrastructure/security/SecurityConfiguration.java
+@@ -5,6 +5,7 @@ import tools.jackson.databind.ObjectMapper;
+ import jakarta.servlet.http.HttpServletRequest;
+ import jakarta.servlet.http.HttpServletResponse;
+ import lombok.RequiredArgsConstructor;
++import org.springframework.beans.factory.ObjectProvider;
+ import org.springframework.context.annotation.Bean;
+ import org.springframework.context.annotation.Configuration;
+ import org.springframework.http.HttpMethod;
+@@ -40,10 +41,11 @@ public class SecurityConfiguration {
+     @Bean
+     public SecurityFilterChain securityFilterChain(
+             HttpSecurity http,
+-            UnifiedIdentityGateway identityGateway
++            UnifiedIdentityGateway identityGateway,
++            ObjectProvider<MelonHubAuthorization> melonHub
+     ) throws Exception {
+         BearerAuthenticationFilter bearerAuthenticationFilter =
+-                new BearerAuthenticationFilter(identityGateway, objectMapper);
++                new BearerAuthenticationFilter(identityGateway, objectMapper, melonHub.getIfAvailable());
+         http
+                 .csrf(AbstractHttpConfigurer::disable)
+                 .cors(Customizer.withDefaults())
+diff --git a/backend/src/main/resources/application.yaml b/backend/src/main/resources/application.yaml
+index 0bdae84..07ab0c8 100644
+--- a/backend/src/main/resources/application.yaml
++++ b/backend/src/main/resources/application.yaml
+@@ -18,6 +18,11 @@ app:
+     read-timeout: ${EXTERNAL_HTTP_READ_TIMEOUT:10s}
+   identity:
+     base-url: ${IDENTITY_BASE_URL:https://identity.example.edu}
++  melonhub:
++    enabled: ${MELONHUB_ENABLED:false}
++    base-url: ${MELONHUB_BASE_URL:http://127.0.0.1:8080}
++    api-key: ${MELONHUB_API_KEY:}
++    department-id: ${MELONHUB_DEPARTMENT_ID:0}
+ 
+ logging:
+   level:
+diff --git a/web/src/composables/current-permissions.ts b/web/src/composables/current-permissions.ts
+new file mode 100644
+index 0000000..53621b5
+--- /dev/null
++++ b/web/src/composables/current-permissions.ts
+@@ -0,0 +1,43 @@
++import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue'
++import { useRoute } from 'vue-router'
++import { currentUserApi } from '@/api/current-user'
++import type { CurrentUser } from '@/types/current-user'
++
++export function useCurrentPermissions() {
++  const route = useRoute()
++  const user = shallowRef<CurrentUser | null>(null)
++  const permissionsLoaded = shallowRef(false)
++  const permissions = computed(() => new Set(user.value?.permissions ?? []))
++  let refreshing = false
++  let timer: number | undefined
++
++  async function refreshPermissions() {
++    if (refreshing) return
++    refreshing = true
++    try {
++      user.value = await currentUserApi.getCurrentUser()
++    } catch {
++      user.value = null
++    } finally {
++      permissionsLoaded.value = true
++      refreshing = false
++    }
++  }
++
++  onMounted(() => {
++    void refreshPermissions()
++    window.addEventListener('focus', refreshPermissions)
++    timer = window.setInterval(() => {
++      if (!document.hidden) void refreshPermissions()
++    }, 5000)
++  })
++
++  watch(() => route.fullPath, () => { void refreshPermissions() })
++
++  onUnmounted(() => {
++    window.removeEventListener('focus', refreshPermissions)
++    window.clearInterval(timer)
++  })
++
++  return { user, permissions, permissionsLoaded, refreshPermissions }
++}
+diff --git a/web/src/layouts/StudentLayout.vue b/web/src/layouts/StudentLayout.vue
+index 8c5aef5..51dd00f 100644
+--- a/web/src/layouts/StudentLayout.vue
++++ b/web/src/layouts/StudentLayout.vue
+@@ -1,10 +1,13 @@
+ <script setup lang="ts">
+ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
++import { useCurrentPermissions } from '@/composables/current-permissions'
++import { MENU_PERMISSIONS } from '@/constants/menu-permissions'
+ import type { Milestone } from '@/types/milestone'
+ import type { StudentCourse } from '@/types/student-course'
+ 
+ const router = useRouter()
+ const route = useRoute()
++const { permissions } = useCurrentPermissions()
+ 
+ function openCourse(course: StudentCourse) {
+   router.push({
+@@ -36,6 +39,13 @@ function openMilestone(milestone: Milestone) {
+           >
+             我的课程
+           </RouterLink>
++          <RouterLink
++            v-if="permissions.has(MENU_PERMISSIONS.ADMIN_COURSES)"
++            to="/admin/courses"
++            class="student-nav-link"
++          >
++            课程管理
++          </RouterLink>
+         </nav>
+         <span class="role-chip">学生</span>
+       </div>
+@@ -51,4 +61,4 @@ function openMilestone(milestone: Milestone) {
+       </RouterView>
+     </main>
+   </div>
+-</template>
+\ No newline at end of file
++</template>
+diff --git a/web/src/layouts/TeacherLayout.vue b/web/src/layouts/TeacherLayout.vue
+index 9abd7e6..5abb410 100644
+--- a/web/src/layouts/TeacherLayout.vue
++++ b/web/src/layouts/TeacherLayout.vue
+@@ -1,9 +1,8 @@
+ <script setup lang="ts">
+-import { computed, onMounted, shallowRef } from 'vue'
++import { computed } from 'vue'
+ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+-import { currentUserApi } from '@/api/current-user'
+-import { MENU_PERMISSIONS } from '@/constants/menu-permissions'
+-import type { CurrentUser } from '@/types/current-user'
++import { useCurrentPermissions } from '@/composables/current-permissions'
++import { BUTTON_PERMISSIONS, MENU_PERMISSIONS } from '@/constants/menu-permissions'
+ import type { TeacherCourse } from '@/types/course'
+ import type { TeachingClass } from '@/types/teaching-class'
+ 
+@@ -42,17 +41,14 @@ const ADMIN_MENU_ITEMS: readonly AdminMenuItemDefinition[] = [
+ ]
+ const router = useRouter()
+ const route = useRoute()
+-const user = shallowRef<CurrentUser | null>(null)
+-const permissions = computed(() => new Set(user.value?.permissions ?? []))
++const { user, permissions, permissionsLoaded, refreshPermissions } = useCurrentPermissions()
+ const isAdminRoute = computed(() => route.path.startsWith('/admin'))
++const isCourseAdminRoute = computed(() => route.name === 'admin-courses' || route.name === 'admin-course-team')
++const canOpenCourseAdmin = computed(() => permissions.value.has(
++  route.name === 'admin-course-team' ? BUTTON_PERMISSIONS.COURSE_TEAM_MANAGE : MENU_PERMISSIONS.ADMIN_COURSES,
++))
+ 
+-const adminMenuItems = computed(() => {
+-  const items = ADMIN_MENU_ITEMS.map((item) => ({
+-    ...item,
+-    disabled: !hasAny(item.permissions),
+-  }))
+-  return items.some((item) => !item.disabled) ? items : []
+-})
++const adminMenuItems = computed(() => ADMIN_MENU_ITEMS.filter((item) => hasAny(item.permissions)))
+ 
+ const hasAdminAccess = computed(() => adminMenuItems.value.length > 0)
+ const roleLabel = computed(() => hasAdminAccess.value ? '教师 / 管理员' : '教师')
+@@ -135,13 +131,6 @@ function openMilestonesFromContext() {
+   openCourseMilestones()
+ }
+ 
+-onMounted(async () => {
+-  try {
+-    user.value = await currentUserApi.getCurrentUser()
+-  } catch {
+-    user.value = null
+-  }
+-})
+ </script>
+ 
+ <template>
+@@ -159,30 +148,16 @@ onMounted(async () => {
+         >
+           教师课程
+         </RouterLink>
+-        <template
++        <RouterLink
+           v-for="item in adminMenuItems"
+           :key="`mobile-${item.key}`"
++          :to="item.to"
++          :data-admin-menu="item.key"
++          class="shrink-0 rounded-[9px] px-3 py-2 text-[13px] text-ios-secondary"
++          active-class="bg-ios-blue-soft font-medium text-ios-blue"
+         >
+-          <RouterLink
+-            v-if="!item.disabled"
+-            :to="item.to"
+-            :data-admin-menu="item.key"
+-            class="shrink-0 rounded-[9px] px-3 py-2 text-[13px] text-ios-secondary"
+-            active-class="bg-ios-blue-soft font-medium text-ios-blue"
+-          >
+-            {{ item.label }}
+-          </RouterLink>
+-          <button
+-            v-else
+-            type="button"
+-            disabled
+-            :data-admin-menu="item.key"
+-            :title="`${item.label}：无权限`"
+-            class="shrink-0 rounded-[9px] border-0 bg-transparent px-3 py-2 text-[13px] text-ios-secondary disabled:cursor-not-allowed disabled:opacity-40"
+-          >
+-            {{ item.label }}
+-          </button>
+-        </template>
++          {{ item.label }}
++        </RouterLink>
+       </nav>
+     </header>
+ 
+@@ -210,30 +185,16 @@ onMounted(async () => {
+             >
+               管理
+             </p>
+-            <template
++            <RouterLink
+               v-for="item in adminMenuItems"
+               :key="item.key"
++              :to="item.to"
++              :data-admin-menu="item.key"
++              class="sidebar-link"
++              active-class="sidebar-link-active"
+             >
+-              <RouterLink
+-                v-if="!item.disabled"
+-                :to="item.to"
+-                :data-admin-menu="item.key"
+-                class="sidebar-link"
+-                active-class="sidebar-link-active"
+-              >
+-                {{ item.label }}
+-              </RouterLink>
+-              <button
+-                v-else
+-                type="button"
+-                disabled
+-                :data-admin-menu="item.key"
+-                :title="`${item.label}：无权限`"
+-                class="sidebar-link w-full border-0 bg-transparent text-left disabled:cursor-not-allowed disabled:opacity-40"
+-              >
+-                {{ item.label }}
+-              </button>
+-            </template>
++              {{ item.label }}
++            </RouterLink>
+           </template>
+         </nav>
+ 
+@@ -245,6 +206,7 @@ onMounted(async () => {
+       <main class="main-area">
+         <RouterView v-slot="{ Component }">
+           <component
++            v-if="!isCourseAdminRoute || canOpenCourseAdmin"
+             :is="Component"
+             :permissions="isAdminRoute ? (user?.permissions ?? []) : undefined"
+             @open-course="openCourse"
+@@ -253,9 +215,11 @@ onMounted(async () => {
+             @open-roster="openClassRoster"
+             @open-groups="openClassGroups"
+             @open-milestones="openMilestonesFromContext"
++            @refresh-permissions="refreshPermissions"
+           />
++          <p v-else-if="permissionsLoaded" class="note note-red">没有课程管理权限。</p>
+         </RouterView>
+       </main>
+     </div>
+   </div>
+-</template>
+\ No newline at end of file
++</template>
+diff --git a/web/src/views/AdminCoursesView.vue b/web/src/views/AdminCoursesView.vue
+index d27e972..4c3dd76 100644
+--- a/web/src/views/AdminCoursesView.vue
++++ b/web/src/views/AdminCoursesView.vue
+@@ -2,6 +2,7 @@
+ import { computed, onMounted, reactive, ref, shallowRef } from 'vue'
+ import { useRouter } from 'vue-router'
+ import { adminApi, type AdminApi } from '@/api/admin'
++import { ApiError } from '@/api/http'
+ import { BUTTON_PERMISSIONS } from '@/constants/menu-permissions'
+ import type { AdminCourse, AdminTerm } from '@/types/admin'
+ 
+@@ -9,6 +10,7 @@ const props = defineProps<{
+   api?: AdminApi
+   permissions?: string[]
+ }>()
++const emit = defineEmits<{ 'refresh-permissions': [] }>()
+ 
+ const router = useRouter()
+ const api = computed(() => props.api ?? adminApi)
+@@ -68,6 +70,11 @@ async function loadCourses() {
+     courses.value = result.items
+     total.value = result.total
+   } catch (cause) {
++    if (cause instanceof ApiError && cause.status === 403) {
++      courses.value = []
++      total.value = 0
++      emit('refresh-permissions')
++    }
+     error.value = cause instanceof Error ? cause.message : '课程加载失败。'
+   } finally {
+     loading.value = false
+@@ -117,6 +124,10 @@ async function submitReview() {
+     notice.value = reviewDecision.value === 'approved' ? '课程审核已通过。' : '课程已驳回。'
+     await loadCourses()
+   } catch (cause) {
++    if (cause instanceof ApiError && cause.status === 403) {
++      reviewing.value = null
++      emit('refresh-permissions')
++    }
+     error.value = cause instanceof Error ? cause.message : '审核失败。'
+   }
+ }
+@@ -231,10 +242,10 @@ onMounted(() => {
+             <p v-if="course.reviewComment" class="note mt-3">审核意见：{{ course.reviewComment }}</p>
+           </div>
+           <div class="flex flex-wrap gap-2 md:justify-end">
+-            <button v-if="course.courseStatus === 2" type="button" class="primary-button" :disabled="!canReview" @click="openReview(course)">审核</button>
+-            <button type="button" class="secondary-button" :disabled="!canManageTeam" @click="openTeam(course)">课程团队</button>
+-            <button v-if="course.courseStatus !== 2" type="button" class="compact-button" :disabled="!canEdit" @click="openEdit(course)">编辑</button>
+-            <button v-if="course.courseStatus === 1 && course.studentCount === 0" type="button" class="min-h-10 rounded-[9px] bg-ios-red/10 px-3 text-[13px] text-ios-red" :disabled="!canDelete" @click="deleting = course">删除</button>
++            <button v-if="canReview && course.courseStatus === 2" type="button" class="primary-button" @click="openReview(course)">审核</button>
++            <button v-if="canManageTeam" type="button" class="secondary-button" @click="openTeam(course)">课程团队</button>
++            <button v-if="canEdit && course.courseStatus !== 2" type="button" class="compact-button" @click="openEdit(course)">编辑</button>
++            <button v-if="canDelete && course.courseStatus === 1 && course.studentCount === 0" type="button" class="min-h-10 rounded-[9px] bg-ios-red/10 px-3 text-[13px] text-ios-red" @click="deleting = course">删除</button>
+           </div>
+         </div>
+       </article>
+@@ -249,7 +260,7 @@ onMounted(() => {
+       </div>
+     </div>
+ 
+-    <div v-if="reviewing" class="fixed inset-0 z-30 flex items-end justify-center bg-black/30 md:items-center md:p-6" @click.self="reviewing = null">
++    <div v-if="canReview && reviewing" class="fixed inset-0 z-30 flex items-end justify-center bg-black/30 md:items-center md:p-6" @click.self="reviewing = null">
+       <div class="w-full max-w-md rounded-t-[18px] bg-ios-card p-4 md:rounded-[16px]">
+         <h2 class="text-[17px] font-semibold">审核课程</h2>
+         <p class="page-subtitle">{{ reviewing.name }} · {{ reviewing.code }}</p>
+@@ -266,7 +277,7 @@ onMounted(() => {
+       </div>
+     </div>
+ 
+-    <div v-if="editing" class="fixed inset-0 z-30 flex items-end justify-center bg-black/30 md:items-center md:p-6" @click.self="editing = null">
++    <div v-if="canEdit && editing" class="fixed inset-0 z-30 flex items-end justify-center bg-black/30 md:items-center md:p-6" @click.self="editing = null">
+       <div class="w-full max-w-md rounded-t-[18px] bg-ios-card p-4 md:rounded-[16px]">
+         <h2 class="text-[17px] font-semibold">编辑课程</h2>
+         <label class="mb-1 mt-3 block text-[13px] text-ios-secondary">课程名称</label>
+@@ -282,7 +293,7 @@ onMounted(() => {
+       </div>
+     </div>
+ 
+-    <div v-if="deleting" class="fixed inset-0 z-40 flex items-end justify-center bg-black/30 md:items-center md:p-6" @click.self="deleting = null">
++    <div v-if="canDelete && deleting" class="fixed inset-0 z-40 flex items-end justify-center bg-black/30 md:items-center md:p-6" @click.self="deleting = null">
+       <div class="w-full max-w-md rounded-t-[18px] bg-ios-card p-4 md:rounded-[16px]">
+         <h2 class="text-[17px] font-semibold">删除课程</h2>
+         <p class="mt-2 text-[13px] text-ios-secondary">确定删除「{{ deleting.name }}」？该操作不可撤销。</p>
+@@ -293,4 +304,4 @@ onMounted(() => {
+       </div>
+     </div>
+   </div>
+-</template>
+\ No newline at end of file
++</template>

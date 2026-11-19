@@ -1,5 +1,7 @@
 package com.melonhub.rbac.controller;
 
+import cn.edu.xmu.clonefactory.util.CloneFactory;
+import com.melonhub.rbac.dto.ContextContracts;
 import com.melonhub.rbac.dto.Requests;
 import com.melonhub.rbac.security.ApplicationCaller;
 import com.melonhub.rbac.service.ContextService;
@@ -74,10 +76,15 @@ public class BusinessController {
     @GetMapping("/users/access") Object myAccess(@RequestParam String externalId, @RequestParam long departmentId, HttpServletRequest q) {
         return governance.myAccess(app(q), externalId, departmentId);
     }
-    @PostMapping("/contexts") Object issue(@Valid @RequestBody Requests.Context b, HttpServletRequest q) { return contexts.issue(app(q), b, actor(q)); }
-    @GetMapping("/contexts/effective") Object effective(@RequestHeader("X-Context-Token") String token, HttpServletRequest q) { return contexts.effective(app(q), token); }
-    @PostMapping("/contexts/check") Object check(@RequestHeader("X-Context-Token") String token, @Valid @RequestBody Requests.Check b, HttpServletRequest q) {
-        return contexts.check(app(q), token, b.permissions());
+    @PostMapping("/contexts") ContextContracts.ContextResponse issue(@Valid @RequestBody Requests.Context b, HttpServletRequest q) {
+        var command = CloneFactory.copy(new ContextContracts.IssueCommand(), b);
+        return CloneFactory.copy(new ContextContracts.ContextResponse(), contexts.issueContext(app(q), command, actor(q)));
+    }
+    @GetMapping("/contexts/effective") ContextContracts.ContextResponse effective(@RequestHeader("X-Context-Token") String token, HttpServletRequest q) {
+        return CloneFactory.copy(new ContextContracts.ContextResponse(), contexts.effectiveContext(app(q), token));
+    }
+    @PostMapping("/contexts/check") ContextContracts.CheckResponse check(@RequestHeader("X-Context-Token") String token, @Valid @RequestBody Requests.Check b, HttpServletRequest q) {
+        return CloneFactory.copy(new ContextContracts.CheckResponse(), contexts.checkPermissions(app(q), token, b.permissions()));
     }
     @DeleteMapping("/contexts") Object revoke(@RequestHeader("X-Context-Token") String token, HttpServletRequest q) {
         contexts.revoke(app(q), token, actor(q)); return ok();
