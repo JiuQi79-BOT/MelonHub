@@ -1,34 +1,76 @@
 @startuml
-title POST /api/admin/accounts · DDD 策略时序图
-hide footbox
 skinparam shadowing false
-actor "obj: HTTP 调用者" as Caller
-participant "controller: AccountController" as C
-participant "auth: DddAuthService" as S
-participant "repo: AdminAccountRepositoryPort" as P
-participant "tree: AdminHierarchy" as T
-activate Caller
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam ArrowColor #41546B
+skinparam classBackgroundColor #F5F8FC
+skinparam classBorderColor #59708C
+skinparam sequenceParticipantBackgroundColor #EEF3F9
+skinparam sequenceParticipantBorderColor #59708C
+skinparam sequenceGroupBackgroundColor transparent
+skinparam sequenceMessageAlign left
+hide footbox
+title 创建分级管理员 · structured（候选范围校验与原子写入）
 autonumber
-Caller -> C: POST /api/admin/accounts
+participant "obj: AccountController" as C
+participant "service: StructuredAuthService" as S
+participant "dao: AuthDao" as D
+participant "roles: AdminRoleDao" as R
+participant "«MetaClass»\n: StructuredAdminHierarchyProcedures" as P
+participant "rbac: RbacUseCase" as Audit
 activate C
 C -> S: createAccount(input, actor)
 activate S
-S -> P: lockAllAccounts()
-S -> P: loadHierarchyNodes()
-S -> T: validateCreate(actor.id, candidate)
-activate T
-deactivate T
-alt 候选树违反层级或范围不变量
-  autonumber stop
-  S --> Caller: 409 CONFLICT (DomainException -> ApiException)
-else 候选树满足规则
-  autonumber resume
-  S -> P: createAccount(..., parentId, ...)
-  S -> P: replaceAccountApplications / Departments
-  autonumber stop
-  C --> Caller: 200 {id, username}
+note over S,Audit: createAccount 事务：下面任一写入失败均回滚；账号行锁持有至事务结束
+S -> D: lockAccounts()
+activate D
+deactivate D
+note over S,R: requireRole 校验角色存在（含 DAO 查询）
+S -> D: nodes = nodes()
+activate D
+deactivate D
+S -> R: roleFunctions = functionsByRole()
+activate R
+deactivate R
+note over S,P
+requestedParent / findNode / manages 校验目标上级；
+解析部门与软件 ID，requireSoftwareRoleScope 检查角色范围。
+本图聚焦这些前置条件成功后的候选树一致性分支。
+end note
+S -> P: candidateNodes = replaceNode(nodes, candidate)
+activate P
+deactivate P
+S -> P: problems = findViolations(candidateNodes, roleFunctions)
+activate P
+deactivate P
+alt problems 非空
+ autonumber stop
+ S --> C: ApiException (409 CONFLICT)，不保存账号
+else problems 为空
+ note right of S: encode(input.password())：校验长度并生成 BCrypt 摘要
+ autonumber resume
+ S -> D: id = createAccount(...)
+ activate D
+ deactivate D
+ S -> D: replaceAccountApplications(id, applications)
+ activate D
+ deactivate D
+ S -> D: replaceAccountDepartments(id, departments)
+ activate D
+ deactivate D
+ S -> Audit: audit(..., ACCOUNT_CREATED, ...)
+ activate Audit
+ deactivate Audit
+ autonumber stop
+ S --> C: id
 end
+||12||
 deactivate S
 deactivate C
-deactivate Caller
+legend bottom
+with / requireConsistent 两个私有静态包装的内容已展开；findViolations 返回问题列表，不抛领域异常。
+Controller 返回 200 {id, username}；统一错误处理返回 409，前置权限/参数错误为 403/400。
+endlegend
 @enduml

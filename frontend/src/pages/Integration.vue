@@ -19,6 +19,7 @@ const endpoints: Endpoint[] = [
   { method: 'PUT / DELETE', path: '/api/v1/departments/{dept}/roles/{id}', description: '修改 / 删除角色' },
   { method: 'PATCH', path: '/api/v1/departments/{dept}/roles/{id}/status', description: '启用 / 停用角色' },
   { method: 'PUT', path: '/api/v1/departments/{dept}/roles/{id}/permissions', description: '整体替换角色的权限' },
+  { method: 'PUT', path: '/api/v1/departments/{dept}/roles/{id}/parents', description: '设置同域父角色，继承父角色权限' },
   { method: 'GET / POST', path: '/api/v1/departments/{dept}/permissions', description: '查询 / 创建权限' },
   { method: 'PUT / DELETE', path: '/api/v1/departments/{dept}/permissions/{id}', description: '修改 / 删除权限' },
   { method: 'GET / PUT', path: '/api/v1/departments/{dept}/users/{id}/roles', description: '查询 / 整体替换用户在该部门的角色' },

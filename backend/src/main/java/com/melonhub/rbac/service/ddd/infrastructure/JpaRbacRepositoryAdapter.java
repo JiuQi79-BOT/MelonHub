@@ -113,6 +113,10 @@ public class JpaRbacRepositoryAdapter implements RbacRepositoryPort {
     @Override public List<Long> rolePermissionIds(long roleId) { return dao.rolePermissionIds(roleId); }
     @Override public List<Long> lockedRolePermissionIds(long roleId) { return dao.lockedRolePermissionIds(roleId); }
     @Override public void replaceRolePermissions(long roleId, long departmentId, long applicationId, Collection<Long> permissionIds) { dao.replaceRolePermissions(roleId, departmentId, applicationId, permissionIds); }
+    @Override public List<Map<String, Object>> domainRoleInheritancePairs(long departmentId, long applicationId) { return dao.roleInheritancePairs(departmentId, applicationId); }
+    @Override public List<Long> roleParentIds(long roleId, long departmentId, long applicationId) { return dao.roleParentIds(roleId, departmentId, applicationId); }
+    @Override public List<Long> inheritedRoleIds(Collection<Long> roleIds, long departmentId, long applicationId) { return dao.inheritedRoleIds(roleIds, departmentId, applicationId); }
+    @Override public void replaceRoleParents(long roleId, long departmentId, long applicationId, Collection<Long> parentIds) { dao.replaceRoleParents(roleId, departmentId, applicationId, parentIds); }
     @Override public boolean lockRole(long roleId) { return dao.lockRole(roleId); }
     @Override public List<Map<String, Object>> roleMembers(long roleId) { return dao.roleMembers(roleId); }
     @Override public List<Long> roleMemberIds(long roleId) { return dao.roleMemberIds(roleId); }

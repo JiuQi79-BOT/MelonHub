@@ -1,0 +1,62 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam ArrowColor #41546B
+skinparam classBackgroundColor #F5F8FC
+skinparam classBorderColor #59708C
+skinparam sequenceParticipantBackgroundColor #EEF3F9
+skinparam sequenceParticipantBorderColor #59708C
+skinparam sequenceGroupBackgroundColor transparent
+skinparam sequenceMessageAlign left
+title API 权限查询 · ddd 类图（相关成员）
+left to right direction
+interface "IdentityUseCase" as U <<interface>> {
+ + checkApiPermission(authorization, operationId): Map
+}
+class "DddIdentityService" as S {
+ - repository: IdentityRepositoryPort
+ - tokens: IdentityTokenGateway
+ --
+ + checkApiPermission(authorization, operationId): Map
+ - authenticatedUser(authorization): IdentityUser
+}
+interface "IdentityRepositoryPort" as R <<interface>> {
+ + hasActiveSession(hash, now): boolean
+ + findUserByExternalId(externalId): Optional
+ + permissions(userId, system): List
+}
+class "JpaIdentityRepositoryAdapter" as A {
+ - dao: IdentityDao
+ --
+ + permissions(userId, system): List
+}
+class "IdentityDao" as DAO {
+ --
+ + permissions(userId, system): List
+}
+class "CoursePermissionCatalog" as Catalog <<utility>> {
+ --
+ + {static} requirePermissionForOperation(operationId): String
+}
+class "IdentityAccountAggregate" as Model <<domain model>> {
+ - user: IdentityUser
+ - permissions: List
+ --
+ + hasUiPermission(permission): boolean
+}
+S .up.|> U
+S -right-> R : repository
+A .up.|> R
+A -right-> DAO : dao
+Catalog .[hidden]right. Model
+S .down.> Catalog
+S .down.> Model
+note left of S
+Controller 依赖 IdentityUseCase；
+令牌、加密与异常边界见时序图。
+本图只展开授权判断与持久化依赖。
+end note
+@enduml

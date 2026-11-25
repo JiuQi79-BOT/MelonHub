@@ -87,7 +87,7 @@ export const deliveryStatus: Record<string, { text: string; color: string }> = {
 export const webhookEventLabels: Record<string, string> = {
   '*': '全部事件',
   'user.enabled': '用户启用', 'user.disabled': '用户停用', 'user.deleted': '用户删除', 'user.updated': '用户资料变更',
-  'user.roles.changed': '用户角色变更', 'user.roles.expired': '用户角色到期', 'role.disabled': '角色停用', 'role.permissions.changed': '角色权限变更',
+  'user.roles.changed': '用户角色变更', 'user.roles.expired': '用户角色到期', 'role.disabled': '角色停用', 'role.permissions.changed': '角色权限变更', 'role.inheritance.changed': '角色继承变更',
   'user.contexts.revoked': '用户强制下线', 'role.enabled': '角色启用', 'role.deleted': '角色删除',
   'permission.updated': '权限修改', 'permission.deleted': '权限删除',
   'application.enabled': '软件启用', 'application.disabled': '软件停用', 'apikey.revoked': '密钥吊销',

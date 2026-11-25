@@ -159,6 +159,11 @@ public class AdminController {
                                                                   @Valid @RequestBody Requests.Ids b, HttpServletRequest req) {
         r.rolePermissions(id, departmentId, applicationId, b.ids(), AdminAccess.domain(req, departmentId, applicationId).actor()); return ok();
     }
+    @RequiresFunction(DOMAIN_CONFIGURE)
+    @PutMapping("/roles/{id}/parents") Object roleParents(@PathVariable long id, @RequestParam long departmentId, @RequestParam long applicationId,
+                                                          @Valid @RequestBody Requests.Ids b, HttpServletRequest req) {
+        r.roleParents(id, departmentId, applicationId, b.ids(), AdminAccess.domain(req, departmentId, applicationId).actor()); return ok();
+    }
     @RequiresFunction(DOMAIN_VIEW)
     @GetMapping("/roles/{id}/members") Object roleMembers(@PathVariable long id, @RequestParam long departmentId, @RequestParam long applicationId, HttpServletRequest req) {
         AdminAccess.domain(req, departmentId, applicationId); return r.roleMembers(id, departmentId, applicationId);

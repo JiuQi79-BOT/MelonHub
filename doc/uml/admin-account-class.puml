@@ -1,47 +1,59 @@
 @startuml
-title 分级管理员账号 · 双策略类图 (Structured vs DDD)
-skinparam classAttributeIconSize 0
 skinparam shadowing false
-hide empty members
-class AccountController {
-  - auth: AuthUseCase
-  + create(body: Account, req: HttpServletRequest): Map
-  + update(id: long, body: AccountUpdate, req: HttpServletRequest): Map
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam ArrowColor #41546B
+skinparam classBackgroundColor #F5F8FC
+skinparam classBorderColor #59708C
+skinparam sequenceParticipantBackgroundColor #EEF3F9
+skinparam sequenceParticipantBorderColor #59708C
+skinparam sequenceGroupBackgroundColor transparent
+skinparam sequenceMessageAlign left
+title 创建管理员 · structured 类图（相关成员）
+left to right direction
+interface "AuthUseCase" as U <<interface>> {
+ + createAccount(input, actor): long
 }
-interface AuthUseCase <<port>> {
-  + createAccount(input: Account, actor: AdminPrincipal): long
-  + updateAccount(id: long, input: AccountUpdate, actor: AdminPrincipal): void
+class "StructuredAuthService" as S {
+ - dao: AuthDao
+ - roles: AdminRoleDao
+ - rbac: RbacUseCase
+ --
+ + createAccount(input, actor): long
+ - {static} requireConsistent(nodes, roleFunctions): void
+ - {static} with(nodes, changed): List
 }
-class StructuredAuthService <<structured>> {
-  - dao: AuthDao
-  - roles: AdminRoleDao
+class "AuthDao" as Dao {
+ --
+ + lockAccounts(): void
+ + nodes(): List<AccountNode>
+ + createAccount(...): long
+ + replaceAccountApplications(id, applications): void
+ + replaceAccountDepartments(id, departments): void
 }
-class StructuredAdminHierarchyProcedures <<utility>> {
-  + {static} findViolations(accounts, roleFunctions): List
-  + {static} manages(accounts, actor, target): boolean
-  + {static} manageableAccountIds(accounts, actor): Set
+class "AdminRoleDao" as Roles {
+ --
+ + functionsByRole(): Map
 }
-class DddAuthService <<ddd.application>> {
-  - accounts: AdminAccountRepositoryPort
-  - roles: AdminRoleRepositoryPort
+class "StructuredAdminHierarchyProcedures" as Rules <<utility>> {
+ --
+ + {static} findNode(accounts, id): AccountNode
+ + {static} manages(accounts, actor, target): boolean
+ + {static} replaceNode(accounts, changed): List
+ + {static} findViolations(accounts, roleFunctions): List
 }
-class AdminHierarchy <<ddd.domain.model>> {
-  - nodes: Map<Long, AdminNode>
-  + validateCreate(actorId, candidate): AdminNode
-  + validateUpdate(actorId, proposed): UpdateDecision
-  + violations(): List
+interface "RbacUseCase" as Audit <<interface>> {
+ + audit(actor, action, target, dept, app, detail): void
 }
-interface AdminAccountRepositoryPort <<ddd.domain.repository>>
-class JpaAdminAccountRepositoryAdapter <<ddd.infrastructure>>
-class AuthDao
-
-AccountController --> AuthUseCase
-StructuredAuthService ..|> AuthUseCase
-DddAuthService ..|> AuthUseCase
-StructuredAuthService ..> StructuredAdminHierarchyProcedures
-StructuredAuthService --> AuthDao
-DddAuthService ..> AdminHierarchy
-DddAuthService --> AdminAccountRepositoryPort
-JpaAdminAccountRepositoryAdapter ..|> AdminAccountRepositoryPort
-JpaAdminAccountRepositoryAdapter --> AuthDao
+S .up.|> U
+S -right-> Dao : dao
+S -left-> Roles : roles
+S .down.> Rules
+S -down-> Audit : rbac
+note bottom of Rules
+规则接收记录集合；过程本身不持有领域状态。
+Controller 通过 AuthUseCase 调用 createAccount。
+end note
 @enduml

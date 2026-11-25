@@ -1,47 +1,49 @@
 @startuml
-title MelonHub 双策略后端包图 (Structured / DDD 严格分离)
-skinparam packageStyle rectangle
 skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam ArrowColor #41546B
+skinparam classBackgroundColor #F5F8FC
+skinparam classBorderColor #59708C
+skinparam sequenceParticipantBackgroundColor #EEF3F9
+skinparam sequenceParticipantBorderColor #59708C
+skinparam sequenceGroupBackgroundColor transparent
+skinparam sequenceMessageAlign left
+title MelonHub 包依赖 · 启动时选择 structured 或 ddd
 top to bottom direction
-package "com.melonhub.rbac" {
-  package controller
-  package security
-  package dto
-  package exception
-  package config
-  package "service.port" as port
-  package "service.structured" as structured
-  package "service.ddd" {
-    package application as ddd_app
-    package domain as ddd_domain
-    package infrastructure as ddd_infra
-  }
-  package identity
-  package cache
-  package dao
-  package repository
-  package entity
+package "controller / security / config" as Entry {}
+package "service.port" as Port {}
+package "service.structured" as S {}
+package "service.ddd.application" as A {}
+package "service.ddd.domain" as D {
+ package "model" as Model {}
+ package "value" as Value {}
+ package "repository（领域端口）" as DomainPort {}
 }
-controller ..> dto
-controller ..> port
-controller ..> security
-security ..> port
-security ..> exception
-config ..> port
-config ..> security
-structured ..|> port
-structured ..> dao
-structured ..> cache
-structured ..> identity
-structured ..> exception
-ddd_app ..|> port
-ddd_app ..> ddd_domain
-ddd_app ..> exception
-ddd_infra ..|> ddd_domain
-ddd_infra ..> dao
-ddd_infra ..> cache
-ddd_infra ..> identity
-dao ..> repository
-dao ..> entity
-repository ..> entity
+package "service.ddd.infrastructure" as I {}
+package "dao / cache / identity" as Shared {}
+package "entity / repository（Spring Data）" as JPA {}
+package "dto / exception" as Boundary {}
+Entry ..> Port
+Entry ..> Boundary
+S ..> Port
+A ..> Port
+S ..> Shared
+A ..> D
+A ..> Boundary
+I ..> D
+I ..> Shared
+Shared ..> JPA
+Model ..> Value
+note bottom of Port
+AuthUseCase、IdentityUseCase 等 10 个用例接口。
+实现关系在类图中展开；包之间画编译期依赖。
+end note
+note bottom of D
+领域规则与端口不依赖 Spring/JPA。
+model 内包含规则模型、快照和报告，
+不能仅凭包名将全部类型认定为聚合根。
+end note
 @enduml

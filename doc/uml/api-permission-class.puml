@@ -1,40 +1,52 @@
 @startuml
-title API 全局权限查询 · 双策略类图 (Structured vs DDD)
-skinparam classAttributeIconSize 0
 skinparam shadowing false
-hide empty members
-class IdentityController {
-  - identityService: IdentityUseCase
-  + apiPermission(authorization: String, operationId: String): Map
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam ArrowColor #41546B
+skinparam classBackgroundColor #F5F8FC
+skinparam classBorderColor #59708C
+skinparam sequenceParticipantBackgroundColor #EEF3F9
+skinparam sequenceParticipantBorderColor #59708C
+skinparam sequenceGroupBackgroundColor transparent
+skinparam sequenceMessageAlign left
+title API 权限查询 · structured 类图（相关成员）
+left to right direction
+class "IdentityController" as C {
+ - identityService: IdentityUseCase
+ --
+ + apiPermission(authorization, operationId): Map
 }
-interface IdentityUseCase <<port>> {
-  + checkApiPermission(authorization: String, operationId: String): Map
+interface "IdentityUseCase" as U <<interface>> {
+ + checkApiPermission(authorization, operationId): Map
 }
-class StructuredIdentityService <<structured>> {
-  - identityDao: IdentityDao
-  - tokenService: IdentityTokenService
+class "StructuredIdentityService" as S {
+ - identityDao: IdentityDao
+ - tokenService: IdentityTokenService
+ - {static} API_PERMISSION_CODES: Map
+ --
+ + checkApiPermission(authorization, operationId): Map
+ - authenticatedUser(authorization): UserRow
+ - authenticated(authorization): Claims
 }
-class DddIdentityService <<ddd.application>> {
-  - repository: IdentityRepositoryPort
-  - tokens: IdentityTokenGateway
+class "IdentityDao" as R {
+ --
+ + activeSession(hash, now): boolean
+ + userByExternalId(externalId): Optional
+ + permissions(userId, system): List
 }
-class CoursePermissionCatalog <<ddd.domain.value>> {
-  + {static} requirePermissionForOperation(operationId): String
+class "IdentityTokenService" as T {
+ --
+ + verify(token, audience): Claims
 }
-class IdentityAccountAggregate <<ddd.domain.model>> {
-  + hasUiPermission(code): boolean
-}
-interface IdentityRepositoryPort <<ddd.domain.repository>>
-class JpaIdentityRepositoryAdapter <<ddd.infrastructure>>
-class IdentityDao
-
-IdentityController --> IdentityUseCase
-StructuredIdentityService ..|> IdentityUseCase
-DddIdentityService ..|> IdentityUseCase
-StructuredIdentityService --> IdentityDao
-DddIdentityService ..> CoursePermissionCatalog
-DddIdentityService ..> IdentityAccountAggregate
-DddIdentityService --> IdentityRepositoryPort
-JpaIdentityRepositoryAdapter ..|> IdentityRepositoryPort
-JpaIdentityRepositoryAdapter --> IdentityDao
+C -right-> U : identityService
+S .up.|> U
+C -[hidden]right- S
+S -right-> R : identityDao
+S -down-> T : tokenService
+legend bottom
+过程内部完成认证、操作映射、权限包含判断。
+事务由 checkApiPermission 的只读事务边界管理。
+endlegend
 @enduml

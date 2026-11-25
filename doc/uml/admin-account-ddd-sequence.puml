@@ -1,0 +1,92 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam ArrowColor #41546B
+skinparam classBackgroundColor #F5F8FC
+skinparam classBorderColor #59708C
+skinparam sequenceParticipantBackgroundColor #EEF3F9
+skinparam sequenceParticipantBorderColor #59708C
+skinparam sequenceGroupBackgroundColor transparent
+skinparam sequenceMessageAlign left
+hide footbox
+title 创建分级管理员 · ddd（前置参数合法后的候选层级决策）
+autonumber
+participant "obj: AccountController" as C
+participant "service: DddAuthService" as S
+participant "«MetaClass»\n: DddBoundary" as B
+participant "accounts: AdminAccountRepositoryPort" as R
+participant "roles: AdminRoleRepositoryPort" as Roles
+participant "tree: AdminHierarchy" as Tree
+participant "crypto: CryptoGateway" as Crypto
+participant "rbac: RbacUseCase" as Audit
+activate C
+C -> S: createAccount(input, actor)
+activate S
+S -> B: execute(action)
+activate B
+B -> S: action.get()（应用服务中的 lambda）
+activate S
+S -> R: lockAllAccounts()
+activate R
+deactivate R
+note over S,Roles: requireRole 校验角色存在；hierarchy() 展开如下
+S -> R: nodes = loadHierarchyNodes()
+activate R
+deactivate R
+S -> Roles: functions = functionsByRole()
+activate Roles
+deactivate Roles
+S -> Tree: new AdminHierarchy(nodes, functions)
+activate Tree
+deactivate Tree
+note over S,Tree
+requestedParent、node、manages 与范围 ID 解析完成后，
+构造 AdminScope 和候选 AdminNode；省略这些成功前置步骤。
+end note
+alt 候选范围或层级不满足不变量
+ S -> Tree: validateCreate(actor.id(), candidate)
+ activate Tree
+ autonumber stop
+ Tree --> B: DomainException (CONFLICT)
+ deactivate Tree
+ B --> C: ApiException (409 CONFLICT)，事务回滚
+else 候选合法
+ autonumber resume
+ S -> Tree: validateCreate(actor.id(), candidate)
+ activate Tree
+ deactivate Tree
+ note right of S: PasswordPolicy.validateAdminPasswordBytes(input.password())
+ autonumber resume
+ S -> Crypto: hash = encodeAdminPassword(input.password())
+ activate Crypto
+ deactivate Crypto
+ S -> R: id = createAccount(..., hash, ...)
+ activate R
+ deactivate R
+ S -> R: replaceAccountApplications(id, applications)
+ activate R
+ deactivate R
+ S -> R: replaceAccountDepartments(id, departments)
+ activate R
+ deactivate R
+ S -> Audit: audit(..., ACCOUNT_CREATED, ...)
+ activate Audit
+ deactivate Audit
+ autonumber stop
+ S --> B: id
+ B --> S: id
+ S --> C: id
+end
+||12||
+deactivate S
+deactivate B
+deactivate S
+deactivate C
+legend bottom
+createAccount 的 @Transactional 覆盖锁、领域决策、写入和审计；DAO 调用由基础设施适配器实现。
+DomainException 在 DddBoundary 捕获并转换；Controller 正常返回 200 {id, username}。
+endlegend
+@enduml

@@ -1,34 +1,68 @@
 @startuml
-title GET /auth/api-permissions/{operationId} · 结构化与 DDD 策略对比时序图
-hide footbox
 skinparam shadowing false
-actor "obj: HTTP 调用者" as Caller
-participant "controller: IdentityController" as C
-participant "useCase: IdentityUseCase\n(Structured / DDD)" as S
-participant "token: IdentityTokenService / Gateway" as T
-participant "domain: CoursePermissionCatalog\n+ IdentityAccountAggregate (仅 DDD)" as D
-participant "store: IdentityDao / RepositoryPort" as R
-activate Caller
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam ArrowColor #41546B
+skinparam classBackgroundColor #F5F8FC
+skinparam classBorderColor #59708C
+skinparam sequenceParticipantBackgroundColor #EEF3F9
+skinparam sequenceParticipantBorderColor #59708C
+skinparam sequenceGroupBackgroundColor transparent
+skinparam sequenceMessageAlign left
+hide footbox
+title API 权限查询 · structured
+
+hide footbox
+skinparam ParticipantPadding 12
+skinparam BoxPadding 8
 autonumber
-Caller -> C: GET /auth/api-permissions/{operationId}
+participant "obj: IdentityController" as C
+participant "service: StructuredIdentityService" as S
+participant "tokenService: IdentityTokenService" as T
+participant "identityDao: IdentityDao" as R
 activate C
 C -> S: checkApiPermission(authorization, operationId)
 activate S
-S -> T: verify(token, COURSE_SYSTEM)
-S -> R: activeSession & userByExternalId
-S -> D: requirePermissionForOperation(operationId)
-alt 未知 operationId
+note over S,R: 展开 authenticatedUser / authenticated；省略 Bearer 解析与哈希工具调用
+S -> T: claims = verify(token, COURSE_SYSTEM)
+activate T
+deactivate T
+S -> R: active = activeSession(hash, now)
+activate R
+deactivate R
+alt 会话已失效
+ autonumber stop
+ S --> C: ApiException (401 UNAUTHORIZED)
+else 会话有效
+ autonumber resume
+ S -> R: user = userByExternalId(claims.subject())
+ activate R
+ deactivate R
+ alt 用户不存在
   autonumber stop
-  S --> Caller: 404 API_OPERATION_NOT_FOUND
-else 已登记 operationId
-  autonumber resume
-  S -> R: permissions(user.id, COURSE_SYSTEM)
-  S -> D: hasUiPermission(required)
-  autonumber stop
-  S --> C: {operationId, allowed}
-  C --> Caller: 200 JSON
+  S --> C: ApiException (401 UNAUTHORIZED)
+ else 用户存在
+  note right of S: permission = API_PERMISSION_CODES.get(operationId)
+  alt 操作未登记
+   S --> C: ApiException (404 API_OPERATION_NOT_FOUND)
+  else 操作已登记
+   autonumber resume
+   S -> R: permissions = permissions(user.id(), COURSE_SYSTEM)
+   activate R
+   deactivate R
+   note right of S: allowed = permissions.contains(permission)
+   autonumber stop
+   S --> C: {operationId, allowed}
+  end
+ end
 end
+||12||
 deactivate S
 deactivate C
-deactivate Caller
+legend bottom
+verify 的无效令牌异常由统一错误处理转换为 401，此处聚焦有效令牌后的分支。
+ApiErrors 负责 HTTP 错误响应；Controller 正常返回 200 JSON。
+endlegend
 @enduml

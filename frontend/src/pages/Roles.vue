@@ -41,6 +41,7 @@ const columns: TableColumnsType<Role> = [
   { title: '编码', dataIndex: 'code', key: 'code', width: 180, ellipsis: true },
   { title: '状态', key: 'enabled', width: 80 },
   { title: '权限数', key: 'permissionCount', width: 80, align: 'right' },
+  { title: '继承角色', key: 'parentCount', width: 90, align: 'right' },
   { title: '成员数', dataIndex: 'memberCount', width: 80, align: 'right' },
   { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 165 },
   { title: '操作', key: 'actions', width: 200, fixed: 'right' },
@@ -71,7 +72,7 @@ async function save() {
   // New role: continue straight to granting permissions, so 权限 → 角色 → 成员 can be done in one pass.
   if (!editing.value) {
     grant(roles.rows.value.find(r => r.id === createdId)
-      ?? { id: createdId, name: body.name, code: body.code, description: body.description, enabled: true, createdAt: '', memberCount: 0, permissionIds: [] })
+      ?? { id: createdId, name: body.name, code: body.code, description: body.description, enabled: true, createdAt: '', memberCount: 0, permissionIds: [], parentRoleIds: [] })
   }
 }
 
@@ -120,6 +121,19 @@ function more(row: Role, key: string) {
 
 const membersOpen = ref(false), membersRole = ref<Role>()
 function showMembers(row: Role) { membersRole.value = row; membersOpen.value = true }
+const parentsOpen = ref(false), parentsRole = ref<Role | null>(null), parentKeys = ref<string[]>([]), savingParents = ref(false)
+const parentOptions = computed(() => roles.rows.value.filter(row => row.id !== parentsRole.value?.id)
+  .map(row => ({ value: String(row.id), label: `${row.name}（${row.code}）` })))
+function editParents(row: Role) {
+  parentsRole.value = row
+  parentKeys.value = (row.parentRoleIds ?? []).map(String)
+  parentsOpen.value = true
+}
+async function saveParents() {
+  if (!parentsRole.value) return
+  const ok = await attempt(savingParents, () => send('PUT', `/admin/roles/${parentsRole.value!.id}/parents`, { ids: parentKeys.value.map(Number) }, scope.domainQuery), '角色继承关系已更新')
+  if (ok) { parentsOpen.value = false; roles.load() }
+}
 function exportRows() {
   const codes = new Map(permissions.rows.value.map(p => [p.id, p.code]))
   downloadCsv('roles', ['部门', '软件', '角色名称', '编码', '描述', '状态', '权限', '成员数'],
@@ -241,10 +255,13 @@ async function copy() {
             <template v-else-if="column.key === 'code'"><code>{{ record.code }}</code></template>
             <template v-else-if="column.key === 'enabled'"><a-badge :status="record.enabled ? 'success' : 'default'" :text="record.enabled ? '启用' : '停用'" /></template>
             <template v-else-if="column.key === 'permissionCount'">{{ record.permissionIds.length }}</template>
+            <template v-else-if="column.key === 'parentCount'">{{ record.parentRoleIds?.length ?? 0 }}</template>
             <template v-else-if="column.key === 'createdAt'">{{ fmt(record.createdAt) }}</template>
             <template v-else-if="column.key === 'actions'">
               <a-space :size="4">
                 <a @click="grant(record)">{{ scope.canConfigure ? '配置权限' : '查看权限' }}</a>
+                <a-divider type="vertical" />
+                <a @click="editParents(record)">继承</a>
                 <a-divider type="vertical" />
                 <a @click="showMembers(record)">成员</a>
                 <a-divider type="vertical" />
@@ -294,6 +311,14 @@ async function copy() {
     </a-modal>
 
     <PermissionEditor v-model:open="permissionOpen" @saved="permissionCreated" />
+
+    <a-modal v-model:open="parentsOpen" :title="`角色继承：${parentsRole?.name ?? ''}`" :confirm-loading="savingParents" ok-text="保存" destroy-on-close
+             :ok-button-props="{ disabled: !scope.canConfigure }" @ok="saveParents">
+      <p class="hint">当前角色将继承所选父角色的全部有效权限。系统会拒绝跨隔离域关系和循环继承。</p>
+      <a-select v-model:value="parentKeys" mode="multiple" class="w-full" :disabled="!scope.canConfigure"
+                :options="parentOptions"
+                placeholder="选择父角色" show-search option-filter-prop="label" />
+    </a-modal>
 
     <a-modal v-model:open="copyOpen" title="从其他部门复制授权配置" :confirm-loading="copying" ok-text="复制" destroy-on-close @ok="copy">
       <p class="hint">复制到 {{ scope.department?.name }} × {{ scope.application?.name }}。同编码的权限复用、角色跳过，不复制用户的角色分配。</p>

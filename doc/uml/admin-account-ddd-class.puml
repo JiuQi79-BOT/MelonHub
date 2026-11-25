@@ -1,0 +1,70 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam ArrowColor #41546B
+skinparam classBackgroundColor #F5F8FC
+skinparam classBorderColor #59708C
+skinparam sequenceParticipantBackgroundColor #EEF3F9
+skinparam sequenceParticipantBorderColor #59708C
+skinparam sequenceGroupBackgroundColor transparent
+skinparam sequenceMessageAlign left
+title 创建管理员 · ddd 类图（相关成员）
+left to right direction
+interface "AuthUseCase" as U <<interface>> {
+ + createAccount(input, actor): long
+}
+class "DddAuthService" as S {
+ - accounts: AdminAccountRepositoryPort
+ - roles: AdminRoleRepositoryPort
+ - crypto: CryptoGateway
+ --
+ + createAccount(input, actor): long
+ - hierarchy(): AdminHierarchy
+}
+interface "AdminAccountRepositoryPort" as R <<interface>> {
+ + lockAllAccounts(): void
+ + loadHierarchyNodes(): List<AdminNode>
+ + createAccount(...): long
+}
+class "JpaAdminAccountRepositoryAdapter" as A {
+ - dao: AuthDao
+ --
+ + loadHierarchyNodes(): List<AdminNode>
+}
+class "AuthDao" as DAO {
+ --
+ + nodes(): List<AccountNode>
+ + createAccount(...): long
+}
+class "AdminHierarchy" as Tree <<domain model>> {
+ - nodes: Map<Long, AdminNode>
+ - roleFunctions: Map
+ --
+ + validateCreate(actorId, candidate): AdminNode
+ + violations(): List<String>
+}
+class "AdminScope" as Scope <<value object>> {
+ - allDepartments: boolean
+ - departments: Set<Long>
+ - allApplications: boolean
+ - applications: Set<Long>
+ --
+ + coversDepartmentsOf(child): boolean
+ + coversApplicationsOf(child): boolean
+}
+S .up.|> U
+S -right-> R : accounts
+A .up.|> R
+A -right-> DAO : dao
+S .down.> Tree
+S .down.> Scope
+Tree .right.> Scope
+note left of S
+应用服务负责事务、锁与持久化编排；
+候选层级不变量由 AdminHierarchy 判断。
+角色端口、密码网关、审计见时序图和源码。
+end note
+@enduml

@@ -55,6 +55,9 @@ public class BusinessController {
     @PutMapping("/departments/{dept}/roles/{id}/permissions") Object rolePermissions(@PathVariable long dept, @PathVariable long id, @Valid @RequestBody Requests.Ids b, HttpServletRequest q) {
         r.rolePermissions(id, dept, app(q), b.ids(), actor(q)); return ok();
     }
+    @PutMapping("/departments/{dept}/roles/{id}/parents") Object roleParents(@PathVariable long dept, @PathVariable long id, @Valid @RequestBody Requests.Ids b, HttpServletRequest q) {
+        r.roleParents(id, dept, app(q), b.ids(), actor(q)); return ok();
+    }
     @GetMapping("/departments/{dept}/users/{id}/roles") Object userRoles(@PathVariable long dept, @PathVariable long id, HttpServletRequest q) {
         return r.assignments(id, dept, app(q));
     }

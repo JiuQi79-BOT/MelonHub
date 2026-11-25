@@ -15,7 +15,7 @@ import javax.crypto.spec.SecretKeySpec;
 public final class WebhookSignature {
     public static final List<String> EVENT_TYPES = List.of(
             "user.enabled", "user.disabled", "user.deleted", "user.roles.changed", "user.roles.expired",
-            "user.updated", "user.contexts.revoked", "role.enabled", "role.disabled", "role.deleted", "role.permissions.changed",
+            "user.updated", "user.contexts.revoked", "role.enabled", "role.disabled", "role.deleted", "role.permissions.changed", "role.inheritance.changed",
             "permission.updated", "permission.deleted",
             "application.enabled", "application.disabled", "apikey.revoked",
             "access.approved", "access.rejected", "review.closed");

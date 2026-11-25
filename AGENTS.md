@@ -50,7 +50,7 @@
 | exception | `ApiException`、`ApiErrors`：结构化错误（含 requestId） |
 | config | `CloudDatabaseConfiguration`（保留历史类名）、`RedisConfiguration`、`DemoData` |
 
-Flyway 迁移为 V1–V16。V6、V7 保留旧版结构演进，V8 恢复部门 × 软件隔离，V9、V10 管理员功能与管理树，V11–V13 统一身份凭据与课程审计，V14 管理员数字主键，V15、V16 补齐隔离域复合外键。已应用的迁移保持原样，新增结构变更使用新版本。
+Flyway 迁移为 V1–V17。V6、V7 保留旧版结构演进，V8 恢复部门 × 软件隔离，V9、V10 管理员功能与管理树，V11–V13 统一身份凭据与课程审计，V14 管理员数字主键，V15、V16 补齐隔离域复合外键。已应用的迁移保持原样，新增结构变更使用新版本。
 
 Controller、Service 不直接使用 EntityManager 或仓库查询，持久化留在 DAO；新代码不写原生 SQL。不新增无意义抽象。
 
@@ -62,7 +62,7 @@ Controller、Service 不直接使用 EntityManager 或仓库查询，持久化�
 
 ## 3. 核心权限模型
 
-RBAC0，隔离域 `(department_id, application_id)`。用户与角色、角色与权限多对多，没有用户直接权限；不引入角色继承、ABAC、职责分离、通配权限或业务规则。权限编码区分大小写，resource/action 仅为元数据。角色分配可带 `expires_at`，所有查询只计入未到期分配；到期是分配的属性，不是新规则。
+RBAC1，隔离域 `(department_id, application_id)`。用户与角色、角色与权限多对多，没有用户直接权限；角色可在同一隔离域内继承父角色权限，拒绝循环和跨域继承；不引入 ABAC、职责分离、通配权限或业务规则。权限编码区分大小写，resource/action 仅为元数据。角色分配可带 `expires_at`，所有查询只计入未到期分配；到期是分配的属性，不是新规则。
 
 **用户全局当前部门**，跨软件、跨设备共享。在另一部门创建上下文使旧部门全部软件上下文失效，切回不恢复。设备独立切换属于需求变更。
 
@@ -140,7 +140,7 @@ Webhook：头 `MelonHub-Event`、`MelonHub-Delivery`、`MelonHub-Signature: t=<�
 5. 授权治理深化：审批人路由（角色负责人/多级审批，当前任何有该软件写权限的管理员都可审批）、按周期自动发起复核、审批/复核待办的邮件或 IM 提醒、清单导入前差异预览（dry-run）、授权配置版本与回滚。
 6. 管理面：可脚本化的管理 API 令牌、管理员会话列表与下线、密码有效期/历史策略、控制台来源 IP 白名单。
 7. 小改进：Webhook 目标地址白名单、Webhook/TOTP 密钥加密存储、TOTP issuer 可配置；Grafana 面板与告警规则样例。
-8. 控制台：国际化、按需拆分 antd 体积。企业 SSO 明确不在范围内；职责分离不在 RBAC0 范围内。
+8. 控制台：国际化、按需拆分 antd 体积。企业 SSO 明确不在范围内；职责分离和 ABAC 不在当前 RBAC1 范围内。
 
 ## 7. 已知限制
 

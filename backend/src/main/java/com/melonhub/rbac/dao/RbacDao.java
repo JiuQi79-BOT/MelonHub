@@ -10,6 +10,8 @@ import com.melonhub.rbac.entity.Permission;
 import com.melonhub.rbac.entity.Role;
 import com.melonhub.rbac.entity.RolePermission;
 import com.melonhub.rbac.entity.RolePermissionId;
+import com.melonhub.rbac.entity.RoleInheritance;
+import com.melonhub.rbac.entity.RoleInheritanceId;
 import com.melonhub.rbac.entity.User;
 import com.melonhub.rbac.entity.UserRole;
 import com.melonhub.rbac.entity.UserRoleId;
@@ -52,6 +54,8 @@ public class RbacDao {
     private static final String CURRENT = "(ur.expiresAt is null or ur.expiresAt > current_timestamp)";
     private final EntityManager em;
     public RbacDao(EntityManager em) { this.em = em; }
+
+    private static long number(Object value) { return ((Number) value).longValue(); }
 
     // ---- helpers ----
     private int update(String jpql, Object... namedValues) {
@@ -338,10 +342,22 @@ public class RbacDao {
                 where ur.user.id = :user order by ur.departmentId, ur.applicationId, r.id""", "user", user);
     }
     public List<Map<String,Object>> accessPermissions(long user) {
-        return rows("""
-                select distinct ur.departmentId as department_id, ur.applicationId as application_id, p.code as code
-                from UserRole ur join ur.role r, RolePermission rp join rp.permission p
-                where rp.role = r and r.enabled = true and\s""" + CURRENT + " and ur.user.id = :user order by p.code", "user", user);
+        var direct = rows("""
+select ur.role.id as role_id, ur.departmentId as department_id, ur.applicationId as application_id
+                from UserRole ur where ur.user.id = :user and """ + CURRENT, "user", user);
+        var result = new ArrayList<Map<String,Object>>();
+        var grouped = new LinkedHashMap<String, List<Long>>();
+        for (var row : direct) grouped.computeIfAbsent(row.get("department_id") + ":" + row.get("application_id"), k -> new ArrayList<>())
+                .add(number(row.get("role_id")));
+        for (var entry : grouped.entrySet()) {
+            String[] domain = entry.getKey().split(":");
+            long dept = Long.parseLong(domain[0]), app = Long.parseLong(domain[1]);
+            for (String code : permissionCodes(inheritedRoleIds(entry.getValue(), dept, app))) {
+                var row = new LinkedHashMap<String,Object>();
+                row.put("department_id", dept); row.put("application_id", app); row.put("code", code); result.add(row);
+            }
+        }
+        return result;
     }
 
     // ---- roles and permissions of one domain ----
@@ -350,6 +366,12 @@ public class RbacDao {
                 select r.id as id, r.name as name, r.code as code, r.description as description, r.enabled as enabled, r.createdAt as createdAt
                 from Role r where r.department.id = :dept and r.application.id = :app order by r.id""", "dept", dept, "app", app);
         attachCounts(rows, "memberCount", "select ur.role.id, count(ur) from UserRole ur where ur.role.id in :ids group by ur.role.id");
+        var parents = roleInheritancePairs(dept, app);
+        for (var row : rows) {
+            long id = number(row.get("id"));
+            row.put("parentRoleIds", parents.stream().filter(p -> number(p.get("child_role_id")) == id)
+                    .map(p -> number(p.get("parent_role_id"))).toList());
+        }
         return rows;
     }
     public List<Map<String,Object>> rolePermissions(long dept, long app) {
@@ -407,6 +429,65 @@ public class RbacDao {
             em.persist(new RolePermission().setId(new RolePermissionId(role, permission)).setRole(owner)
                     .setPermission(em.getReference(Permission.class, permission)).setDepartmentId(dept).setApplicationId(app));
         em.flush();
+    }
+
+    public List<Map<String,Object>> roleInheritancePairs(long dept, long app) {
+        return rows("""
+select ri.id.childRoleId as child_role_id, ri.id.parentRoleId as parent_role_id
+                from RoleInheritance ri where ri.childRole.department.id = :dept and ri.childRole.application.id = :app
+                order by ri.id.childRoleId, ri.id.parentRoleId""", "dept", dept, "app", app);
+    }
+
+    public List<Long> roleParentIds(long childRole, long dept, long app) {
+        return query("""
+select ri.id.parentRoleId from RoleInheritance ri where ri.id.childRoleId = :child and
+                ri.childRole.department.id = :dept and ri.childRole.application.id = :app order by ri.id.parentRoleId""",
+                Long.class, "child", childRole, "dept", dept, "app", app).getResultList();
+    }
+
+    public void replaceRoleParents(long childRole, long dept, long app, Collection<Long> parents) {
+        update("delete from RoleInheritance ri where ri.id.childRoleId = :child", "child", childRole);
+        Role child = em.getReference(Role.class, childRole);
+        for (long parent : parents) {
+            em.persist(new RoleInheritance().setId(new RoleInheritanceId(childRole, parent)).setChildRole(child)
+                    .setParentRole(em.getReference(Role.class, parent)).setDepartmentId(dept).setApplicationId(app));
+        }
+        em.flush();
+    }
+
+    /** Returns the selected roles and every transitive parent role in this isolation domain. */
+    public List<Long> inheritedRoleIds(Collection<Long> roots, long dept, long app) {
+        var parents = new LinkedHashMap<Long, List<Long>>();
+        for (var pair : roleInheritancePairs(dept, app))
+            parents.computeIfAbsent(number(pair.get("child_role_id")), k -> new ArrayList<>()).add(number(pair.get("parent_role_id")));
+        var result = new LinkedHashSet<Long>();
+        var pending = new ArrayList<Long>(roots);
+        while (!pending.isEmpty()) {
+            long role = pending.remove(pending.size() - 1);
+            if (!result.add(role)) continue;
+            pending.addAll(parents.getOrDefault(role, List.of()));
+        }
+        return new ArrayList<>(result);
+    }
+
+    private List<Long> expandRoleIds(Collection<Long> roots) {
+        if (roots.isEmpty()) return List.of();
+        var grouped = new LinkedHashMap<String, List<Long>>();
+        for (var row : rows("select r.id as id, r.department.id as dept, r.application.id as app from Role r where r.id in :ids", "ids", roots))
+            grouped.computeIfAbsent(row.get("dept") + ":" + row.get("app"), k -> new ArrayList<>()).add(number(row.get("id")));
+        var result = new LinkedHashSet<Long>();
+        for (var e : grouped.entrySet()) {
+            String[] domain = e.getKey().split(":");
+            result.addAll(inheritedRoleIds(e.getValue(), Long.parseLong(domain[0]), Long.parseLong(domain[1])));
+        }
+        return new ArrayList<>(result);
+    }
+
+    private List<String> permissionCodes(Collection<Long> roles) {
+        if (roles.isEmpty()) return List.of();
+        return query("""
+select distinct p.code from RolePermission rp join rp.permission p join rp.role r
+                where rp.role.id in :roles and r.enabled = true order by p.code""", String.class, "roles", roles).getResultList();
     }
 
     // ---- assignments ----
@@ -498,7 +579,7 @@ public class RbacDao {
         if (roles.isEmpty()) return List.of();
         return rows("""
                 select p.id as id, p.code as code, p.name as name, p.resource as resource, p.action as action, rp.role.id as role_id
-                from RolePermission rp join rp.permission p where rp.role.id in :roles order by p.code, rp.role.id""", "roles", roles);
+                from RolePermission rp join rp.permission p where rp.role.id in :roles order by p.code, rp.role.id""", "roles", expandRoleIds(roles));
     }
 
     // ---- audit ----

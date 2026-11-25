@@ -100,6 +100,8 @@ public interface RbacUseCase {
 
     void rolePermissions(long role, long dept, long app, List<Long> permissions, String actor);
 
+    void roleParents(long role, long dept, long app, List<Long> parents, String actor);
+
     List<Map<String, Object>> roleMembers(long role, long dept, long app);
 
     void roleMembers(long role, long dept, long app, List<Long> users, String actor);

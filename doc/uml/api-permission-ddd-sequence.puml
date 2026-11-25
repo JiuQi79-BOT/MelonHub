@@ -1,0 +1,70 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam ArrowColor #41546B
+skinparam classBackgroundColor #F5F8FC
+skinparam classBorderColor #59708C
+skinparam sequenceParticipantBackgroundColor #EEF3F9
+skinparam sequenceParticipantBorderColor #59708C
+skinparam sequenceGroupBackgroundColor transparent
+skinparam sequenceMessageAlign left
+hide footbox
+title API 权限查询 · ddd（成功认证后的领域决策）
+autonumber
+participant "obj: IdentityController" as C
+participant "service: DddIdentityService" as S
+participant "«MetaClass»\n: DddBoundary" as B
+participant "repository: IdentityRepositoryPort" as R
+participant "«MetaClass»\n: CoursePermissionCatalog" as Catalog
+participant "aggregate: IdentityAccountAggregate" as Model
+activate C
+C -> S: checkApiPermission(authorization, operationId)
+activate S
+S -> B: execute(action)
+activate B
+B -> S: action.get()（应用服务中的 lambda）
+activate S
+note over S,R
+authenticatedUser 已完成 Bearer 解析、tokens.verify、
+crypto.hashToken、hasActiveSession、findUserByExternalId。
+失败抛 DomainException，经 DddBoundary 转换为 401。
+end note
+alt 操作未登记
+ S -> Catalog: requirePermissionForOperation(operationId)
+ activate Catalog
+ autonumber stop
+ Catalog --> B: DomainException (NOT_FOUND)
+ deactivate Catalog
+ B --> C: ApiException (404 API_OPERATION_NOT_FOUND)
+else 操作已登记
+ autonumber resume
+ S -> Catalog: required = requirePermissionForOperation(operationId)
+ activate Catalog
+ deactivate Catalog
+ S -> R: permissions = permissions(user.id(), COURSE_SYSTEM)
+ activate R
+ deactivate R
+ S -> Model: new IdentityAccountAggregate(user, [], permissions)
+ activate Model
+ deactivate Model
+ S -> Model: allowed = hasUiPermission(required)
+ activate Model
+ deactivate Model
+ autonumber stop
+ S --> B: {operationId, allowed}
+ B --> S: response
+ S --> C: response
+end
+||12||
+deactivate S
+deactivate B
+deactivate S
+deactivate C
+legend bottom
+RepositoryPort 的运行对象是 JpaIdentityRepositoryAdapter；其内部委托 IdentityDao。
+静态目录负责 operationId 映射；账号模型判断是否含所需权限。ApiErrors 映射异常为 HTTP 响应。
+endlegend
+@enduml

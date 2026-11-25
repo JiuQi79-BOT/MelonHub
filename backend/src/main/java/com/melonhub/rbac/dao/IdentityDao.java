@@ -126,16 +126,10 @@ public class IdentityDao {
      * @return 角色编码
      */
     public List<String> roles(long userId, String applicationCode) {
-        return entityManager.createQuery(
-                        "select distinct r.code from UserRole ur join ur.role r join r.application a "
-                                + "where ur.user.id = :userId and a.code = :applicationCode and a.enabled = true "
-                                + "and r.enabled = true and (ur.expiresAt is null or ur.expiresAt > current_timestamp) "
-                                + "order by r.code",
-                        String.class
-                )
-                .setParameter("userId", userId)
-                .setParameter("applicationCode", applicationCode)
-                .getResultList();
+        var roles = effectiveRoleIds(userId, applicationCode);
+        if (roles.isEmpty()) return List.of();
+        return entityManager.createQuery("select distinct r.code from Role r where r.id in :roles and r.enabled = true order by r.code", String.class)
+                .setParameter("roles", roles).getResultList();
     }
 
     /**
@@ -146,32 +140,48 @@ public class IdentityDao {
      * @return 权限编码
      */
     public List<String> permissions(long userId, String applicationCode) {
-        return entityManager.createQuery(
-                        "select distinct p.code from UserRole ur join ur.role r join r.application a, RolePermission rp join rp.permission p "
-                                + "where ur.user.id = :userId and a.code = :applicationCode and a.enabled = true "
-                                + "and rp.role = r and r.enabled = true and p.application.id = a.id "
-                                + "and (ur.expiresAt is null or ur.expiresAt > current_timestamp) order by p.code",
-                        String.class
-                )
-                .setParameter("userId", userId)
-                .setParameter("applicationCode", applicationCode)
-                .getResultList();
+        var roles = effectiveRoleIds(userId, applicationCode);
+        if (roles.isEmpty()) return List.of();
+        return entityManager.createQuery("""
+select distinct p.code from RolePermission rp join rp.permission p join rp.role r
+                where rp.role.id in :roles and r.enabled = true order by p.code""", String.class)
+                .setParameter("roles", roles).getResultList();
     }
 
     /** 读取有效查看权限所在的部门，避免把单部门授权用于整个软件。 */
     public List<Long> permissionDepartments(long userId, String applicationCode, String permission) {
+        var roles = effectiveRoleIds(userId, applicationCode);
+        if (roles.isEmpty()) return List.of();
         return entityManager.createQuery("""
-                select distinct ur.departmentId from UserRole ur join ur.role r join r.application a,
-                    RolePermission rp join rp.permission p
-                where ur.user.id = :userId and a.code = :applicationCode and a.enabled = true
-                  and rp.role = r and r.enabled = true and p.application.id = a.id
-                  and p.department.id = ur.departmentId and p.code = :permission
-                  and (ur.expiresAt is null or ur.expiresAt > current_timestamp)
-                """, Long.class)
-                .setParameter("userId", userId)
-                .setParameter("applicationCode", applicationCode)
-                .setParameter("permission", permission)
-                .getResultList();
+select distinct p.department.id from RolePermission rp join rp.permission p
+                where rp.role.id in :roles and p.code = :permission order by p.department.id""", Long.class)
+                .setParameter("roles", roles)
+                .setParameter("permission", permission).getResultList();
+    }
+
+    private List<Long> effectiveRoleIds(long userId, String applicationCode) {
+        var direct = entityManager.createQuery("""
+select ur.role.id, ur.departmentId, ur.application.id from UserRole ur join ur.role r join r.application a
+                where ur.user.id = :user and a.code = :app and a.enabled = true and r.enabled = true
+                and (ur.expiresAt is null or ur.expiresAt > current_timestamp)""", Tuple.class)
+                .setParameter("user", userId).setParameter("app", applicationCode).getResultList();
+        var result = new LinkedHashSet<Long>();
+        for (Tuple row : direct) {
+            long root = row.get(0, Long.class), dept = row.get(1, Long.class), app = row.get(2, Long.class);
+            var parents = new HashMap<Long, List<Long>>();
+            for (Tuple edge : entityManager.createQuery("""
+select ri.id.childRoleId, ri.id.parentRoleId from RoleInheritance ri
+                    where ri.childRole.department.id = :dept and ri.childRole.application.id = :app""", Tuple.class)
+                    .setParameter("dept", dept).setParameter("app", app).getResultList())
+                parents.computeIfAbsent(edge.get(0, Long.class), k -> new ArrayList<>()).add(edge.get(1, Long.class));
+            var pending = new ArrayList<Long>(); pending.add(root);
+            while (!pending.isEmpty()) {
+                long role = pending.remove(pending.size() - 1);
+                if (!result.add(role)) continue;
+                pending.addAll(parents.getOrDefault(role, List.of()));
+            }
+        }
+        return new ArrayList<>(result);
     }
 
     /** 在授权部门内查询课程业务事件及操作人的资料。 */

@@ -164,6 +164,11 @@ public interface RbacRepositoryPort {
 
     void replaceRolePermissions(long roleId, long departmentId, long applicationId, Collection<Long> permissionIds);
 
+    List<Map<String, Object>> domainRoleInheritancePairs(long departmentId, long applicationId);
+    List<Long> roleParentIds(long roleId, long departmentId, long applicationId);
+    List<Long> inheritedRoleIds(Collection<Long> roleIds, long departmentId, long applicationId);
+    void replaceRoleParents(long roleId, long departmentId, long applicationId, Collection<Long> parentIds);
+
     boolean lockRole(long roleId);
 
     List<Map<String, Object>> roleMembers(long roleId);

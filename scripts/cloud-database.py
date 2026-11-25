@@ -13,7 +13,6 @@ from pathlib import Path
 
 import paramiko
 import pymysql
-import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -67,7 +66,7 @@ def remote(client, command):
     return result
 
 
-def inspect(cfg, configure):
+def inspect(cfg):
     for label in ("SWARM_MANAGER_HOST", "SWARM_WORKER_HOST"):
         with connect(cfg, label) as client:
             identity = remote(client, "id -u").strip()
@@ -85,33 +84,6 @@ def inspect(cfg, configure):
                 print("MySQL endpoint:", json.dumps(details.get("Endpoint", {}).get("Ports", [])))
                 tasks = [json.loads(line) for line in remote(client, "docker service ps --filter desired-state=running " + service + " --format '{{json .}}'").splitlines()]
                 print("MySQL running task count:", len(tasks))
-            # Limit discovery to the requested project under /root.
-            requested = cfg["SWARM_CONFIG_PATH"]
-            candidates = [requested, "/root/" + requested.lstrip("/")]
-            candidates += remote(client, "find /root -maxdepth 7 -type f -iname 'productdemojpa.y*ml' 2>/dev/null").splitlines()
-            for path in dict.fromkeys(candidates):
-                sftp = client.open_sftp()
-                try:
-                    with sftp.open(path) as source:
-                        document = yaml.safe_load(source.read())
-                except OSError:
-                    continue
-                finally:
-                    sftp.close()
-                for name, spec in (document.get("services", {}) if isinstance(document, dict) else {}).items():
-                    if "mysql" not in str(spec.get("image", "")).lower():
-                        continue
-                    env = spec.get("environment", {})
-                    if isinstance(env, list):
-                        env = dict(item.split("=", 1) for item in env if "=" in item)
-                    password = env.get("MYSQL_ROOT_PASSWORD")
-                    print("MySQL YAML located on " + label + "; literal root credential=" + str(bool(password and not str(password).startswith("${"))))
-                    if configure and password and not str(password).startswith("${"):
-                        save_configuration({"CLOUD_DB_PASSWORD": str(password)})
-                        print("Root credential candidate saved to ignored .env; authentication still required")
-                        return
-    if configure:
-        raise RuntimeError("No literal root credential found; inspect environment/secret source next")
 
 
 def database(cfg, provision):
@@ -185,62 +157,6 @@ def create_project_database(cfg):
         print("The only mutating SQL allowed by this action is CREATE DATABASE melonhub_rbac")
 
 
-def diagnose(cfg):
-    with connect(cfg, "SWARM_MANAGER_HOST") as client:
-        services = json.loads(remote(client, "docker service inspect lab_mysql lab_productdemojpa"))
-        candidates = {cfg["CLOUD_DB_PASSWORD"]: "YAML initial credential"}
-        for service in services:
-            spec = service["Spec"]["TaskTemplate"]["ContainerSpec"]
-            env = dict(item.split("=", 1) for item in spec.get("Env", []) if "=" in item)
-            print(service["Spec"]["Name"] + " environment keys=" + ",".join(env))
-            for key, value in env.items():
-                if "PASSWORD" in key.upper() and value:
-                    candidates[value] = "runtime " + key
-            print(service["Spec"]["Name"] + " mount targets=" + ",".join(m.get("Target", "") for m in spec.get("Mounts", [])))
-        files = remote(client, "find /root -maxdepth 9 -type f \\( -iname '*.yml' -o -iname '*.yaml' -o -iname '*.sql' -o -iname '*.properties' \\) -path '*productdemojpa*' 2>/dev/null").splitlines()
-        print("Project config/SQL files found:", len(files))
-        sftp = client.open_sftp()
-        try:
-            for path in files:
-                with sftp.open(path) as source:
-                    raw = source.read().decode("utf-8", errors="replace")
-                if path.endswith((".yml", ".yaml")):
-                    doc = yaml.safe_load(raw)
-                    def walk(value):
-                        if isinstance(value, dict):
-                            for k, v in value.items():
-                                if "password" in str(k).lower() and isinstance(v, (str, int)) and v and not str(v).startswith("${"):
-                                    candidates[str(v)] = "project YAML " + str(k)
-                                walk(v)
-                        elif isinstance(value, list):
-                            for v in value: walk(v)
-                    walk(doc)
-                elif path.endswith(".sql"):
-                    for match in re.finditer(r"(?:IDENTIFIED\s+BY|PASSWORD\s*\()\s*['\"]([^'\"]+)['\"]", raw, re.I):
-                        candidates[match[1]] = "project SQL credential assignment"
-        finally:
-            sftp.close()
-        print("Distinct documented/runtime credential candidates:", len(candidates))
-        # Only try credentials actually configured by this deployment, no guessing.
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        for candidate, origin in candidates.items():
-            if candidate == cfg["CLOUD_DB_PASSWORD"]: continue
-            try:
-                with pymysql.connect(host=cfg["CLOUD_DB_HOST"], port=int(cfg["CLOUD_DB_PORT"]), user="root", password=candidate, ssl=context, connect_timeout=6) as connection:
-                    with connection.cursor() as cursor:
-                        cursor.execute("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
-                        if not cursor.fetchone()[1]: raise RuntimeError("TLS not negotiated")
-                        cursor.execute("SELECT VERSION()")
-                        print("Actual deployment credential authenticated over TLS; MySQL=" + cursor.fetchone()[0] + "; source=" + origin)
-                    save_configuration({"CLOUD_DB_PASSWORD": candidate})
-                    return
-            except pymysql.MySQLError as exc:
-                print("Deployment credential candidate rejected; source=" + origin + "; error=" + str(exc.args[0]))
-        raise RuntimeError("No current root credential found in inspected deployment sources")
-
-
 def local_auth(cfg):
     for label in ("SWARM_MANAGER_HOST", "SWARM_WORKER_HOST"):
         with connect(cfg, label) as client:
@@ -265,47 +181,15 @@ def local_auth(cfg):
                     print("Container-local root authentication failed, error=" + (number[1] if number else "unknown"))
 
 
-def credential_history(cfg):
-    candidates = set()
-    for label in ("SWARM_MANAGER_HOST", "SWARM_WORKER_HOST"):
-        with connect(cfg, label) as client:
-            sources = remote(client, "for f in /root/.mysql_history /root/.bash_history; do if [ -f \"$f\" ]; then cat \"$f\"; fi; done")
-            sources += remote(client, "for c in $(docker ps --filter name=lab_mysql --format '{{.ID}}'); do docker exec \"$c\" sh -c 'for f in /root/.mysql_history /root/.bash_history; do if [ -f \"$f\" ]; then cat \"$f\"; fi; done'; done")
-            patterns = [r"IDENTIFIED\s+(?:WITH\s+\w+\s+)?BY\s+['\"]([^'\"]+)['\"]", r"SET\s+PASSWORD[^;\n]*?=\s*(?:PASSWORD\s*\()?\s*['\"]([^'\"]+)['\"]"]
-            for pattern in patterns:
-                candidates.update(re.findall(pattern, sources, re.I))
-    print("Explicit MySQL password assignments in server history:", len(candidates))
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-    for candidate in candidates:
-        if candidate == cfg["CLOUD_DB_PASSWORD"]: continue
-        try:
-            with pymysql.connect(host=cfg["CLOUD_DB_HOST"], port=int(cfg["CLOUD_DB_PORT"]), user="root", password=candidate, ssl=context, connect_timeout=6) as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
-                    if not cursor.fetchone()[1]: raise RuntimeError("TLS not negotiated")
-                save_configuration({"CLOUD_DB_PASSWORD": candidate})
-                print("Current remote root credential authenticated over TLS and saved to .env")
-                return
-        except pymysql.MySQLError as exc:
-            print("Recorded MySQL credential rejected, error=" + str(exc.args[0]))
-    raise RuntimeError("Remote root credential not recovered from documented password assignments")
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=("inspect", "credential", "verify", "create", "provision", "diagnose", "local-auth", "credential-history"))
+    parser.add_argument("action", choices=("inspect", "verify", "create", "provision", "local-auth"))
     action = parser.parse_args().action
     try:
-        if action in ("inspect", "credential"):
-            inspect(configuration(), action == "credential")
-        elif action == "diagnose":
-            diagnose(configuration())
+        if action == "inspect":
+            inspect(configuration())
         elif action == "local-auth":
             local_auth(configuration())
-        elif action == "credential-history":
-            credential_history(configuration())
         elif action == "create":
             create_project_database(configuration())
         else:

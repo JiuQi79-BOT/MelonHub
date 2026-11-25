@@ -80,7 +80,7 @@ public class DddRbacService implements RbacUseCase {
         result.put("status", database ? "UP" : "DOWN");
         result.put("database", database ? "UP" : "DOWN");
         result.put("cache", cache.health());
-        result.put("model", "RBAC0");
+        result.put("model", "RBAC1");
         return result;
     }
 
@@ -453,6 +453,26 @@ public class DddRbacService implements RbacUseCase {
         var roles = repository.roles(dept, app);
         attach(roles, repository.domainRolePermissionPairs(dept, app), "role_id", "permission_id", "permissionIds");
         return roles;
+    }
+
+    @Override
+    @Transactional
+    public void roleParents(long role, long dept, long app, List<Long> parents, String actor) {
+        DddBoundary.run(() -> {
+            scoped("roles", role, dept, app);
+            var wanted = new LinkedHashSet<>(parents);
+            if (wanted.contains(role) || repository.scopedCount("roles", wanted, dept, app) != wanted.size())
+                throw DomainException.forbidden("继承角色必须属于当前隔离域且不能包含自身");
+            for (long parent : wanted) {
+                if (repository.inheritedRoleIds(List.of(parent), dept, app).contains(role))
+                    throw DomainException.conflict("角色继承关系不能形成循环");
+            }
+            if (!repository.lockRole(role)) throw DomainException.missing("角色不存在");
+            repository.replaceRoleParents(role, dept, app, wanted);
+            cache.touchDomain(dept, app);
+            events.emit(app, "role.inheritance.changed", Map.of("roleId", role, "departmentId", dept));
+            audit(actor, "ROLE_INHERITANCE_UPDATED", singleCode("roles", role), dept, app, "继承角色 " + wanted.size() + " 个");
+        });
     }
 
     @Override

@@ -29,7 +29,7 @@ public class MelonHubAuthorizer {
     private static final Set<String> EVICT_EVENTS = Set.of(
             "user.enabled", "user.disabled", "user.deleted", "user.updated", "user.roles.changed", "user.roles.expired", "user.contexts.revoked",
             "access.approved", "access.rejected", "review.closed",
-            "role.enabled", "role.disabled", "role.deleted", "role.permissions.changed", "permission.updated", "permission.deleted",
+            "role.enabled", "role.disabled", "role.deleted", "role.permissions.changed", "role.inheritance.changed", "permission.updated", "permission.deleted",
             "application.enabled", "application.disabled", "apikey.revoked");
 
     private final MelonHubClient client;

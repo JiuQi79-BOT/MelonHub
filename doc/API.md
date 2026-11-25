@@ -9,7 +9,7 @@
 | 业务 API | `http://127.0.0.1:8080/api/v1` | 请求头 `X-API-Key`，上下文接口另需 `X-Context-Token` | 业务软件的可信后端 |
 | 管理 API | `http://127.0.0.1:8080/api/admin` | `Authorization: Bearer <管理员会话 token>` | 管理控制台、运维脚本 |
 | 公共接口 | `/api/health`、`/api/auth/login` | 无 | 健康探测、管理员登录 |
-| 监控端点 | `http://127.0.0.1:8081/actuator/*` | 仅本机回环 | 监控系统 |
+| 监控端点 | 本机 `8081/actuator/*`，Swarm 发布在服务器 `18081` | 独立监控端口 | 监控系统 |
 | Webhook 推送 | 业务软件登记的地址 | `MelonHub-Signature` 签名 | 平台 → 业务软件 |
 
 浏览器控制台通过 Vite 的 `/api` 代理访问后端。服务默认只监听 `127.0.0.1`，公开部署需另行规划 HTTPS 反向代理和可信入口。
@@ -164,7 +164,7 @@ POST /api/v1/access-requests
 | `user.updated`、`user.enabled`、`user.disabled`、`user.deleted` | 用户编辑、启停、删除；平台级事件，推送到所有订阅它的软件，`applicationId` 为 0 |
 | `user.roles.changed` | 用户在本软件某域的角色被重新分配，或角色成员被调整（后者 `data` 含 `roleId`、`added`、`removed`） |
 | `user.roles.expired` | 用户在本软件某域的角色分配到期，`data` 含 `userId`、`externalId`、`departmentId`、`roleIds`；后台每分钟检查一次，同一批到期的角色合并为一个事件 |
-| `role.enabled`、`role.disabled`、`role.deleted`、`role.permissions.changed` | 本软件的角色启停、删除、角色权限调整（含清单导入产生的启停及权限变化） |
+| `role.enabled`、`role.disabled`、`role.deleted`、`role.permissions.changed`、`role.inheritance.changed` | 本软件的角色启停、删除、角色权限调整（含清单导入产生的启停及权限变化） |
 | `permission.updated`、`permission.deleted` | 本软件的权限修改、删除，`data` 含 `permissionId`、`departmentId` |
 | `user.contexts.revoked` | 用户强制下线，`data` 含 `userId`、`externalId` |
 | `application.enabled`、`application.disabled` | 本软件启停 |
@@ -188,7 +188,7 @@ POST /api/v1/access-requests
 `GET /api/health` 无需认证：
 
 ```json
-{"status":"UP","database":"UP","cache":"UP","model":"RBAC0"}
+{"status":"UP","database":"UP","cache":"UP","model":"RBAC1"}
 ```
 
 数据库可用时返回 200，数据库不可用时返回 503 且 `status` 为 `DOWN`。`cache` 为 `UP`、`RECOVERING`（Redis 刚恢复、正在完成缓存纪元推进）、`DOWN`（已回退到数据库实时校验）或 `DISABLED`；缓存降级不影响授权正确性，也不会让健康检查失败。
@@ -321,6 +321,7 @@ POST /api/v1/access-requests
 | PUT、DELETE | `/api/admin/roles/{id}` | 更新或删除角色 |
 | PATCH | `/api/admin/roles/{id}/status` | 启停角色 |
 | PUT | `/api/admin/roles/{id}/permissions` | `{"ids":[...]}` 整体替换角色权限 |
+| PUT | `/api/admin/roles/{id}/parents` | `{"ids":[父角色 ID...]}` 设置同域父角色，角色继承父角色权限，循环和跨域关系返回错误 |
 | GET、PUT | `/api/admin/roles/{id}/members` | 查询或整体替换角色成员 `{"ids":[用户 ID...]}`；成员必须属于该部门，被移入或移出的用户在本域的上下文失效。保存期间如有用户被同时加入该角色，服务会自动重试；连续 3 次仍冲突时返回 `503 SERVICE_BUSY`，稍后重试即可 |
 | GET、POST | `/api/admin/permissions` | 权限列表（含 `roleCount`）或创建权限 |
 | PUT、DELETE | `/api/admin/permissions/{id}` | 更新或删除权限 |
@@ -420,7 +421,7 @@ POST /api/v1/access-requests
 
 账号操作路径中的 `id` 取自创建响应或管理员列表。创建和编辑账号时，`parentId` 优先于兼容字段 `parentUsername`。顶级账号的上级字段为 `null`。
 
-`allApplications` 为 `false` 时账号只能管理 `applicationIds` 中的软件；新建时省略 `allApplications`，提供 `applicationIds` 表示限定为这些软件，不提供表示全部软件（部门范围同理）。角色不存在返回 400。只能修改、重置、解锁、删除自己管理的账号（`403`）；自己只能改显示名称，不能修改自己的角色、类型、范围、上级，也不能停用或删除自己；还有下级的账号不能停用或删除（`409`）；平台至少保留一个启用的超级管理员。修改角色或停用账号后，该账号的全部会话立即下线；修改软件范围在下一次请求生效。账号名为 3–100 位字母、数字或 `_ . @ -`，不能以 `.` 开头；路径中直接使用账号名，`@` 与 `.` 不需要转义。密码规则与会话失效规则见第 5.1 节。
+`allApplications` 为 `false` 时账号只能管理 `applicationIds` 中的软件；新建时省略 `allApplications`，提供 `applicationIds` 表示限定为这些软件，不提供表示全部软件（部门范围同理）。角色不存在返回 400。只能修改、重置、解锁、删除自己管理的账号（`403`）；自己只能改显示名称，不能修改自己的角色、类型、范围、上级，也不能停用或删除自己；还有下级的账号不能停用或删除（`409`）；平台至少保留一个启用的超级管理员。修改角色或停用账号后，该账号的全部会话立即下线；修改软件范围在下一次请求生效。账号名为 3–100 位字母、数字或 `_ . @ -`，不能以 `.` 开头；账号管理路径使用数字 `id`。密码规则与会话失效规则见第 5.1 节。
 
 ### 5.9 审批中心
 

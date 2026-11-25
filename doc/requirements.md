@@ -1,8 +1,8 @@
 # MelonHub 统一权限平台 · 需求文档 v2.0
 
 > 术语含义一律以根目录 [CONTEXT.md](../CONTEXT.md) 为准。  
-> 编写原则：仿照联调示例项目 `CourseProjectMgt` 的需求规格与测试对照规范，整合早期《统一权限系统软件需求说明书（1.0 草案）》与项目全周期迭代记录；**凡与现行代码（提交 `8bd2fcd`，Flyway `V1–V16`）存在差异的条款，一律以现行代码实现为准**，差异原因集中记录在第 6 节。
-> 需求与现有测试代码按本文件编号 `R1–R33` 建立可定位的对照（见第 5 节）。
+> 编写原则：仿照联调示例项目 `CourseProjectMgt` 的需求规格与测试对照规范，整合早期《统一权限系统软件需求说明书（1.0 草案）》与项目全周期迭代记录；**凡与现行代码（提交 `8bd2fcd`，Flyway `V1–V17`）存在差异的条款，一律以现行代码实现为准**，差异原因集中记录在第 6 节。
+> 需求与现有测试代码按本文件编号 `R1–R34` 建立可定位的对照（见第 5 节）。
 
 ---
 
@@ -10,12 +10,12 @@
 
 **做什么**：MelonHub 是企业级统一权限授权平台，同时满足两类真实业务接入场景：
 
-1. **多业务软件在线 RBAC0 授权底座（`/api/v1/**` + Java SDK）**：为 20 个以上内部业务软件提供统一的角色/权限动态配置、权限上下文签发、跨部门切换即时失效、无锁在线权限校验、申请审批、定期权限复核、Webhook 变更通知与防篡改审计哈希链。
+1. **多业务软件在线 RBAC1 授权底座（`/api/v1/**` + Java SDK）**：为 20 个以上内部业务软件提供统一的角色/权限动态配置、权限上下文签发、跨部门切换即时失效、无锁在线权限校验、申请审批、定期权限复核、Webhook 变更通知与防篡改审计哈希链。
 2. **统一身份认证与权限联调服务（`/auth/**`）**：面向课程项目管理系统（`course-project-management`）等接入方，提供基于 JWT 与会话索引的统一登录/退出、实时角色与前端菜单/按钮权限查询、基于 OpenAPI `operationId` 的后端全局 API 权限校验、组织部门树/成员查询，以及按授权部门隔离的课程业务审计日志查询。
 
 **核心模型与边界**：
 
-- **严格 RBAC0**：用户与角色多对多、角色与权限多对多；没有用户直接权限、角色继承、ABAC 规则、职责分离或通配符权限。
+- **RBAC1 角色授权**：用户与角色多对多、角色与权限多对多；同一隔离域内角色可以继承父角色权限，没有用户直接权限、ABAC 规则、职责分离或通配符权限。
 - **隔离域 = 部门 × 软件**：角色、权限和授权均严格隔离在 `(department, application)` 二维域内，并由数据库复合外键物理兜底。
 - **全局当前部门**：用户的当前部门跨软件、跨设备共享；切换部门时原部门下全部软件的权限上下文立即失效，切回不恢复旧上下文。
 - **全局权限 vs 对象级权限分离**：MelonHub 只判定全局角色与权限编码；接入业务软件自身的业务流程、页面渲染、对象级归属校验（如某教师是否任教某教学班、某学生是否属于某小组）均由业务软件自身完成。
@@ -104,7 +104,7 @@
 
 ---
 
-### B. 隔离域 RBAC0 角色与权限配置
+### B. 隔离域 RBAC1 角色与权限配置
 
 **R5 隔离域（部门 × 软件）物理与逻辑隔离**
 所有业务角色、权限项及用户角色分配均归属于唯一 `(departmentId, applicationId)` 隔离域，角色编码与权限编码在域内唯一且严格区分大小写（`utf8mb4_bin`）。
@@ -334,10 +334,17 @@
 - 验收：`R31_ApiContractIntegrationTest` 与 `doc/API.md`、`doc/identity-openapi.yaml` 保持一致。
 
 **R32 容器化部署、无损迁移与可运维性**
-- 表结构完全由 Flyway `V1–V16` 管理，Hibernate 配置 `ddl-auto: validate` 与 `open-in-view: false`；`V8` 兼容旧库无损恢复「部门 × 软件」模型，`V14` 无损回填 `admin_accounts` 数字主键，`V15`、`V16` 为角色权限和用户角色补齐隔离域复合外键，无需删库或 `flyway repair`。
+- 表结构完全由 Flyway `V1–V17` 管理，Hibernate 配置 `ddl-auto: validate` 与 `open-in-view: false`；`V8` 兼容旧库无损恢复「部门 × 软件」模型，`V14` 无损回填 `admin_accounts` 数字主键，`V15`、`V16` 为角色权限和用户角色补齐隔离域复合外键，无需删库或 `flyway repair`。
 - Docker Swarm 部署（`deploy/stack.yml`）接入共享覆盖网络 `javaee-proxy`。后端使用 Actuator 健康检查。前端使用 Nginx 将 `/api/`、`/auth/` 同源转发至后端，健康探测验证 `/api/health` 返回 `status: UP`。前后端支持 `start-first` 更新与失败回滚。
 - 后台定时维护分批清理过期上下文、管理员会话、到期分配与超期 Webhook/审计记录（保留锚点）。
 - 验收：权限系统与课程系统的前后端共四个服务均部署在 Docker Swarm，使用 `docker service ls` 可见且副本均为 `1/1`；`/api/health` 与 `/actuator/health` 正常；联调与菜单日志流程按 `doc/双系统操作手册.md` 可复现。
+
+**R34 RBAC1 角色层级（`role_inheritances`）**
+- 同一部门 × 软件隔离域内，角色可以继承一个或多个父角色的全部有效权限。用户分配子角色时，权限计算沿父角色链递归展开并去重。
+- 管理接口 `PUT /api/admin/roles/{id}/parents` 与业务接口 `/api/v1/departments/{dept}/roles/{id}/parents` 整体替换父角色集合。父角色必须属于同一隔离域，不能包含自身，不能形成循环。
+- 角色继承变更会替换域缓存代、使下一次上下文校验按新层级计算，并发出 `role.inheritance.changed` Webhook 事件。V17 以复合外键保证数据库层面的隔离域一致性。
+
+---
 
 **R33 结构化与 DDD 双策略后端严格分离（`melonhub.backend-strategy=structured|ddd`）**
 - 后端以 `service.port`（10 个共享用例端口）解耦入口层（`controller`、`security`、`DemoData`）与服务实现，通过配置项 `melonhub.backend-strategy` 排他装配一整套结构化后端（`service.structured`，默认）或一整套 DDD 分层后端（`service.ddd.{domain,application,infrastructure}`）。
@@ -404,7 +411,8 @@ mvn -f backend/pom.xml test "-Dtest=*UnitTest"
 | **R29** | 跨实例全局限流与降级状态看板 | [R29_GlobalRateLimiterAndHealthIntegrationTest](../backend/src/test/java/com/melonhub/rbac/requirements/nfr_reliability/R29_GlobalRateLimiterAndHealthIntegrationTest.java)<br>[R29_GlobalRateLimiterUnitTest](../backend/src/test/java/com/melonhub/rbac/requirements/nfr_reliability/R29_GlobalRateLimiterUnitTest.java)（纯单测）<br>[R29_ConsoleStatusDegradeUnitTest](../backend/src/test/java/com/melonhub/rbac/requirements/nfr_reliability/R29_ConsoleStatusDegradeUnitTest.java)（纯单测） | `globalRateLimiterSharesOneRedisWindow`、`healthReportsDatabaseAndCache`<br>`redisFailureFallsBackToTheLocalBucketWithoutRetryingRedisOnEveryRequest`<br>`anUnreachableDatabaseStillAnswersWithEveryKey`、`aDatabaseFailingHalfwayDropsWhatItAlreadyReturned` | 降级单测通过；Redis 集成未执行 |
 | **R30** | 数据库目标防误连守卫与测试库隔离 | [R30_DatabaseTargetGuardUnitTest](../backend/src/test/java/com/melonhub/rbac/config/R30_DatabaseTargetGuardUnitTest.java)（纯单测）<br>[R30_CloudTestDatabaseGuardUnitTest](../backend/src/test/java/com/melonhub/rbac/requirements/nfr_reliability/R30_CloudTestDatabaseGuardUnitTest.java)（纯单测） | 覆盖 `local`/`cloud`/`test` Profile、Swarm 下划线服务名（`lab_mysql`）、TLS 强制与非法 URL 拦截（合计 21 个测试执行） | 已列场景通过 |
 | **R31** | HTTP 响应契约稳定性 | [R31_ApiContractIntegrationTest](../backend/src/test/java/com/melonhub/rbac/requirements/nfr_reliability/R31_ApiContractIntegrationTest.java) | `responseShapesMatchTheRecordedContract` | 记录的响应样本通过，非所有接口穷举 |
-| **R32** | 容器化部署与无损迁移（`V1–V16`） | 全部 `@SpringBootTest` + Flyway + Swarm 复验 | Flyway `V1–V16` + Hibernate `ddl-auto: validate` 启动强校验 + 云端四服务 Swarm 联调验证（见 `doc/双系统操作手册.md` 与 `doc/验证记录.md`） | 已验证启动、迁移状态与选定接口；非全流程演示 |
+| **R32** | 容器化部署与无损迁移（`V1–V17`） | 全部 `@SpringBootTest` + Flyway + Swarm 复验 | Flyway `V1–V17` + Hibernate `ddl-auto: validate` 启动强校验 + 云端四服务 Swarm 联调验证（见 `doc/双系统操作手册.md` 与 `doc/验证记录.md`） | 已验证启动、迁移状态与选定接口；非全流程演示 |
+| **R34** | RBAC1 角色层级与继承权限 | [R05_R08_DomainRbacIntegrationTest](../backend/src/test/java/com/melonhub/rbac/requirements/b_rbac_domain/R05_R08_DomainRbacIntegrationTest.java)、V17 Flyway 与控制器/DAO实现 | 同域父角色配置、循环和跨域拒绝、上下文权限沿父角色链展开；structured 与 ddd 均使用同一角色继承持久化契约 | 编译、两种策略现有域集成启动通过；专门继承场景待补充执行 |
 | **R33** | 结构化与 DDD 双策略后端分离与等价性 | [ArchitectureBoundaryUnitTest](../backend/src/test/java/com/melonhub/rbac/requirements/nfr_reliability/ArchitectureBoundaryUnitTest.java)（纯单测）<br>[BackendStrategyWiringUnitTest](../backend/src/test/java/com/melonhub/rbac/requirements/nfr_reliability/BackendStrategyWiringUnitTest.java)（纯单测）<br>[DddDomainAndDualStrategyParityUnitTest](../backend/src/test/java/com/melonhub/rbac/requirements/nfr_reliability/DddDomainAndDualStrategyParityUnitTest.java)（纯单测） | 覆盖 4 条源码依赖边界守护、Spring `structured`/`ddd` 全量 10 端口排他装配、选定领域规则与双策略行为对照（合计 18 项单测执行；并配合 R15/R19/R23–R25/R29 参数化双策略单测） | 边界/装配/选定决策通过；非全行为等价证明 |
 
 ---
@@ -418,7 +426,7 @@ mvn -f backend/pom.xml test "-Dtest=*UnitTest"
 | **1. 用户部门归属模型** | 旧 SRS `BR01/UC04`：普通人员恰有一个主部门，仅领导可配置兼管部门 | **支持任意用户通过 `memberships` 属于零个或多个部门**，在线授权统一通过「用户全局当前部门（`active_department_id`）」与切换部门失效旧上下文控制隔离（`R2`、`R9`） | 去掉与业务耦合的“领导/主部门”职级假设，严格保持权限平台不感知业务人事规则的边界 |
 | **2. 隔离域演进（V6/V7 → V8）** | 中期对话（对话 `03`、`04`、`12`）曾短暂将角色与权限改为按软件共享（`V6/V7`） | **`V8` 已无损恢复为「部门 × 软件」二维隔离域**，并由复合外键兜底（`R5`） | 回归最初需求定位与多部门同软件独立授权要求，同时保留 `V6/V7` 通过云端 Flyway 历史校验 |
 | **3. 调岗授权回收顺序** | 旧 SRS `BR07/UC04/UC10`：必须先手工执行全部回收，才允许修改归属 | **将用户移出某部门时原子清除该部门下的角色分配并使旧上下文失效**；跨部门切换立即作废原部门上下文；停用/改标识/强制下线作废全部上下文（`R2`、`R9`） | 避免遗漏回收产生悬空权限，同时保留新部门显式授权原则（绝不自动复制角色） |
-| **4. 平台自身权限体系** | 旧 SRS `BR10`：权限平台自身作为一个接入应用，不固定管理员等级 | **平台拥有独立于业务 RBAC0 的管理员模型**：19 项 `AdminFunction` + 5 个不可变内置角色 + 自定义角色 + 管理员分级委派树（结构化 `StructuredAdminHierarchyProcedures` / DDD `AdminHierarchy`）+ `V14` 自增数字主键 `id`（`R18`–`R20`） | 隔离平台治理与业务数据风险，支持按部门/软件双轴委派且保留最后一位启用超级管理员兜底 |
+| **4. 平台自身权限体系** | 旧 SRS `BR10`：权限平台自身作为一个接入应用，不固定管理员等级 | **平台拥有独立于业务 RBAC1 的管理员模型**：19 项 `AdminFunction` + 5 个不可变内置角色 + 自定义角色 + 管理员分级委派树（结构化 `StructuredAdminHierarchyProcedures` / DDD `AdminHierarchy`）+ `V14` 自增数字主键 `id`（`R18`–`R20`） | 隔离平台治理与业务数据风险，支持按部门/软件双轴委派且保留最后一位启用超级管理员兜底 |
 | **5. 内部申请审批与复核** | 旧 SRS `1.2`：不包含审批流程，审批全部在外部 OA 完成 | **既支持外部系统通过 `/api/v1/access-requests` 对接，也内置角色申请审批、定期复核（`grantId`）与到期治理**（`R12`–`R14`） | 满足无 OA 场景下的完整授权治理闭环，业务软件无需自建权限申请与复核模块 |
 | **6. 会话空闲超时配置** | 旧 SRS `FR15/UC15`：管理界面可按应用动态配置会话空闲超时 | **管理员会话时长（默认 8 小时）与空闲超时（默认 30 分钟）由服务端配置项 `melonhub.admin-security.*` 统一配置**，不提供按应用动态修改界面；业务上下文固定 1 小时（`R16`、`R9`） | 简化安全基线并避免运行期配置变更引起存量会话语义混乱 |
 | **7. 统一身份联调能力** | 旧 SRS `TBD01`：未确定统一身份登录协议 | **已按课程管理系统 OpenAPI 实现 `/auth/*` 9 个统一身份接口**（JWT + `identity_sessions` 即时吊销 + 部门树 + 课程审计日志查询，见 `R23`–`R25`） | 直接支撑第二轮与课程管理平台 `CourseProjectMgt` 的 Docker Swarm 双系统真实联调 |

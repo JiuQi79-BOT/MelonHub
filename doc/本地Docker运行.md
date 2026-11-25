@@ -1,8 +1,8 @@
 # 使用已有 Docker MySQL 在本机运行
 
-2026-10-18，用户明确选择复用本机已有 MySQL，当前目录为 `D:\MelonHub`。通过 `local` 配置显式启用，与保留的 `cloud` 配置分别管理，连接失败不会自动切换数据库。权限缓存使用本项目专用的 Redis 容器。
+本文用于本机开发。显式选择 `local` 可复用已有 Docker MySQL，`cloud` 用于连接配置中的云端 MySQL。服务器验收通过浏览器打开 Swarm 的前端入口，见 [部署说明](../deploy/README.md)。
 
-## 当前环境
+## 本机开发配置
 
 | 组件 | 当前使用方式 |
 | --- | --- |
@@ -12,7 +12,7 @@
 | 数据卷 | 复用原有 `xmudemo_db_data`，不重建、不清空 |
 | 项目库 / 测试库 | `melonhub_rbac` / `melonhub_rbac_test`，与旧项目数据库分开 |
 | Redis | 专用容器 `melonhub-redis`（`redis:7-alpine`，标签 `com.melonhub.role=cache`），只发布到 `127.0.0.1:6380`，要求密码，无持久化 |
-| Java | `C:\Program Files\Java\jdk-17` |
+| Java | JDK 17 或兼容版本，源码目标 Java 17 |
 | Maven | 优先 PATH/MAVEN_HOME/M2_HOME，其次自动发现 `.m2/wrapper/dists` 中已安装版本 |
 
 Docker 中名为 `backend` 的 Compose 项目实际使用 PostgreSQL；本项目复用的是另一组现有服务中的 `xmudemo-mysql`。只拉起指定的 MySQL 容器，不启动旧项目应用及其他容器。Docker 中其他项目的 Redis 容器与本项目无关，脚本不会使用或修改它们。
@@ -28,10 +28,10 @@ Docker 中名为 `backend` 的 Compose 项目实际使用 PostgreSQL；本项目
 脚本读取 `.env` 后依次：
 
 1. 发现指定 MySQL 容器处于停止状态时启动它。
-2. 生成 `.local/redis/redis.conf`；`melonhub-redis` 不存在时创建（首次需要拉取 `redis:7-alpine` 镜像），已停止时启动，配置变化时重启。同名容器若没有本项目标签，脚本拒绝操作并报错。
+2. 启用本机缓存时生成 `.local/redis/redis.conf`；`melonhub-redis` 不存在时创建（首次需要拉取 `redis:7-alpine` 镜像），已停止时启动，配置变化时重启。同名容器若没有本项目标签，脚本拒绝操作并报错。
 3. 按需打包后端、安装缺失的前端依赖，启动前后端，确认后端、数据库与前端代理健康后报告就绪。
 
-访问 `http://127.0.0.1:5174`，使用 `.env` 中的 `ADMIN_USERNAME` 和 `ADMIN_PASSWORD` 登录。云端业务数据不会自动复制到本机。
+访问 `http://127.0.0.1:5174`，使用所选数据库中已有的管理员凭据登录。首次启动且账号尚未创建时，使用 `.env` 中的初始管理员配置。
 
 停止项目使用 `stop-all.cmd` 或：
 
@@ -53,7 +53,7 @@ Docker 中名为 `backend` 的 Compose 项目实际使用 PostgreSQL；本项目
 | `LOCAL_DB_NAME` | 固定 `melonhub_rbac` |
 | `LOCAL_DB_USERNAME/PASSWORD` | 现有 MySQL 账号，本机按用户要求使用 root |
 | `LOCAL_DB_CONTAINER` | 可选，指定一键启动时可拉起的已有容器，本机为 `xmudemo-mysql` |
-| `CACHE_ENABLED` | `true`；设为 `false` 时不启动 Redis，后端每次校验都查询 MySQL，限流也只按实例计算 |
+| `CACHE_ENABLED` | 默认开发示例为 `false`，权限校验走 MySQL，限流按实例计算。调试缓存时显式设为 `true` |
 | `REDIS_HOST/PORT` | `127.0.0.1` / `6380`；只有回环地址时脚本才会管理容器 |
 | `REDIS_PASSWORD` | 自行生成的随机长字符串；留空时启动脚本报错 |
 | `REDIS_CONTAINER` | `melonhub-redis` |
@@ -63,11 +63,11 @@ Docker 中名为 `backend` 的 Compose 项目实际使用 PostgreSQL；本项目
 
 `.local/redis/redis.conf` 中含有 Redis 密码，与 `.env` 一样不能分享或提交。修改 `REDIS_PASSWORD` 后重新运行启动脚本，容器会按新配置重启。
 
-首次配置新的 MySQL 实例时，仅创建这两个专用库，字符集 `utf8mb4`、排序规则 `utf8mb4_unicode_ci`；表由 Flyway 管理（当前为 V1–V5）。不能改用旧项目的库名。
+首次配置新的 MySQL 实例时，仅创建这两个专用库，字符集 `utf8mb4`、排序规则 `utf8mb4_unicode_ci`；表由 Flyway 管理（当前为 V1–V17）。不能改用旧项目的库名。
 
 应用与测试会在 Flyway 前校验所选入口、端口、固定库名、TLS 和 JDBC 选项。`local` 只允许回环地址；同时启用 `cloud` 和 `local` 会失败；测试误指向正式库会失败。
 
-恢复云端运行时，先停项目，把 `SPRING_PROFILES_ACTIVE` 改为 `cloud` 并核对保留的 `CLOUD_DB_*`。云端测试另需把 `TEST_DB_TARGET` 改为 `cloud`，同步修改 `TEST_DB_*`。本机与云端的数据库内容相互独立。
+如需本机后端连接云端数据库，先停本机项目，再设 `SPRING_PROFILES_ACTIVE=cloud` 并核对 `CLOUD_DB_*`。云端测试另需把 `TEST_DB_TARGET` 改为 `cloud`，同步修改 `TEST_DB_*`。本机与云端的数据库内容相互独立。
 
 ## 前端依赖与构建
 
@@ -88,7 +88,7 @@ Invoke-RestMethod http://127.0.0.1:8080/api/health
 Invoke-RestMethod http://127.0.0.1:5174/api/health
 ```
 
-健康响应应包含 `status=UP`、`database=UP`、`cache=UP`、`model=RBAC0`。`cache=DOWN` 表示 Redis 不可用，服务已回退到 MySQL；`cache=RECOVERING` 表示刚恢复，几秒内会转为 `UP`。本机测试数量和本轮验证范围见 [验证记录](验证记录.md)。
+健康响应应包含 `status=UP`、`database=UP`、`cache=UP`、`model=RBAC1`。`cache=DOWN` 表示 Redis 不可用，服务已回退到 MySQL；`cache=RECOVERING` 表示刚恢复，几秒内会转为 `UP`。本机测试数量和本轮验证范围见 [验证记录](验证记录.md)。
 
 | 现象 | 排查 |
 | --- | --- |

@@ -16,6 +16,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.LinkedHashSet;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -106,18 +109,42 @@ public class ContextDao {
                         t.get(4, Instant.class)), Boolean.TRUE.equals(t.get(5))));
     }
     public List<Map<String,Object>> effectiveRoles(long user, String hash, long dept, long app) {
+        var roleIds = effectiveRoleIds(hash, dept, app);
+        if (roleIds.isEmpty()) return List.of();
         return Jpql.rows(em.createQuery("""
                 select r.id as id, r.name as name, r.code as code, ur.expiresAt as expires_at
-                from ContextRole cr join cr.role r, UserRole ur
-                where ur.role = r and cr.context.id = :hash and r.department.id = :dept and r.application.id = :app and\s""" + HELD + " order by r.id", Tuple.class)
-                .setParameter("user", user).setParameter("hash", hash).setParameter("dept", dept).setParameter("app", app).getResultList());
+                from Role r, UserRole ur where ur.role = r and ur.user.id = :user and r.id in :roles and
+                r.department.id = :dept and r.application.id = :app and\s""" + CURRENT_ASSIGNMENT + " order by r.id", Tuple.class)
+                .setParameter("user", user).setParameter("roles", roleIds).setParameter("dept", dept).setParameter("app", app).getResultList());
     }
     public List<String> effectivePermissions(long user, String hash, long dept, long app) {
+        var roleIds = effectiveRoleIds(hash, dept, app);
+        if (roleIds.isEmpty()) return List.of();
         return em.createQuery("""
-                select distinct p.code from RolePermission rp join rp.permission p join rp.role r, ContextRole cr, UserRole ur
-                where cr.role = r and ur.role = r and cr.context.id = :hash and p.department.id = :dept and p.application.id = :app and\s"""
-                        + HELD + " order by p.code", String.class)
-                .setParameter("user", user).setParameter("hash", hash).setParameter("dept", dept).setParameter("app", app).getResultList();
+select distinct p.code from RolePermission rp join rp.permission p join rp.role r
+                where rp.role.id in :roles and r.enabled = true and p.department.id = :dept and p.application.id = :app order by p.code""", String.class)
+                .setParameter("roles", roleIds).setParameter("dept", dept).setParameter("app", app).getResultList();
+    }
+
+    private static final String CURRENT_ASSIGNMENT = "(ur.expiresAt is null or ur.expiresAt > current_timestamp)";
+
+    private List<Long> effectiveRoleIds(String hash, long dept, long app) {
+        var roots = em.createQuery("select cr.role.id from ContextRole cr where cr.context.id = :hash", Long.class)
+                .setParameter("hash", hash).getResultList();
+        var parents = new java.util.LinkedHashMap<Long, List<Long>>();
+        for (Tuple t : em.createQuery("""
+select ri.id.childRoleId, ri.id.parentRoleId from RoleInheritance ri
+                where ri.childRole.department.id = :dept and ri.childRole.application.id = :app""", Tuple.class)
+                .setParameter("dept", dept).setParameter("app", app).getResultList())
+            parents.computeIfAbsent(t.get(0, Long.class), k -> new ArrayList<>()).add(t.get(1, Long.class));
+        var result = new LinkedHashSet<Long>();
+        var pending = new ArrayDeque<Long>(roots);
+        while (!pending.isEmpty()) {
+            long role = pending.removeFirst();
+            if (!result.add(role)) continue;
+            pending.addAll(parents.getOrDefault(role, List.of()));
+        }
+        return new ArrayList<>(result);
     }
     public int revoke(String hash, long app) {
         return update("delete from PermissionContext c where c.id = :hash and c.applicationId = :app", "hash", hash, "app", app);

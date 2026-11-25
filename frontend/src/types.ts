@@ -34,7 +34,7 @@ export interface Member {
   /** Expiry of each time-limited role, keyed by role id; permanent roles are absent. */
   roleExpiries?: Record<string, string>
 }
-export interface Role { id: number; name: string; code: string; description: string; enabled: boolean; createdAt: string; memberCount: number; permissionIds: number[] }
+export interface Role { id: number; name: string; code: string; description: string; enabled: boolean; createdAt: string; memberCount: number; permissionIds: number[]; parentRoleIds?: number[] }
 export interface Permission { id: number; name: string; code: string; resource: string; action: string; createdAt: string; roleCount: number }
 export interface AuditEvent {
   id: number; actor: string; action: string; target: string; detail: string; sourceIp: string; createdAt: string

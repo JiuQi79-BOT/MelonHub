@@ -16,6 +16,18 @@ import org.springframework.http.MediaType;
 /** 对应需求：R5、R6、R7、R8（见 doc/requirements.md）。 */
 class R05_R08_DomainRbacIntegrationTest extends RbacIntegrationSupport {
 
+    @DisplayName("R34 RBAC1 子角色继承父角色权限并拒绝循环和跨域关系")
+    @Test void roleHierarchyInheritsPermissionsAndRejectsInvalidEdges() {
+        r.roleParents(r2, d1, a1, List.of(r1), "test");
+        r.userRoles(u1, d1, a1, List.of(r2), "test");
+        var token = issue(a1, d1);
+        assertThat(c.effective(a1, token).get("permissions")).isEqualTo(List.of("item:read", "item:write"));
+        assertThat(r.roles(d1, a1).stream().filter(row -> ((Number) row.get("id")).longValue() == r2)
+                .findFirst().orElseThrow().get("parentRoleIds")).isEqualTo(List.of(r1));
+        assertThatThrownBy(() -> r.roleParents(r1, d1, a1, List.of(r2), "test")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> r.roleParents(r2, d1, a1, List.of(rOther), "test")).isInstanceOf(ApiException.class);
+    }
+
     @DisplayName("R5 跨域角色权限关联被应用层原子拒绝")
     @Test void crossDomainRolePermissionAssignmentsAreRejectedAtomically() {
         assertThatThrownBy(() -> r.rolePermissions(r1, d1, a1, List.of(p1, pOther), "test")).isInstanceOf(ApiException.class);

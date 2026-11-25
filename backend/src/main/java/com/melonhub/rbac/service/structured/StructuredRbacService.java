@@ -70,7 +70,7 @@ public class StructuredRbacService implements RbacUseCase {
         result.put("status", database ? "UP" : "DOWN");
         result.put("database", database ? "UP" : "DOWN");
         result.put("cache", cache.health());
-        result.put("model", "RBAC0");
+        result.put("model", "RBAC1");
         return result;
     }
 
@@ -360,6 +360,22 @@ public class StructuredRbacService implements RbacUseCase {
         var roles = dao.roles(dept, app);
         attach(roles, dao.rolePermissions(dept, app), "role_id", "permission_id", "permissionIds");
         return roles;
+    }
+
+    @Transactional public void roleParents(long role, long dept, long app, List<Long> parents, String actor) {
+        scoped("roles", role, dept, app);
+        var wanted = new LinkedHashSet<>(parents);
+        if (wanted.contains(role) || dao.scopedCount("roles", wanted, dept, app) != wanted.size())
+            throw ApiException.forbidden("继承角色必须属于当前隔离域且不能包含自身");
+        for (long parent : wanted) {
+            if (dao.inheritedRoleIds(List.of(parent), dept, app).contains(role))
+                throw ApiException.conflict("角色继承关系不能形成循环");
+        }
+        if (!dao.lockRole(role)) throw ApiException.missing("角色不存在");
+        dao.replaceRoleParents(role, dept, app, wanted);
+        cache.touchDomain(dept, app);
+        webhooks.emit(app, "role.inheritance.changed", Map.of("roleId", role, "departmentId", dept));
+        audit(actor, "ROLE_INHERITANCE_UPDATED", code("roles", role), dept, app, "继承角色 " + wanted.size() + " 个");
     }
     @Transactional public long role(Requests.Role body, Long id, long dept, long app, String actor) {
         domain(dept, app);
