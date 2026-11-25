@@ -1,6 +1,6 @@
 # MelonHub 后端 UML 与代码导读
 
-代码基线为 PR #8 合并提交 `8bd2fcd`。后端启动时用 `melonhub.backend-strategy=structured|ddd` 选择实现，默认 `structured`。两种策略共享控制器、用例接口和数据库结构。本页选择同一组 API 对照两种设计，便于从图定位到代码。
+代码基线为当前 RBAC1 实现提交 `99dfa84`。后端启动时用 `melonhub.backend-strategy=structured|ddd` 选择实现，默认 `structured`。两种策略共享控制器、用例接口和数据库结构。本页选择同一组 API 对照两种设计，便于从图定位到代码。
 
 ## 1. 包依赖
 
