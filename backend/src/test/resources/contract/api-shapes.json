@@ -297,6 +297,7 @@
     "id" : "integer",
     "memberCount" : "integer",
     "name" : "string",
+    "parentRoleIds" : [ "integer" ],
     "permissionIds" : [ "integer" ]
   } ],
   "GET /api/admin/roles/{id}/members" : [ {
@@ -534,6 +535,7 @@
     "id" : "integer",
     "memberCount" : "integer",
     "name" : "string",
+    "parentRoleIds" : [ "integer" ],
     "permissionIds" : [ "integer" ]
   } ],
   "GET /api/v1/departments/{dept}/users" : [ {

@@ -1,0 +1,58 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam ArrowColor #41546B
+skinparam classBackgroundColor #F5F8FC
+skinparam classBorderColor #59708C
+skinparam sequenceParticipantBackgroundColor #EEF3F9
+skinparam sequenceParticipantBorderColor #59708C
+skinparam sequenceGroupBackgroundColor transparent
+skinparam sequenceMessageAlign left
+hide footbox
+title RBAC1 设置角色继承 · structured
+participant "obj: AdminController" as C
+participant "service: StructuredRbacService" as S
+participant "dao: RbacDao" as D
+participant "cache: PermissionCache" as Cache
+participant "webhooks: WebhookUseCase" as W
+autonumber
+activate C
+C -> S: roleParents(role, dept, app, parentIds, actor)
+activate S
+S -> D: scoped(role, dept, app)
+activate D
+deactivate D
+S -> D: scopedCount(parentIds, dept, app)
+activate D
+deactivate D
+loop each parent role
+ S -> D: inheritedRoleIds(parent, dept, app)
+ activate D
+ deactivate D
+end
+alt 自身、跨域或循环继承
+ S --> C: ApiException (403/409)
+else 合法
+ S -> D: lockRole(role)
+ activate D
+ deactivate D
+ S -> D: replaceRoleParents(role, dept, app, parentIds)
+ activate D
+ deactivate D
+ S -> Cache: touchDomain(dept, app)
+ activate Cache
+ deactivate Cache
+ S -> W: emit(role.inheritance.changed)
+ activate W
+ deactivate W
+ S --> C: 200 {}
+end
+deactivate S
+deactivate C
+legend bottom
+权限计算在后续上下文校验中沿父角色链展开。
+endlegend
+@enduml

@@ -7,7 +7,7 @@ import java.util.Set;
 /**
  * Authenticated console operator. What it may do comes from the functions of its role; where it may do it comes from
  * the account: the departments and applications it is limited to. root is a top of the administrator tree, kind is
- * MANAGER or DEPARTMENT. All of this is platform-level and independent of the RBAC0 data being managed.
+ * MANAGER or DEPARTMENT. All of this is platform-level and independent of the RBAC1 data being managed.
  */
 public record AdminPrincipal(long id, String username, String displayName, String role, String roleName, Set<AdminFunction> functions,
                              boolean root, String kind, boolean allDepartments, Set<Long> departmentIds,

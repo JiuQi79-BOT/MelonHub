@@ -146,7 +146,7 @@ function Wait-MelonService([string]$Url, [string]$Service, [int]$Seconds = 90) {
         try {
             if ($Service -eq 'backend') {
                 $health = Invoke-RestMethod -Uri $Url -TimeoutSec 3
-                if ($health.status -eq 'UP' -and $health.database -eq 'UP' -and $health.model -eq 'RBAC0') { return }
+                if ($health.status -eq 'UP' -and $health.database -eq 'UP' -and $health.model -eq 'RBAC1') { return }
             } else {
                 $response = Invoke-WebRequest -Uri $Url -TimeoutSec 3 -UseBasicParsing
                 if ($response.StatusCode -eq 200 -and $response.Content.Contains('MelonHub')) { return }

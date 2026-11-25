@@ -85,9 +85,38 @@
 
 两幅时序图都聚焦前置角色、目标上级和范围解析成功后的候选一致性分支；省略的前置步骤在图内注明。模型负责规则，事务与数据库锁仍由应用服务和基础设施保障，不能声称领域对象独自保证并发一致性。GRASP 与概念边界见 [面向对象设计答辩](面向对象设计答辩.md)。
 
-## 4. 重新生成
 
-九份 `.puml` 是图源，每份同时输出 PNG 与 SVG。安装 Java 并准备 PlantUML JAR 后，在仓库根目录执行：
+## 4. RBAC1 角色继承
+
+角色继承属于业务角色授权模型。当前规则定义为子角色继承父角色的权限，继承关系限定在同一部门 × 软件隔离域内。用户分配子角色后，权限上下文、统一身份权限查询、权限反查和模拟结果沿父角色链展开并去重。循环继承和跨域继承在应用层拒绝，V17 的复合外键负责数据库域一致性。
+
+### 4.1 structured 实现
+
+![structured RBAC1 角色继承类图](uml/role-hierarchy-class.png)
+
+[SVG](uml/role-hierarchy-class.svg) · [图源](uml/role-hierarchy-class.puml)
+
+![structured RBAC1 角色继承时序图](uml/role-hierarchy-sequence.png)
+
+[SVG](uml/role-hierarchy-sequence.svg) · [图源](uml/role-hierarchy-sequence.puml)
+
+[StructuredRbacService.roleParents](../backend/src/main/java/com/melonhub/rbac/service/structured/StructuredRbacService.java) 校验父角色属于当前域，并用 `RbacDao.inheritedRoleIds` 检测循环，再整体替换 `role_inheritances`。上下文读取由 [ContextDao](../backend/src/main/java/com/melonhub/rbac/dao/ContextDao.java) 展开继承链。
+
+### 4.2 DDD 实现
+
+![DDD RBAC1 角色继承类图](uml/role-hierarchy-ddd-class.png)
+
+[SVG](uml/role-hierarchy-ddd-class.svg) · [图源](uml/role-hierarchy-ddd-class.puml)
+
+![DDD RBAC1 角色继承时序图](uml/role-hierarchy-ddd-sequence.png)
+
+[SVG](uml/role-hierarchy-ddd-sequence.svg) · [图源](uml/role-hierarchy-ddd-sequence.puml)
+
+[DddRbacService.roleParents](../backend/src/main/java/com/melonhub/rbac/service/ddd/application/DddRbacService.java) 通过 [RbacRepositoryPort](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/repository/RbacRepositoryPort.java) 访问继承关系。当前 DDD 代码把角色层级校验和事务编排放在应用服务，端口适配器委托 `RbacDao`；权限闭包在权限上下文仓储读取路径中展开。图中没有虚构独立的领域聚合。
+
+## 5. 重新生成
+
+十三份 `.puml` 是图源，每份同时输出 PNG 与 SVG。安装 Java 并准备 PlantUML JAR 后，在仓库根目录执行：
 
 ```powershell
 ./scripts/render-uml.ps1 -PlantUmlJar '<已有 PlantUML JAR 的绝对路径>'

@@ -92,6 +92,7 @@ class BackendStrategyWiringUnitTest {
             .withPropertyValues(
                     "melonhub.admin-username=admin",
                     "melonhub.admin-password=ValidBootstrapPass!123",
+                    "melonhub.backend-strategy=structured",
                     "melonhub.webhooks.delivery=false"
             );
 

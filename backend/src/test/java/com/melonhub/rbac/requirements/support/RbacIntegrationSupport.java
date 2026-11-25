@@ -19,7 +19,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 核心 RBAC0 集成测试共用固件（组织、软件、双部门/双软件隔离域与角色权限夹具）。 */
+/** 核心 RBAC1 集成测试共用固件（组织、软件、双部门/双软件隔离域与角色权限夹具）。 */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional

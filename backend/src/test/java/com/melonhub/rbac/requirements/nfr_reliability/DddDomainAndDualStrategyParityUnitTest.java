@@ -289,12 +289,12 @@ class DddDomainAndDualStrategyParityUnitTest {
                 .containsEntry("status", "UP")
                 .containsEntry("database", "UP")
                 .containsEntry("cache", "UP")
-                .containsEntry("model", "RBAC0");
+                .containsEntry("model", "RBAC1");
         assertThat(service.health())
                 .containsEntry("status", "DOWN")
                 .containsEntry("database", "DOWN")
                 .containsEntry("cache", "UP")
-                .containsEntry("model", "RBAC0");
+                .containsEntry("model", "RBAC1");
         assertThatThrownBy(() -> service.scoped("roles", 99L, 1L, 2L))
                 .isInstanceOf(ApiException.class)
                 .extracting("status").isEqualTo(HttpStatus.FORBIDDEN);

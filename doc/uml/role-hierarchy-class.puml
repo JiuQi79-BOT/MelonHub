@@ -1,0 +1,60 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+skinparam ArrowColor #41546B
+skinparam classBackgroundColor #F5F8FC
+skinparam classBorderColor #59708C
+skinparam sequenceParticipantBackgroundColor #EEF3F9
+skinparam sequenceParticipantBorderColor #59708C
+skinparam sequenceGroupBackgroundColor transparent
+skinparam sequenceMessageAlign left
+hide footbox
+title RBAC1 角色继承 · structured 类图（相关成员）
+left to right direction
+class "AdminController" as C {
+ + roleParents(id, departmentId, applicationId, ids, request): Object
+}
+interface "RbacUseCase" as U <<interface>> {
+ + roleParents(role, department, application, parents, actor): void
+}
+class "StructuredRbacService" as S {
+ - dao: RbacDao
+ - cache: PermissionCache
+ - webhooks: WebhookUseCase
+ --
+ + roleParents(role, dept, app, parents, actor): void
+ + roles(dept, app): List
+}
+class "RbacDao" as D {
+ + roleInheritancePairs(dept, app): List
+ + inheritedRoleIds(roots, dept, app): List
+ + replaceRoleParents(child, dept, app, parents): void
+ + accessPermissions(user): List
+}
+class "RoleInheritance" as RI {
+ - childRoleId: Long
+ - parentRoleId: Long
+ - departmentId: Long
+ - applicationId: Long
+}
+class "ContextDao" as CD {
+ + effectivePermissions(user, hash, dept, app): List
+}
+class "PermissionCache" as Cache <<infrastructure>> {
+ + touchDomain(dept, app): void
+}
+C -right-> U : use case
+S .up.|> U
+S -right-> D : dao
+S -down-> Cache : cache
+S .down.> RI : persistence model
+CD -right-> RI : reads
+note bottom of S
+同域中 child 继承 parent 的权限。
+服务先校验同域、非自身和无循环，
+再整体替换父角色集合。
+end note
+@enduml

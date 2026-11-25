@@ -26,6 +26,6 @@ class R29_GlobalRateLimiterAndHealthIntegrationTest extends GovernanceIntegratio
     @DisplayName("R29 健康检查接口准确回报数据库与缓存状态")
     @Test void healthReportsDatabaseAndCache() throws Exception {
         mvc.perform(get("/api/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.database").value("UP")).andExpect(jsonPath("$.cache").exists()).andExpect(jsonPath("$.model").value("RBAC0"));
+                .andExpect(jsonPath("$.database").value("UP")).andExpect(jsonPath("$.cache").exists()).andExpect(jsonPath("$.model").value("RBAC1"));
     }
 }
