@@ -252,6 +252,8 @@ body .ant-tabs-top > .ant-tabs-nav::before { border-bottom-color: var(--mh-borde
 .expiry-role { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .expiry-picker { width: 220px; }
 @media (max-width: 768px) { .expiry-picker { width: 100%; } }
+.role-inheritance-select { width: 100%; }
+.role-inheritance-select .ant-select-selector { min-height: 40px; }
 
 /* ---- login ---- */
 .login { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; background: var(--mh-surface); }

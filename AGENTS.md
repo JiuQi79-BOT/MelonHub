@@ -2,7 +2,7 @@
 
 最后更新：2026-11-25（Asia/Shanghai）。当前工作目录：`D:\PersonalStudy\MelonHub`。本地当前分支为 `main`。`origin` 指向 GitHub 源仓库 `https://github.com/JiuQi79-BOT/MelonHub`，`gitee` 指向 `https://gitee.com/jiuqi97bot/MelonHub`；当前没有配置 `upstream` 远端。后续改动按用户要求推送到源仓库 `main` 和 Gitee `main`，不要切换到个人 Fork。
 
-2026-11-25 验收环境使用 Docker Swarm。PR #8 合并后的代码基线为 `8bd2fcd`；为补充 RBAC1 角色层级，MelonHub 后端当前镜像为 `melonhub-backend:rbac1-d1f4d36`，前端镜像为 `melonhub-frontend:rbac1-d1f4d36-assets-fix`，采用默认 `structured` 策略；前端保留 `3c85d8a-origin-fix`。MySQL 使用 `lab_mysql` 的 `melonhub_rbac`，正式库已应用至 V17，Redis 关闭。服务器端口与更新步骤见 `deploy/README.md`，镜像、副本和实际验证范围见 `doc/验证记录.md`。本机开发是独立流程。
+2026-11-26 验收环境使用 Docker Swarm。PR #8 合并后的代码基线为 `8bd2fcd`；为补充 RBAC1 角色层级，MelonHub 后端当前镜像为 `melonhub-backend:rbac1-d1f4d36`，前端镜像为 `melonhub-frontend:rbac1-d1f4d36-role-select-fix-20261126`，采用默认 `structured` 策略；前端保留 `3c85d8a-origin-fix`。MySQL 使用 `lab_mysql` 的 `melonhub_rbac`，正式库已应用至 V17，Redis 关闭。服务器端口与更新步骤见 `deploy/README.md`，镜像、副本和实际验证范围见 `doc/验证记录.md`。本机开发是独立流程。
 
 ## 1. 用户要求与边界
 

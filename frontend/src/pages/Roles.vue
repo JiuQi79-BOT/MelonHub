@@ -315,7 +315,7 @@ async function copy() {
     <a-modal v-model:open="parentsOpen" :title="`角色继承：${parentsRole?.name ?? ''}`" :confirm-loading="savingParents" ok-text="保存" destroy-on-close
              :ok-button-props="{ disabled: !scope.canConfigure }" @ok="saveParents">
       <p class="hint">当前角色将继承所选父角色的全部有效权限。系统会拒绝跨隔离域关系和循环继承。</p>
-      <a-select v-model:value="parentKeys" mode="multiple" class="w-full" :disabled="!scope.canConfigure"
+      <a-select v-model:value="parentKeys" mode="multiple" class="role-inheritance-select" :disabled="!scope.canConfigure"
                 :options="parentOptions"
                 placeholder="选择父角色" show-search option-filter-prop="label" />
     </a-modal>
