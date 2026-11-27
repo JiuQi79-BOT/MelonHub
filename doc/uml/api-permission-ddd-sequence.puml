@@ -54,7 +54,7 @@ else 操作已登记
  activate Model
  deactivate Model
  autonumber stop
- S --> B: {operationId, allowed}
+ S --> B: IdentityApiPermissionCheckResult(operationId, allowed)
  B --> S: response
  S --> C: response
 end
@@ -64,7 +64,8 @@ deactivate B
 deactivate S
 deactivate C
 legend bottom
-RepositoryPort 的运行对象是 JpaIdentityRepositoryAdapter；其内部委托 IdentityDao。
-静态目录负责 operationId 映射；账号模型判断是否含所需权限。ApiErrors 映射异常为 HTTP 响应。
+RepositoryPort 的运行对象是 infrastructure.persistence.gateway.JpaIdentityRepositoryAdapter，
+内部直接调用 Spring Data JPA Repositories（无 DAO 层）。
+静态目录负责 operationId 映射；账号模型判断是否含所需权限；ApiErrors 映射异常为 HTTP 响应。
 endlegend
 @enduml

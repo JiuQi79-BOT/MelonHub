@@ -13,48 +13,45 @@ skinparam sequenceGroupBackgroundColor transparent
 skinparam sequenceMessageAlign left
 hide footbox
 title RBAC1 设置角色继承 · ddd
-participant "obj: AdminController" as C
-participant "service: DddRbacService" as S
+participant "obj: DomainRbacAdminController" as C
+participant "service: DddDomainRbacService" as S
 participant "repository: RbacRepositoryPort" as P
 participant "cache: CacheGateway" as Cache
-participant "events: WebhookGateway" as W
+participant "events: DomainEventPublisher" as W
 autonumber
 activate C
 C -> S: roleParents(role, dept, app, parentIds, actor)
 activate S
-S -> P: scoped(role, dept, app)
+S -> P: lockIds = domainRoleIds(dept, app) ∪ {role} ∪ parentIds（写事务外）
 activate P
 deactivate P
-S -> P: scopedCount(parentIds, dept, app)
-activate P
-deactivate P
-loop each parent role
- S -> P: inheritedRoleIds(parent, dept, app)
+group 写事务（TransactionRunner）
+ S -> P: domainRoleIds = lockDomainRolesByIds(dept, app, lockIds)
  activate P
  deactivate P
-end
-alt 自身、跨域或循环继承
- P --> S: DomainException
- S --> C: ApiException (403/409)
-else 合法
- S -> P: lockRole(role)
+ note right of S: 首条 SQL 仅按 PRIMARY(id) 升序加排他锁，不提前开启 ReadView
+ S -> P: edges = domainRoleInheritanceEdges(dept, app)
  activate P
  deactivate P
- S -> P: replaceRoleParents(role, dept, app, parentIds)
- activate P
- deactivate P
- S -> Cache: touchDomain(dept, app)
- activate Cache
- deactivate Cache
- S -> W: emit(role.inheritance.changed)
- activate W
- deactivate W
- S --> C: 200 {}
+ alt 自身、跨域或循环继承
+  S --> C: DomainException -> ApiException (403/409)
+ else 合法
+  S -> P: replaceRoleParents(role, dept, app, existing, parentIds)
+  activate P
+  deactivate P
+  S -> Cache: touchDomain(dept, app)
+  activate Cache
+  deactivate Cache
+  S -> W: emit(role.inheritance.changed)
+  activate W
+  deactivate W
+  S --> C: 200 OkVO
+ end
 end
 deactivate S
 deactivate C
 legend bottom
-DddRbacService 负责应用编排，端口适配器委托 RbacDao。
-权限闭包在 ContextDao/适配器读取路径中展开。
+DddDomainRbacService 在写事务内首条 SQL 仅按聚簇主键升序加锁，随后无锁读边在持锁后建立 ReadView，
+并按精确联合主键差集删旧插新，彻底消除同域成环、跨索引死锁与跨域共享锁死锁。
 endlegend
 @enduml

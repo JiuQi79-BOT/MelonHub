@@ -21,7 +21,7 @@ participant "accounts: AdminAccountRepositoryPort" as R
 participant "roles: AdminRoleRepositoryPort" as Roles
 participant "tree: AdminHierarchy" as Tree
 participant "crypto: CryptoGateway" as Crypto
-participant "rbac: RbacUseCase" as Audit
+participant "audit: AuditUseCase" as Audit
 activate C
 C -> S: createAccount(input, actor)
 activate S
@@ -86,7 +86,7 @@ deactivate B
 deactivate S
 deactivate C
 legend bottom
-createAccount 的 @Transactional 覆盖锁、领域决策、写入和审计；DAO 调用由基础设施适配器实现。
-DomainException 在 DddBoundary 捕获并转换；Controller 正常返回 200 {id, username}。
+createAccount 的 @Transactional 覆盖锁、领域决策、写入和审计；持久化由 JpaAdminAccountRepositoryAdapter 委托 JPA 仓储实现。
+DomainException 在 DddBoundary 捕获并转换；AccountController 返回 200 AccountCreatedVO{id, username}。
 endlegend
 @enduml

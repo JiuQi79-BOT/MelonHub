@@ -58,7 +58,6 @@ public final class AdminCredentialAccount {
     public String passwordHash() { return passwordHash; }
     public boolean locked() { return locked; }
     public String mfaSecret() { return mfaSecret; }
-    public long mfaLastStep() { return mfaLastStep; }
     public long credentialVersion() { return credentialVersion; }
     public String kind() { return kind; }
     public boolean root() { return root; }

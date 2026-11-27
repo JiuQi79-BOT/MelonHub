@@ -29,7 +29,6 @@ public final class AdminRoleAggregate {
     public String code() { return code; }
     public String name() { return name; }
     public String description() { return description; }
-    public boolean builtIn() { return builtIn; }
     public Set<String> functions() { return functions; }
 
     public static AdminRoleAggregate createCustom(

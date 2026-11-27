@@ -8,8 +8,8 @@ flowchart LR
     C[业务软件后端<br/>可用 Java SDK] -->|X-API-Key + 上下文 token| B
     B --> G[ApiGuard 统一鉴权、全局限流、请求编号]
     G --> D[Controller]
-    D --> E[Service 规则与事务]
-    E --> F[DAO · JPQL 与 Spring Data JPA]
+    D --> E[Service 规则与事务 · 13 用例端口 / 双策略]
+    E --> F[Spring Data JPA 仓储与适配器]
     F -->|TLS| M[(MySQL 项目专用库<br/>唯一数据源)]
     E <-->|权限缓存与失效| R[(Redis 专用容器<br/>纯缓存、限流计数)]
     B -->|签名 Webhook，异步重试| C
@@ -85,7 +85,7 @@ MySQL 是唯一数据源。Redis 只缓存可以随时从 MySQL 重新算出的�
 | 批准角色申请、关闭权限复核（对每个被回收的用户） | 用户代 |
 | 软件启停、删除 | 软件代与密钥代 |
 | 新建、吊销、紧急轮换 API Key | 密钥代 |
-| 角色编辑、启停、删除，权限编辑、删除，角色权限调整，角色成员调整，导入权限清单（每个涉及的部门） | 域代 |
+| 角色编辑、启停、删除，权限编辑、删除，角色权限调整，角色继承调整，角色成员调整，导入权限清单（每个涉及的部门） | 域代 |
 
 新建角色或权限不影响任何已有上下文的结果，因此不替换代标记。批量导入用户只新建或更新用户资料并补充成员关系，不改变已有上下文的校验结果，也不替换代标记。
 
@@ -132,9 +132,10 @@ MySQL 是唯一数据源。Redis 只缓存可以随时从 MySQL 重新算出的�
 
 | 角色 | 能力 |
 | --- | --- |
-| 超级管理员 `SUPER_ADMIN` | 全部能力，并管理平台管理员账号（含解锁、重置两步验证） |
-| 平台管理员 `ADMIN` | 读写部门、用户（含批量导入）、软件（含限流）、全部授权域、API Key 和 Webhook |
-| 软件管理员 `APP_ADMIN` | 只读平台数据；只看到并管理被授权软件的授权域、审批、复核、清单、API Key 和 Webhook |
+| 超级管理员 `SUPER_ADMIN` | 全部 19 项功能，并管理平台管理员账号与角色（含解锁、重置两步验证） |
+| 平台管理员 `ADMIN` | 读写部门、用户（含批量导入与统一身份凭据）、软件（含限流）、全部授权域、API Key 和 Webhook |
+| 软件管理员 `APP_ADMIN` | 按「全部部门 + 指定软件」划定范围；只读平台数据，管理被授权软件的授权域、审批、复核、清单、API Key 和 Webhook |
+| 部门管理员 `DEPARTMENT_ADMIN` | `DEPARTMENT` 叶子类型，按「指定部门 + 全部软件」划定范围；不能设下级或管理账号/角色，可启停和强制下线完全属于所管部门的用户，并管理这些部门下全部软件的授权 |
 | 审计员 `AUDITOR` | 全部只读，可导出审计、校验审计链 |
 
 每个控制台接口都在处理函数内重新确认调用者身份和角色，即使请求绕过了统一过滤器也会拒绝。
@@ -202,44 +203,41 @@ JDBC 使用 `serverTimezone=SERVER` 读取数据库实际会话时区，避免�
 
 ## 10. 工程分层与双策略后端（Structured / DDD）
 
-后端采用**单模块双策略架构**（对标 `CourseProjectMgt`），共享同一套 HTTP 边界（`controller`、`security`、`dto`、`exception`）与共享持久化/缓存基础设施（`dao`、`entity`、`repository`、`cache`、`config`），通过 `service/port/` 的 10 个统一用例端口解耦上层调用与下层实现，并经配置项 `melonhub.backend-strategy`（环境变量 `MELONHUB_BACKEND_STRATEGY`，可选 `structured` 或 `ddd`，默认 `structured`）在 Spring 启动期排他装配整套后端：
+后端采用**三层按业务模块分包 + 单模块双策略架构**（对标 `CourseProjectMgt`），共享同一套 HTTP 边界（`api/<biz>`、`api/shared`、`infrastructure/security`）与持久化/缓存基础设施（`infrastructure/persistence/{entity,repository,gateway}`、`infrastructure/cache`、`infrastructure/config`、`infrastructure/identity`），通过 `service/port/<biz>` 的 **13 个统一用例端口**解耦上层调用与下层实现，并经配置项 `melonhub.backend-strategy`（环境变量 `MELONHUB_BACKEND_STRATEGY`，可选 `structured` 或 `ddd`，默认 `structured`）在 Spring 启动期排他装配整套后端：
 
 ```mermaid
 flowchart TB
-    Entry["controller / security / DemoData"] --> Port["service.port (10 个用例端口)"]
-    Struct["service.structured (10 个事务脚本服务 + 过程工具)"] -. implements .-> Port
-    DddApp["service.ddd.application (10 个应用服务)"] -. implements .-> Port
-    Struct --> Infra["dao / entity / repository / cache / identity"]
-    DddApp --> Domain["service.ddd.domain (零框架纯 Java: value 工具与值对象 / model 模型 / repository 端口)"]
-    DddInfra["service.ddd.infrastructure (10 个适配器)"] -. implements .-> Domain
+    Entry["api/<biz> (17 Controller / DTO / VO / Mapper) + infrastructure.{security,config}"] --> Port["service.port.<biz> (13 个用例端口 + Command/Result)"]
+    Struct["service.structured.<biz> (13 个事务脚本服务 + 过程工具)"] -. implements .-> Port
+    DddApp["service.ddd.application.<biz> (13 个应用服务 + DddBoundary)"] -. implements .-> Port
+    Struct --> Infra["infrastructure.persistence.repository / cache / identity"]
+    DddApp --> Domain["service.ddd.domain (零框架纯 Java: value / model / repository 11 端口)"]
+    DddInfra["infrastructure.persistence.gateway (9 Adapter) + infrastructure.gateway"] -. implements .-> Domain
     DddInfra --> Infra
 ```
 
-- **结构化后端（`structured`）**：严格采用事务脚本（Transaction Script）与纯静态过程函数（`StructuredAdminHierarchyProcedures`），直接编排 DAO、事务、缓存失效、外盒发信与审计，**严禁导入任何 `service.ddd` 领域对象**。
+- **结构化后端（`structured`）**：采用事务脚本（Transaction Script）与纯静态过程函数（`StructuredAdminHierarchyProcedures`），按业务子包直接编排 Spring Data JPA 仓储、事务、缓存失效、外盒发信与审计，**严禁导入任何 `service.ddd` 领域对象或 `api` 层类**。
 - **DDD 后端（`ddd`）**：严格按六边形/DDD 分层：
-  - `service/ddd/domain/{value,model,repository}`：**不依赖 Spring/JPA 的 Java 领域层**（仅导入 `java.*`、`javax.crypto.*` 与自身包），封装 12 个规则模型、身份快照或结果组装类（`AdminHierarchy`、`AdminRoleAggregate`、`AdminCredentialAccount`、`UserMembershipAggregate`、`DomainAuthorizationAggregate`、`PermissionContextAggregate`、`AccessRequestAggregate`、`AccessReviewAggregate`、`WebhookEndpointAggregate`、`AuditHashChainAggregate`、`IdentityAccountAggregate`、`SystemStatusReport`）、9 个值对象、静态规则工具或领域异常（`GrantDuration`、`PasswordPolicy`、`AdminScope`、`IsolationDomain`、`AuditCanonicalizer`、`WebhookSignature`、`CoursePermissionCatalog`、`DomainVisibility`、`DomainException`）及 11 个纯领域仓储/网关端口。
-  - `service/ddd/application/`：10 个应用服务协调加锁、事务边界、领域模型决策与端口调用，**严禁直接导入 `*Dao`、`entity`、`repository`、`cache` 或 `service.structured`**。
-  - `service/ddd/infrastructure/`：10 个适配器将领域仓储/网关端口桥接到共享 JPA DAO、Redis `PermissionCache`、`IdentityTokenService`、BCrypt/TOTP 与 JDK `HttpClient`。
+  - `service/ddd/domain/{value,model,repository}`：**不依赖 Spring/JPA/api 的纯 Java 领域层**（仅导入 `java.*`、`javax.crypto.*` 与自身包），封装 12 个规则模型、身份快照或结果组装类（`AdminHierarchy`、`AdminRoleAggregate`、`AdminCredentialAccount`、`UserMembershipAggregate`、`DomainAuthorizationAggregate`、`PermissionContextAggregate`、`AccessRequestAggregate`、`AccessReviewAggregate`、`WebhookEndpointAggregate`、`AuditHashChainAggregate`、`IdentityAccountAggregate`、`SystemStatusReport`）、9 个值对象/静态规则工具/领域异常（`GrantDuration`、`PasswordPolicy`、`AdminScope`、`IsolationDomain`、`AuditCanonicalizer`、`WebhookSignature`、`CoursePermissionCatalog`、`DomainVisibility`、`DomainException`）及 11 个纯领域仓储/网关端口。
+  - `service/ddd/application/<biz>`：13 个按业务分包的应用服务协调加锁、事务边界、领域模型决策与端口调用，**严禁直接导入持久化仓储、实体、缓存、`api` 或 `service.structured`**。
+  - `infrastructure/persistence/gateway/` & `infrastructure/gateway/`：9 个 `Jpa*Adapter` 仓储适配器与 `SpringPlatformGatewaysAdapter` 将领域仓储/网关端口桥接到 Spring Data JPA 仓储、Redis `PermissionCache`、`IdentityTokenService`、BCrypt/TOTP 与 JDK `HttpClient`。
 - 类型应按实现区分：`AdminScope` 是值对象；`CoursePermissionCatalog`、`PasswordPolicy` 是静态规则工具；`SystemStatusReport` 组装结果。`AdminHierarchy` 在内存中校验树不变量，事务与数据库锁仍由应用服务和适配器负责。不按 model 包的类数宣称聚合根数量，详见 [面向对象设计答辩](面向对象设计答辩.md)。
-- 上述四条边界规则由 [ArchitectureBoundaryUnitTest](../backend/src/test/java/com/melonhub/rbac/requirements/nfr_reliability/ArchitectureBoundaryUnitTest.java) 在每次单测中自动源码扫描强制守护；双策略完整装配由 [BackendStrategyWiringUnitTest](../backend/src/test/java/com/melonhub/rbac/requirements/nfr_reliability/BackendStrategyWiringUnitTest.java) 验证。
+- 上述架构边界规则由 [R33_ArchitectureBoundaryUnitTest](../backend/src/test/java/com/melonhub/rbac/architecture/R33_ArchitectureBoundaryUnitTest.java) 在每次单测中自动源码扫描强制守护；双策略 13 端口排他装配由 [R33_BackendStrategyWiringUnitTest](../backend/src/test/java/com/melonhub/rbac/architecture/R33_BackendStrategyWiringUnitTest.java) 验证。
 
 | 路径 | 职责 |
 | --- | --- |
 | `backend/src/main/java/com/melonhub/rbac/RbacApplication.java` | Spring Boot 启动入口，启用定时任务 |
-| `controller/` | 8 个控制器（`AuthController`、`AdminController`、`AdminRoleController`、`GovernanceController`、`AccountController`、`BusinessController`、`IdentityController`、`IdentityAdminController`），仅依赖 `service.port` |
-| `service/port/` | 10 个共享用例端口接口：`RbacUseCase`、`ContextUseCase`、`AuthUseCase`、`AdminRoleUseCase`、`GovernanceUseCase`、`WebhookUseCase`、`AuditSealUseCase`、`ConsoleUseCase`、`MaintenanceUseCase`、`IdentityUseCase` |
-| `service/structured/` | 纯结构化实现：10 个 `Structured*Service` + 纯静态过程校验集 `StructuredAdminHierarchyProcedures`（`melonhub.backend-strategy=structured`，默认） |
-| `service/ddd/domain/` | 不依赖框架的领域层：`value/`（值对象与领域异常）、`model/`（规则模型、快照与报告）、`repository/`（11 个纯 Java 仓储与网关端口） |
-| `service/ddd/application/` | 10 个 DDD 应用服务 `Ddd*Service` 与边界异常映射 `DddBoundary`（`melonhub.backend-strategy=ddd`） |
-| `service/ddd/infrastructure/` | 9 个 `Jpa*Adapter` 仓储适配器与 `SpringPlatformGatewaysAdapter` 平台网关适配器（`melonhub.backend-strategy=ddd`） |
-| `identity/` | `IdentityTokenService`：统一身份纯 JDK HS256 JWT 签发与常量时间验签工具 |
-| `dao/` | `RbacDao`、`ContextDao`、`AuthDao`、`AdminRoleDao`、`GovernanceDao`、`WebhookDao`、`AuditDao`、`IdentityDao`：JPA 查询（JPQL 与 Spring Data 仓库）、悲观锁与带条件的批量更新 |
-| `entity/`、`repository/` | JPA 实体（每张表一个，复合主键用 `@EmbeddedId`）与 Spring Data 仓库 |
-| `cache/` | `PermissionCache`：Redis 缓存、失效协议、熔断与恢复 |
-| `dto/` | `Requests` 与基于 `CloneFactory` 的 `ContextContracts` 请求/响应契约 |
-| `security/` | `ApiGuard` 统一鉴权、限流与脱敏请求日志入口，`AdminFunctionGuard`，`GlobalRateLimiter`，`ApplicationRateLimits`，`RateLimiter`，`Totp`，`AdminAccess`/`AdminPrincipal`/`AdminFunction`，凭据生成与哈希 |
-| `exception/` | `ApiException` 与 `ApiErrors`（统一处理 `ApiException`、`DomainException` 及数据库/参数异常） |
-| `config/` | `CloudDatabaseConfiguration`、`RedisConfiguration`、`IdentityConfiguration`、`DemoData` |
+| `api/<biz>/` | 17 个按业务分包的控制器（`admin`/`organization`/`application`/`domainrbac`/`context`/`governance`/`webhook`/`audit`/`console`/`identity`），各子包维护独立 DTO/VO/Mapper，仅依赖 `service.port`；`api/shared/` 维护通用 DTO/VO、`ApiErrors` 与时间序列化 |
+| `service/port/<biz>/` | 13 个共享用例端口：`OrganizationUseCase`、`ApplicationUseCase`、`DomainRbacUseCase`、`ContextUseCase`、`AuthUseCase`、`AdminRoleUseCase`、`GovernanceUseCase`、`WebhookUseCase`、`AuditUseCase`、`AuditSealUseCase`、`ConsoleUseCase`、`MaintenanceUseCase`、`IdentityUseCase`，以及 Command/Result、`ApiException` 与安全值类型 |
+| `service/structured/<biz>/` | 纯结构化实现：13 个 `Structured*Service` + 纯静态过程校验集 `StructuredAdminHierarchyProcedures`（`melonhub.backend-strategy=structured`，默认） |
+| `service/ddd/domain/` | 不依赖框架的纯 Java 领域层：`value/`、`model/`、`repository/`（11 个领域仓储与网关端口） |
+| `service/ddd/application/<biz>/` | 13 个 DDD 应用服务 `Ddd*Service` 与边界异常映射 `DddBoundary`（`melonhub.backend-strategy=ddd`） |
+| `infrastructure/persistence/` | `entity/`（JPA 实体，每张表一个，复合主键用 `@EmbeddedId`，9 个分配主键实体实现 `Persistable<ID>`）、`repository/`（25 个纯 Spring Data JPA 仓储接口 + `RepositorySupport`，全面基于 `@Query`/`@Lock`/`@Modifying`/`Pageable`/`Limit`，零 `EntityManager`、无独立 DAO 层）与 `gateway/`（9 个 `Jpa*Adapter`） |
+| `infrastructure/gateway/` | `SpringPlatformGatewaysAdapter` 平台网关适配器（缓存、加密、HTTP Webhook、JWT、指标） |
+| `infrastructure/identity/` | `IdentityTokenService`：统一身份纯 JDK HS256 JWT 签发与常量时间验签工具 |
+| `infrastructure/cache/` | `PermissionCache`：Redis 缓存、失效协议、熔断与恢复 |
+| `infrastructure/security/` | `ApiGuard` 统一鉴权、限流与脱敏请求日志入口，`AdminFunctionGuard`/`RequiresFunction`，`GlobalRateLimiter`，`ApplicationRateLimits`，`RateLimiter`，`Totp`，`AdminAccess`/`ApplicationAccess`，凭据生成与哈希 |
+| `infrastructure/config/` | `CloudDatabaseConfiguration`、`RedisConfiguration`、`WebConfiguration`、`IdentityConfiguration`、`DemoData` |
 | `backend/src/main/resources/db/migration/` | Flyway 迁移 `V1–V17` |
 | `sdk/java/` | Java 业务侧 SDK `melonhub-client`（独立 Maven 工程，见其 README） |
 | `frontend/src/pages/` | 15 个页面，含概览、组织与软件、授权治理、审计、系统状态、管理员账号与角色、接入指南。角色、权限、用户授权保留直达路由 |
@@ -250,7 +248,7 @@ flowchart TB
 
 后端技术栈为 Spring Boot 3.5.7、Spring Data JPA（Hibernate）、Spring Data Redis（Lettuce）、Bean Validation、Flyway、MySQL Connector/J、Actuator 与 Micrometer Prometheus。前端为 Vue 3.5、TypeScript 5.9、Pinia 3、Vue Router 4、Vite 6 和 Ant Design Vue 4.2。
 
-Controller 不查询持久化层；结构化 Service 使用 DAO，DDD 应用服务使用领域仓储端口，查询实现集中在 DAO；应用代码不写原生 SQL，JPQL 参数全部绑定，动态实体名只从固定允许集合中选择。Hibernate 以 `validate` 模式启动，实体与 Flyway 建立的表结构不一致时拒绝启动。前端列表请求带递增序号（`composables.ts`），切换授权域、翻页或重复查询时丢弃过时响应，避免旧域数据覆盖新域。权限诊断页在用户、授权域、激活角色或待校验权限变化时清空结果并丢弃仍在途的诊断；角色成员抽屉在切换角色或关闭时清空编辑状态，成员列表加载成功前不能添加、移除或保存，保存只提交到加载时的角色与授权域。
+Controller 不查询持久化层；结构化 Service 直接组合 Spring Data JPA 仓储，DDD 应用服务依赖领域仓储端口并由 `infrastructure/persistence/gateway` 适配器桥接至 JPA 仓储；应用代码不写原生 SQL，JPQL 参数全部绑定。Hibernate 以 `validate` 模式启动，实体与 Flyway 建立的表结构不一致时拒绝启动。前端列表请求带递增序号（`composables.ts`），切换授权域、翻页或重复查询时丢弃过时响应，避免旧域数据覆盖新域。权限诊断页在用户、授权域、激活角色或待校验权限变化时清空结果并丢弃仍在途的诊断；角色成员抽屉在切换角色或关闭时清空编辑状态，成员列表加载成功前不能添加、移除或保存，保存只提交到加载时的角色与授权域。
 
 ## 11. 验证范围与限制
 

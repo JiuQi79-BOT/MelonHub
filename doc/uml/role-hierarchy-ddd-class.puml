@@ -14,38 +14,44 @@ skinparam sequenceMessageAlign left
 hide footbox
 title RBAC1 角色继承 · ddd 类图（相关成员）
 left to right direction
-class "AdminController" as C {
- + roleParents(id, departmentId, applicationId, ids, request): Object
+class "DomainRbacAdminController" as C {
+ + roleParents(id, departmentId, applicationId, body, request): OkVO
 }
-interface "RbacUseCase" as U <<interface>> {
+interface "DomainRbacUseCase" as U <<interface>> {
  + roleParents(role, department, application, parents, actor): void
 }
-class "DddRbacService" as S {
+class "DddDomainRbacService" as S {
  - repository: RbacRepositoryPort
  - cache: CacheGateway
- - events: WebhookGateway
+ - events: DomainEventPublisher
+ - transactions: TransactionRunner
  --
  + roleParents(role, dept, app, parents, actor): void
  + roles(dept, app): List
 }
 interface "RbacRepositoryPort" as P <<interface>> {
- + inheritedRoleIds(roots, dept, app): List
- + replaceRoleParents(child, dept, app, parents): void
- + domainRoleInheritancePairs(dept, app): List
+ + domainRoleIds(dept, app): List<Long>
+ + lockDomainRolesByIds(dept, app, roleIds): Set<Long>
+ + domainRoleInheritanceEdges(dept, app): List
+ + replaceRoleParents(child, dept, app, existing, parents): void
 }
 class "JpaRbacRepositoryAdapter" as A {
- - dao: RbacDao
- + inheritedRoleIds(roots, dept, app): List
- + replaceRoleParents(child, dept, app, parents): void
+ - roles: RoleRepository
+ - roleInheritances: RoleInheritanceRepository
+ --
+ + domainRoleIds(dept, app): List<Long>
+ + lockDomainRolesByIds(dept, app, roleIds): Set<Long>
+ + domainRoleInheritanceEdges(dept, app): List
+ + replaceRoleParents(child, dept, app, existing, parents): void
 }
-class "RbacDao" as D {
- + roleInheritancePairs(dept, app): List
- + inheritedRoleIds(roots, dept, app): List
- + replaceRoleParents(child, dept, app, parents): void
+interface "RoleInheritanceRepository" as RIR <<interface>> {
+ + findEdgesByDomain(dept, app): List
+ + replaceParents(child, dept, app, existing, parents, roleRef): void
 }
 class "RoleInheritance" as RI {
- - childRoleId: Long
- - parentRoleId: Long
+ - id: RoleInheritanceId
+ - childRole: Role
+ - parentRole: Role
  - departmentId: Long
  - applicationId: Long
 }
@@ -53,11 +59,11 @@ C -right-> U : use case
 S .up.|> U
 S -right-> P : repository
 A .up.|> P
-A -right-> D : dao
-D .down.> RI : persistence model
+A -right-> RIR : roleInheritances
+RIR .down.> RI : persistence model
 note left of S
-DDD 应用服务协调事务、校验、端口、
-缓存失效、事件和审计。
-当前层级闭包读取由仓储端口委托 DAO。
+DDD 应用服务经 TransactionRunner 编排：
+事务外查本域角色 ID，事务内首条 SQL 主键升序加锁，
+随后无锁读边判环并按精确主键差集更新，无 DAO 层。
 end note
 @enduml

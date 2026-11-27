@@ -14,47 +14,50 @@ skinparam sequenceMessageAlign left
 hide footbox
 title RBAC1 角色继承 · structured 类图（相关成员）
 left to right direction
-class "AdminController" as C {
- + roleParents(id, departmentId, applicationId, ids, request): Object
+class "DomainRbacAdminController" as C {
+ + roleParents(id, departmentId, applicationId, body, request): OkVO
 }
-interface "RbacUseCase" as U <<interface>> {
+interface "DomainRbacUseCase" as U <<interface>> {
  + roleParents(role, department, application, parents, actor): void
 }
-class "StructuredRbacService" as S {
- - dao: RbacDao
+class "StructuredDomainRbacService" as S {
+ - roles: RoleRepository
+ - roleInheritances: RoleInheritanceRepository
  - cache: PermissionCache
  - webhooks: WebhookUseCase
  --
  + roleParents(role, dept, app, parents, actor): void
  + roles(dept, app): List
 }
-class "RbacDao" as D {
- + roleInheritancePairs(dept, app): List
- + inheritedRoleIds(roots, dept, app): List
- + replaceRoleParents(child, dept, app, parents): void
- + accessPermissions(user): List
+interface "RoleRepository" as RR <<interface>> {
+ + findIdsByDomain(dept, app): List<Long>
+ + lockDomainRolesByIds(dept, app, roleIds): Set<Long>
+}
+interface "RoleInheritanceRepository" as RIR <<interface>> {
+ + findEdgesByDomain(dept, app): List
+ + {static} expandEdges(roots, edges): List
+ + mapExpandedToDirectActiveRoles(directRoles, dept, app): Map
+ + replaceParents(child, dept, app, existing, parents, roleRef): void
 }
 class "RoleInheritance" as RI {
- - childRoleId: Long
- - parentRoleId: Long
+ - id: RoleInheritanceId
+ - childRole: Role
+ - parentRole: Role
  - departmentId: Long
  - applicationId: Long
-}
-class "ContextDao" as CD {
- + effectivePermissions(user, hash, dept, app): List
 }
 class "PermissionCache" as Cache <<infrastructure>> {
  + touchDomain(dept, app): void
 }
 C -right-> U : use case
 S .up.|> U
-S -right-> D : dao
+S -right-> RR : roles
+S -right-> RIR : roleInheritances
 S -down-> Cache : cache
-S .down.> RI : persistence model
-CD -right-> RI : reads
+RIR .down.> RI : persistence model
 note bottom of S
 同域中 child 继承 parent 的权限。
-服务先校验同域、非自身和无循环，
-再整体替换父角色集合。
+写事务外查本域角色 ID，事务内首条 SQL 仅按主键升序锁 roles，
+随后无锁读边判环并按精确联合主键差集更新父角色集合。
 end note
 @enduml

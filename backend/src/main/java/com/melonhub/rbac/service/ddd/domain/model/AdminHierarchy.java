@@ -20,10 +20,8 @@ import java.util.TreeSet;
  */
 public final class AdminHierarchy {
     public static final String SUPER_ADMIN = "SUPER_ADMIN";
-    public static final String ADMIN = "ADMIN";
     public static final String APP_ADMIN = "APP_ADMIN";
     public static final String DEPARTMENT_ADMIN = "DEPARTMENT_ADMIN";
-    public static final String AUDITOR = "AUDITOR";
     public static final String MANAGER = "MANAGER";
     public static final String DEPARTMENT = "DEPARTMENT";
     private static final Set<String> ADMINISTRATION_FUNCTIONS = Set.of("account.manage", "role.manage");

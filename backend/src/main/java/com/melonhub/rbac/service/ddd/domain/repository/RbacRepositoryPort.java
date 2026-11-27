@@ -1,5 +1,6 @@
 package com.melonhub.rbac.service.ddd.domain.repository;
 
+import com.melonhub.rbac.service.ddd.domain.model.DomainAuthorizationAggregate;
 import com.melonhub.rbac.service.ddd.domain.model.UserMembershipAggregate;
 import com.melonhub.rbac.service.ddd.domain.value.DomainVisibility;
 import java.time.Instant;
@@ -10,7 +11,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * 核心 RBAC 限界上下文的领域仓储端口（零 Spring/JPA 依赖）。
+ * 核心 RBAC 限界上下文的领域仓储端口（零 Spring/JPA/Jackson 依赖）。
  */
 public interface RbacRepositoryPort {
     record AuditQuery(
@@ -24,6 +25,65 @@ public interface RbacRepositoryPort {
             Instant to
     ) {}
 
+    record DepartmentRecord(long id, String name, String code, Instant createdAt, long memberCount, long roleCount) {}
+
+    record ApplicationRecord(long id, String name, String code, String description, String owner, boolean enabled,
+                             Integer rateLimit, Instant createdAt, long roleCount, long permissionCount, long activeKeyCount) {}
+
+    record ApplicationRefRecord(long id, String name, String code, boolean enabled) {}
+
+    record ApiKeyRecord(long id, String name, String prefix, String createdBy, Instant createdAt,
+                        Instant expiresAt, Instant lastUsedAt, Instant revokedAt, String status) {}
+
+    record UserRecord(long id, String name, String externalId, String email, boolean enabled,
+                      Long activeDepartmentId, long contextVersion, Instant createdAt) {}
+
+    record MembershipPair(long userId, long departmentId) {}
+
+    record DepartmentUserRecord(long id, String name, String externalId, boolean enabled) {}
+
+    record AccessRoleRecord(long departmentId, String departmentName, long applicationId, String applicationName,
+                            boolean applicationEnabled, long id, String name, String code, boolean enabled,
+                            Instant expiresAt, String grantedBy) {}
+
+    record AccessPermissionRecord(long departmentId, long applicationId, String code) {}
+
+    record RoleRecord(long id, String name, String code, String description, boolean enabled, Instant createdAt,
+                      long memberCount, List<Long> parentRoleIds) {}
+
+    record RolePermissionPair(long roleId, long permissionId) {}
+
+    record RoleInheritanceEdge(long childRoleId, long parentRoleId) {}
+
+    record PermissionRecord(long id, String name, String code, String resource, String action,
+                            Instant createdAt, long roleCount) {}
+
+    record RoleMemberRecord(long id, String name, String externalId, String email, boolean enabled) {}
+
+    record DomainRolePair(long userId, long roleId, Instant expiresAt) {}
+
+    record AuditEventRecord(long id, String actor, String action, String target, String detail, String sourceIp,
+                            Instant createdAt, Long departmentId, String departmentName,
+                            Long applicationId, String applicationName) {}
+
+    record DomainOverviewRecord(long applications, long enabledApplications, long departments, long users,
+                                long enabledUsers, long departmentMembers, long roles, long permissions,
+                                long members, long activeKeys, long activeContexts, long auditLast24h) {}
+
+    record DepartmentCodeId(long id, String code) {}
+
+    record PermissionHolderRecord(long userId, String userName, String externalId, long departmentId, String departmentName,
+                                  long roleId, String roleName, String roleCode, Instant expiresAt) {}
+
+    record ExpiringAssignmentRecord(long userId, String userName, String externalId, long roleId, String roleName,
+                                    String roleCode, long departmentId, String departmentName, long applicationId,
+                                    String applicationName, Instant expiresAt, String grantedBy, Instant grantedAt) {}
+
+    record LapsedAssignmentRecord(long userId, String externalId, long roleId, String roleCode,
+                                  long departmentId, long applicationId) {}
+
+    record EntityLabel(String name, String code) {}
+
     boolean healthy();
 
     void recordAudit(String actor, String action, String target, Long departmentId, Long applicationId, String detail, String sourceIp);
@@ -32,29 +92,39 @@ public interface RbacRepositoryPort {
 
     boolean applicationExists(long id);
 
-    Optional<String[]> entityLabel(String table, long id);
+    Optional<EntityLabel> departmentLabel(long id);
 
-    boolean scopedExists(String table, long id, long departmentId, long applicationId);
+    Optional<EntityLabel> applicationLabel(long id);
 
-    long scopedCount(String table, Collection<Long> ids, long departmentId, long applicationId);
+    boolean roleExistsInDomain(long id, long departmentId, long applicationId);
 
-    Optional<Long> scopedIdByCode(String table, long departmentId, long applicationId, String code);
+    boolean permissionExistsInDomain(long id, long departmentId, long applicationId);
 
-    List<String> codes(String table, Collection<Long> ids);
+    long countRolesInDomain(Collection<Long> ids, long departmentId, long applicationId);
 
-    List<Map<String, Object>> departments(Collection<Long> visibleDepartments);
+    long countPermissionsInDomain(Collection<Long> ids, long departmentId, long applicationId);
+
+    Optional<Long> roleIdByCode(long departmentId, long applicationId, String code);
+
+    Optional<Long> permissionIdByCode(long departmentId, long applicationId, String code);
+
+    List<String> roleCodes(Collection<Long> ids);
+
+    List<String> permissionCodes(Collection<Long> ids);
+
+    List<DepartmentRecord> departments(Collection<Long> visibleDepartments);
 
     long createDepartment(String name, String code);
 
     int updateDepartment(long id, String name, String code);
 
-    long[] departmentUsage(long id);
+    DomainAuthorizationAggregate.DepartmentUsage departmentUsage(long id);
 
     int deleteDepartment(long id);
 
-    List<Map<String, Object>> applications(Collection<Long> visibleApplications);
+    List<ApplicationRecord> applications(Collection<Long> visibleApplications);
 
-    Optional<Map<String, Object>> applicationRow(long id);
+    Optional<ApplicationRefRecord> applicationRow(long id);
 
     boolean applicationEnabled(long id);
 
@@ -64,7 +134,7 @@ public interface RbacRepositoryPort {
 
     int updateApplicationStatus(long id, boolean enabled);
 
-    long[] applicationUsage(long id);
+    DomainAuthorizationAggregate.ApplicationUsage applicationUsage(long id);
 
     int deleteApplication(long id);
 
@@ -72,7 +142,7 @@ public interface RbacRepositoryPort {
 
     int lockedActiveKeyCount(long applicationId);
 
-    List<Map<String, Object>> applicationKeys(long applicationId);
+    List<ApiKeyRecord> applicationKeys(long applicationId);
 
     Optional<String> applicationKeyName(long applicationId, long keyId);
 
@@ -82,15 +152,17 @@ public interface RbacRepositoryPort {
 
     int revokeAllApplicationKeys(long applicationId);
 
+    int applicationRateLimit(long id, int fallback);
+
     int updateApplicationRateLimit(long id, Integer perSecond);
 
-    PageSlice users(String keyword, Long departmentId, Boolean enabled, Collection<Long> visibleDepartments, int page, int size);
+    PageSlice<UserRecord> users(String keyword, Long departmentId, Boolean enabled, Collection<Long> visibleDepartments, int page, int size);
 
-    List<Map<String, Object>> memberships(Collection<Long> userIds);
+    List<MembershipPair> memberships(Collection<Long> userIds);
 
-    List<Map<String, Object>> departmentUsers(long departmentId);
+    List<DepartmentUserRecord> departmentUsers(long departmentId);
 
-    Optional<Map<String, Object>> user(long id);
+    Optional<UserRecord> user(long id);
 
     Optional<String> lockUser(long id);
 
@@ -132,31 +204,31 @@ public interface RbacRepositoryPort {
 
     void removeUserRolesInDepartments(long userId, Collection<Long> departmentIds);
 
-    List<Map<String, Object>> accessRoles(long userId);
+    List<AccessRoleRecord> accessRoles(long userId);
 
-    List<Map<String, Object>> accessPermissions(long userId);
+    List<AccessPermissionRecord> accessPermissions(long userId);
 
-    List<Map<String, Object>> roles(long departmentId, long applicationId);
+    List<RoleRecord> roles(long departmentId, long applicationId);
 
     long createRole(long departmentId, long applicationId, String name, String code, String description);
 
     long createRole(long departmentId, long applicationId, String name, String code, String description, boolean enabled);
 
-    int updateRole(long id, String name, String code, String description);
+    void updateRole(long id, String name, String code, String description);
 
     int updateRoleStatus(long id, boolean enabled);
 
     void deleteRole(long id);
 
-    List<Map<String, Object>> permissions(long departmentId, long applicationId);
+    List<PermissionRecord> permissions(long departmentId, long applicationId);
 
     long createPermission(long departmentId, long applicationId, String name, String code, String resource, String action);
 
-    int updatePermission(long id, String name, String code, String resource, String action);
+    void updatePermission(long id, String name, String code, String resource, String action);
 
     void deletePermission(long id);
 
-    List<Map<String, Object>> domainRolePermissionPairs(long departmentId, long applicationId);
+    List<RolePermissionPair> domainRolePermissionPairs(long departmentId, long applicationId);
 
     List<Long> rolePermissionIds(long roleId);
 
@@ -164,14 +236,18 @@ public interface RbacRepositoryPort {
 
     void replaceRolePermissions(long roleId, long departmentId, long applicationId, Collection<Long> permissionIds);
 
-    List<Map<String, Object>> domainRoleInheritancePairs(long departmentId, long applicationId);
-    List<Long> roleParentIds(long roleId, long departmentId, long applicationId);
-    List<Long> inheritedRoleIds(Collection<Long> roleIds, long departmentId, long applicationId);
-    void replaceRoleParents(long roleId, long departmentId, long applicationId, Collection<Long> parentIds);
+    List<Long> domainRoleIds(long departmentId, long applicationId);
+
+    List<RoleInheritanceEdge> domainRoleInheritanceEdges(long departmentId, long applicationId);
+
+    void replaceRoleParents(long roleId, long departmentId, long applicationId,
+                            Collection<Long> existingParentIds, Collection<Long> parentIds);
 
     boolean lockRole(long roleId);
 
-    List<Map<String, Object>> roleMembers(long roleId);
+    Set<Long> lockDomainRolesByIds(long departmentId, long applicationId, Collection<Long> roleIds);
+
+    List<RoleMemberRecord> roleMembers(long roleId);
 
     List<Long> roleMemberIds(long roleId);
 
@@ -181,43 +257,37 @@ public interface RbacRepositoryPort {
 
     void removeRoleMembers(long roleId, Collection<Long> userIds);
 
-    Map<Long, Object> assignmentExpiryViews(long userId, long departmentId, long applicationId);
+    Map<Long, Instant> assignmentExpiries(long userId, long departmentId, long applicationId);
 
     Map<Long, Instant> lockedAssignmentExpiries(long userId, long departmentId, long applicationId);
 
-    PageSlice departmentMembers(long departmentId, String keyword, int page, int size);
+    PageSlice<RoleMemberRecord> departmentMembers(long departmentId, String keyword, int page, int size);
 
-    List<Map<String, Object>> domainRolePairs(long departmentId, long applicationId, Collection<Long> userIds);
+    List<DomainRolePair> domainRolePairs(long departmentId, long applicationId, Collection<Long> userIds);
 
     void grantRole(long userId, long departmentId, long applicationId, long roleId, Instant expiresAt, String actor);
 
     void removeUserRoles(long userId, Collection<Long> roleIds);
 
-    List<Map<String, Object>> userRolesInDomain(long userId, long departmentId, long applicationId);
+    List<DomainAuthorizationAggregate.AssignedDomainRole> assignedRolesInDomain(long userId, long departmentId, long applicationId);
 
-    List<com.melonhub.rbac.service.ddd.domain.model.DomainAuthorizationAggregate.AssignedDomainRole> assignedRolesInDomain(
-            long userId, long departmentId, long applicationId);
+    List<DomainAuthorizationAggregate.PermissionGrant> permissionGrants(long departmentId, long applicationId, Collection<Long> roleIds);
 
-    List<com.melonhub.rbac.service.ddd.domain.model.DomainAuthorizationAggregate.PermissionGrant> permissionGrantsTyped(
-            Collection<Long> roleIds);
+    PageSlice<AuditEventRecord> auditEvents(AuditQuery query, int page, int size);
 
-    List<Map<String, Object>> permissionGrantsForRoles(Collection<Long> roleIds);
+    DomainOverviewRecord domainOverview(long departmentId, long applicationId);
 
-    PageSlice auditEvents(AuditQuery query, int page, int size);
-
-    Map<String, Object> domainOverview(long departmentId, long applicationId);
-
-    List<Map<String, Object>> departmentIdsByCodes(Collection<String> codes);
+    List<DepartmentCodeId> departmentIdsByCodes(Collection<String> codes);
 
     List<Long> manifestDepartmentIds(long applicationId);
 
-    List<Map<String, Object>> permissionHolders(long applicationId, String code, Long departmentId, Collection<Long> visibleDepartments, int limit);
+    List<PermissionHolderRecord> permissionHolders(long applicationId, String code, Long departmentId, Collection<Long> visibleDepartments, int limit);
 
     long permissionHolderCount(long applicationId, String code, Long departmentId, Collection<Long> visibleDepartments);
 
-    List<Map<String, Object>> expiringAssignments(Instant before, DomainVisibility visibility, Long applicationId);
+    List<ExpiringAssignmentRecord> expiringAssignments(Instant before, DomainVisibility visibility, Long applicationId);
 
-    List<Map<String, Object>> lapsedAssignments(int limit);
+    List<LapsedAssignmentRecord> lapsedAssignments(int limit);
 
     int deleteLapsedAssignment(long userId, long roleId);
 }

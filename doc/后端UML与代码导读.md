@@ -1,6 +1,6 @@
 # MelonHub 后端 UML 与代码导读
 
-代码基线为当前 RBAC1 实现提交 `99dfa84`。后端启动时用 `melonhub.backend-strategy=structured|ddd` 选择实现，默认 `structured`。两种策略共享控制器、用例接口和数据库结构。本页选择同一组 API 对照两种设计，便于从图定位到代码。
+后端采用**三层按业务模块分包 + 单模块双策略架构**，启动时通过 `melonhub.backend-strategy=structured|ddd` 选择实现，默认 `structured`。两种策略共享 `api/<biz>` 控制器、`service/port/<biz>` 13 个用例端口与数据库结构（Spring Data JPA 仓储，无独立 `*Dao` 中间层）。本页选择同一组 API 对照两种设计，便于从图定位到代码。
 
 ## 1. 包依赖
 
@@ -8,9 +8,9 @@
 
 [SVG](uml/packages.svg) · [PlantUML 图源](uml/packages.puml)
 
-箭头表示主要源码依赖，不表示 HTTP 请求或调用时序；图按职责合并了部分包。`controller/security/config` 经 `service.port` 使用用例；结构化实现直接使用 DAO 等共享设施；DDD 应用服务经领域仓储和网关端口使用基础设施适配器。领域层不依赖 Spring/JPA。应用层仍使用共享 DTO、管理员身份及范围契约，例如 `DddBoundary` 将 `dao.Visibility` 转为领域 `DomainVisibility`；这与直接调用 DAO 查询不同。两套策略不是两个独立部署的微服务。
+箭头表示主要源码依赖，不表示 HTTP 请求或调用时序；图按职责合并了部分子包。`api` 与 `infrastructure.{security,config}` 经 `service.port`（13 个 `*UseCase`）调用业务能力；结构化实现 `service.structured.<biz>` 直接组合 `infrastructure.persistence.repository` 与缓存/身份基础设施；DDD 应用服务 `service.ddd.application.<biz>` 仅依赖 `service.ddd.domain` 领域模型与端口，由 `infrastructure.persistence.gateway`（9 个 `Jpa*Adapter`）和 `infrastructure.gateway.SpringPlatformGatewaysAdapter` 桥接到 JPA 仓储与平台设施。领域层不依赖 Spring/JPA/api。两套策略不是两个独立部署的微服务。
 
-边界检查见 [ArchitectureBoundaryUnitTest](../backend/src/test/java/com/melonhub/rbac/requirements/nfr_reliability/ArchitectureBoundaryUnitTest.java)，启动装配见 [BackendStrategyWiringUnitTest](../backend/src/test/java/com/melonhub/rbac/requirements/nfr_reliability/BackendStrategyWiringUnitTest.java)。包与职责清单见 [架构说明](ARCHITECTURE.md#10-工程分层与双策略后端structured--ddd)。
+边界检查见 [R33_ArchitectureBoundaryUnitTest](../backend/src/test/java/com/melonhub/rbac/architecture/R33_ArchitectureBoundaryUnitTest.java)，启动装配见 [R33_BackendStrategyWiringUnitTest](../backend/src/test/java/com/melonhub/rbac/architecture/R33_BackendStrategyWiringUnitTest.java)。包与职责清单见 [架构说明](ARCHITECTURE.md#10-工程分层与双策略后端structured--ddd)。
 
 ## 2. API 权限查询
 
@@ -30,9 +30,9 @@
 
 代码阅读顺序：
 
-1. [IdentityController.apiPermission](../backend/src/main/java/com/melonhub/rbac/controller/IdentityController.java) 接收 HTTP 参数并委托 [IdentityUseCase](../backend/src/main/java/com/melonhub/rbac/service/port/IdentityUseCase.java)。
-2. [StructuredIdentityService.checkApiPermission](../backend/src/main/java/com/melonhub/rbac/service/structured/StructuredIdentityService.java) 调用 `authenticatedUser`；辅助方法展开了令牌校验和会话、用户读取。
-3. 同一服务用 `API_PERMISSION_CODES.get(operationId)` 取映射，通过 [IdentityDao.permissions](../backend/src/main/java/com/melonhub/rbac/dao/IdentityDao.java) 查询权限并做 `contains` 判断。
+1. [IdentityController.apiPermission](../backend/src/main/java/com/melonhub/rbac/api/identity/IdentityController.java) 接收 HTTP 参数并委托 [IdentityUseCase](../backend/src/main/java/com/melonhub/rbac/service/port/identity/IdentityUseCase.java)。
+2. [StructuredIdentityService.checkApiPermission](../backend/src/main/java/com/melonhub/rbac/service/structured/identity/StructuredIdentityService.java) 调用 `authenticatedUser`；辅助方法展开了令牌校验（[IdentityTokenService](../backend/src/main/java/com/melonhub/rbac/infrastructure/identity/IdentityTokenService.java)）和会话、用户读取。
+3. 同一服务用 `API_PERMISSION_CODES.get(operationId)` 取映射，经 [UserRoleRepository](../backend/src/main/java/com/melonhub/rbac/infrastructure/persistence/repository/UserRoleRepository.java)、[RoleInheritanceRepository](../backend/src/main/java/com/melonhub/rbac/infrastructure/persistence/repository/RoleInheritanceRepository.java) 与 [RolePermissionRepository](../backend/src/main/java/com/melonhub/rbac/infrastructure/persistence/repository/RolePermissionRepository.java) 计算 RBAC1 展开后的有效权限并做 `contains` 判断。
 
 图聚焦有效令牌之后的会话、用户、操作映射分支；Bearer 格式、哈希工具和 JWT 内部算法不展开。类图只展示相关成员。
 
@@ -48,10 +48,10 @@
 
 代码阅读顺序：
 
-1. [DddIdentityService.checkApiPermission](../backend/src/main/java/com/melonhub/rbac/service/ddd/application/DddIdentityService.java) 仍承担只读事务和流程协调，`authenticatedUser` 经仓储/加密网关读取身份。
+1. [DddIdentityService.checkApiPermission](../backend/src/main/java/com/melonhub/rbac/service/ddd/application/identity/DddIdentityService.java) 承担只读事务和流程协调，`authenticatedUser` 经仓储/加密网关读取身份。
 2. 静态目录 [CoursePermissionCatalog.requirePermissionForOperation](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/value/CoursePermissionCatalog.java) 决定操作对应权限；[IdentityAccountAggregate.hasUiPermission](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/model/IdentityAccountAggregate.java) 根据账号权限快照判断。
-3. [IdentityRepositoryPort](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/repository/IdentityRepositoryPort.java) 的实际实现是 [JpaIdentityRepositoryAdapter](../backend/src/main/java/com/melonhub/rbac/service/ddd/infrastructure/JpaIdentityRepositoryAdapter.java)，内部委托共享 `IdentityDao`。
-4. [DddBoundary.execute](../backend/src/main/java/com/melonhub/rbac/service/ddd/application/DddBoundary.java) 捕获 `DomainException` 并调用 [ApiErrors](../backend/src/main/java/com/melonhub/rbac/exception/ApiErrors.java) 转为 `ApiException`。
+3. [IdentityRepositoryPort](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/repository/IdentityRepositoryPort.java) 的实际实现是 [JpaIdentityRepositoryAdapter](../backend/src/main/java/com/melonhub/rbac/infrastructure/persistence/gateway/JpaIdentityRepositoryAdapter.java)，直接组合 Spring Data JPA 仓储。
+4. [DddBoundary.execute](../backend/src/main/java/com/melonhub/rbac/service/ddd/application/shared/DddBoundary.java) 捕获 `DomainException` 并转为 `ApiException`，再由 [ApiErrors](../backend/src/main/java/com/melonhub/rbac/api/shared/error/ApiErrors.java) 输出统一错误体。
 
 时序图省略认证成功路径的展开，重点展示领域判断与异常转换。`action.get()` 表示服务方法内传给 `DddBoundary` 的 Supplier lambda，不是服务类声明的新公开方法。
 
@@ -69,7 +69,7 @@
 
 [SVG](uml/admin-account-sequence.svg) · [图源](uml/admin-account-sequence.puml)
 
-[AccountController.create](../backend/src/main/java/com/melonhub/rbac/controller/AccountController.java) 经 [AuthUseCase](../backend/src/main/java/com/melonhub/rbac/service/port/AuthUseCase.java) 调用 [StructuredAuthService.createAccount](../backend/src/main/java/com/melonhub/rbac/service/structured/StructuredAuthService.java)。服务协调 [AuthDao](../backend/src/main/java/com/melonhub/rbac/dao/AuthDao.java) 加锁/读写，以及 [AdminRoleDao](../backend/src/main/java/com/melonhub/rbac/dao/AdminRoleDao.java) 读取功能。私有 `with`/`requireConsistent` 调用静态过程集 [StructuredAdminHierarchyProcedures.replaceNode/findViolations](../backend/src/main/java/com/melonhub/rbac/service/structured/StructuredAdminHierarchyProcedures.java)，把数据作为参数传入规则过程。
+[AccountController.create](../backend/src/main/java/com/melonhub/rbac/api/admin/AccountController.java) 经 [AuthUseCase](../backend/src/main/java/com/melonhub/rbac/service/port/admin/AuthUseCase.java) 调用 [StructuredAuthService.createAccount](../backend/src/main/java/com/melonhub/rbac/service/structured/admin/StructuredAuthService.java)。服务协调 [AdminAccountRepository](../backend/src/main/java/com/melonhub/rbac/infrastructure/persistence/repository/AdminAccountRepository.java) 加锁/读写，以及 [AdminRoleRepository](../backend/src/main/java/com/melonhub/rbac/infrastructure/persistence/repository/AdminRoleRepository.java) 读取功能。私有 `with`/`requireConsistent` 调用静态过程集 [StructuredAdminHierarchyProcedures.replaceNode/findViolations](../backend/src/main/java/com/melonhub/rbac/service/structured/admin/StructuredAdminHierarchyProcedures.java)，把数据作为参数传入规则过程。
 
 ### 3.2 DDD 实现
 
@@ -81,14 +81,13 @@
 
 [SVG](uml/admin-account-ddd-sequence.svg) · [图源](uml/admin-account-ddd-sequence.puml)
 
-[DddAuthService.createAccount](../backend/src/main/java/com/melonhub/rbac/service/ddd/application/DddAuthService.java) 经 [AdminAccountRepositoryPort](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/repository/AdminAccountRepositoryPort.java) 加锁并加载节点，结合角色功能构造 [AdminHierarchy](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/model/AdminHierarchy.java)。候选节点包含不可变范围 [AdminScope](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/value/AdminScope.java)，由 `tree.validateCreate` 判断层级一致性。存储实现为 [JpaAdminAccountRepositoryAdapter](../backend/src/main/java/com/melonhub/rbac/service/ddd/infrastructure/JpaAdminAccountRepositoryAdapter.java)。
+[DddAuthService.createAccount](../backend/src/main/java/com/melonhub/rbac/service/ddd/application/admin/DddAuthService.java) 经 [AdminAccountRepositoryPort](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/repository/AdminAccountRepositoryPort.java) 加锁并加载节点，结合角色功能构造 [AdminHierarchy](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/model/AdminHierarchy.java)。候选节点包含不可变范围 [AdminScope](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/value/AdminScope.java)，由 `tree.validateCreate` 判断层级一致性。存储实现为 [JpaAdminAccountRepositoryAdapter](../backend/src/main/java/com/melonhub/rbac/infrastructure/persistence/gateway/JpaAdminAccountRepositoryAdapter.java)。
 
 两幅时序图都聚焦前置角色、目标上级和范围解析成功后的候选一致性分支；省略的前置步骤在图内注明。模型负责规则，事务与数据库锁仍由应用服务和基础设施保障，不能声称领域对象独自保证并发一致性。GRASP 与概念边界见 [面向对象设计答辩](面向对象设计答辩.md)。
 
-
 ## 4. RBAC1 角色继承
 
-角色继承属于业务角色授权模型。当前规则定义为子角色继承父角色的权限，继承关系限定在同一部门 × 软件隔离域内。用户分配子角色后，权限上下文、统一身份权限查询、权限反查和模拟结果沿父角色链展开并去重。循环继承和跨域继承在应用层拒绝，V17 的复合外键负责数据库域一致性。
+角色继承属于业务角色授权模型。当前规则定义为子角色继承父角色的权限，继承关系限定在同一部门 × 软件隔离域内。用户分配子角色后，权限上下文、统一身份权限查询、权限反查和模拟结果均沿父角色链展开并去重。写入父角色关系前先锁定该隔离域全部角色（按 ID 升序）以消除并发互相设父导致成环；循环继承和跨域继承在应用层拒绝，V17 的复合外键负责数据库域一致性。
 
 ### 4.1 structured 实现
 
@@ -100,7 +99,7 @@
 
 [SVG](uml/role-hierarchy-sequence.svg) · [图源](uml/role-hierarchy-sequence.puml)
 
-[StructuredRbacService.roleParents](../backend/src/main/java/com/melonhub/rbac/service/structured/StructuredRbacService.java) 校验父角色属于当前域，并用 `RbacDao.inheritedRoleIds` 检测循环，再整体替换 `role_inheritances`。上下文读取由 [ContextDao](../backend/src/main/java/com/melonhub/rbac/dao/ContextDao.java) 展开继承链。
+[DomainRbacAdminController.roleParents](../backend/src/main/java/com/melonhub/rbac/api/domainrbac/DomainRbacAdminController.java) 经 [DomainRbacUseCase](../backend/src/main/java/com/melonhub/rbac/service/port/domainrbac/DomainRbacUseCase.java) 调用 [StructuredDomainRbacService.roleParents](../backend/src/main/java/com/melonhub/rbac/service/structured/domainrbac/StructuredDomainRbacService.java)：先在写事务外经 `RoleRepository.findIdsByDomain` 收集本域角色 ID，进入写事务后首条 SQL 即通过 [RoleRepository.lockDomainRolesByIds](../backend/src/main/java/com/melonhub/rbac/infrastructure/persistence/repository/RoleRepository.java) 仅按聚簇主键升序加排他锁（避免二级索引死锁且在持锁后才开启 ReadView），随后无锁调用 [RoleInheritanceRepository.findEdgesByDomain](../backend/src/main/java/com/melonhub/rbac/infrastructure/persistence/repository/RoleInheritanceRepository.java) 判环，并按精确联合主键差集更新 `role_inheritances`。上下文、反查与模拟分别在 [StructuredContextService](../backend/src/main/java/com/melonhub/rbac/service/structured/context/StructuredContextService.java)、[UserRoleRepository](../backend/src/main/java/com/melonhub/rbac/infrastructure/persistence/repository/UserRoleRepository.java) 与 [StructuredDomainRbacService](../backend/src/main/java/com/melonhub/rbac/service/structured/domainrbac/StructuredDomainRbacService.java) 展开继承链。
 
 ### 4.2 DDD 实现
 
@@ -112,7 +111,7 @@
 
 [SVG](uml/role-hierarchy-ddd-sequence.svg) · [图源](uml/role-hierarchy-ddd-sequence.puml)
 
-[DddRbacService.roleParents](../backend/src/main/java/com/melonhub/rbac/service/ddd/application/DddRbacService.java) 通过 [RbacRepositoryPort](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/repository/RbacRepositoryPort.java) 访问继承关系。当前 DDD 代码把角色层级校验和事务编排放在应用服务，端口适配器委托 `RbacDao`；权限闭包在权限上下文仓储读取路径中展开。图中没有虚构独立的领域聚合。
+[DddDomainRbacService.roleParents](../backend/src/main/java/com/melonhub/rbac/service/ddd/application/domainrbac/DddDomainRbacService.java) 通过 [RbacRepositoryPort](../backend/src/main/java/com/melonhub/rbac/service/ddd/domain/repository/RbacRepositoryPort.java) 执行域级加锁与继承关系替换，端口实现为 [JpaRbacRepositoryAdapter](../backend/src/main/java/com/melonhub/rbac/infrastructure/persistence/gateway/JpaRbacRepositoryAdapter.java)（直接组合 JPA 仓储）；权限闭包在权限上下文、反查、模拟与统一身份仓储适配器中展开。图中没有虚构独立的领域聚合。
 
 ## 5. 重新生成
 

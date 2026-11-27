@@ -9,7 +9,6 @@ import java.util.regex.Pattern;
 public final class PasswordPolicy {
     public static final int BCRYPT_MAX_BYTES = 72;
     public static final int ADMIN_MIN_LENGTH = 12;
-    public static final int IDENTITY_MIN_LENGTH = 8;
     private static final Pattern USERNAME_PATTERN = Pattern.compile("[A-Za-z0-9_@-][A-Za-z0-9._@-]{2,99}");
 
     private PasswordPolicy() {}

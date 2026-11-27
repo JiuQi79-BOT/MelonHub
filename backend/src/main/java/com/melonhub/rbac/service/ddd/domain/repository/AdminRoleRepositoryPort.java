@@ -1,6 +1,7 @@
 package com.melonhub.rbac.service.ddd.domain.repository;
 
 import com.melonhub.rbac.service.ddd.domain.model.AdminRoleAggregate;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -11,9 +12,14 @@ import java.util.Set;
  * 控制台管理员功能目录与自定义管理员角色领域仓储端口。
  */
 public interface AdminRoleRepositoryPort {
-    List<Map<String, Object>> functions();
+    record FunctionRecord(String code, String name, String category) {}
 
-    List<Map<String, Object>> roles();
+    record RoleListRecord(String code, String name, String description, boolean builtin,
+                          List<String> functions, long accountCount, Instant createdAt) {}
+
+    List<FunctionRecord> functions();
+
+    List<RoleListRecord> roles();
 
     Optional<AdminRoleAggregate> findRole(String code);
 
@@ -27,5 +33,5 @@ public interface AdminRoleRepositoryPort {
 
     void updateRole(String code, String name, String description, Collection<String> functions);
 
-    int deleteRole(String code);
+    void deleteRole(String code);
 }

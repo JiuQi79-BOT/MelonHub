@@ -16,25 +16,32 @@ left to right direction
 class "IdentityController" as C {
  - identityService: IdentityUseCase
  --
- + apiPermission(authorization, operationId): Map
+ + apiPermission(authorization, operationId): IdentityApiPermissionCheckVO
 }
 interface "IdentityUseCase" as U <<interface>> {
- + checkApiPermission(authorization, operationId): Map
+ + checkApiPermission(authorization, operationId): IdentityApiPermissionCheckResult
 }
 class "StructuredIdentityService" as S {
- - identityDao: IdentityDao
+ - sessions: IdentitySessionRepository
+ - users: UserRepository
+ - userRoles: UserRoleRepository
+ - roleInheritances: RoleInheritanceRepository
+ - rolePermissions: RolePermissionRepository
  - tokenService: IdentityTokenService
  - {static} API_PERMISSION_CODES: Map
  --
- + checkApiPermission(authorization, operationId): Map
- - authenticatedUser(authorization): UserRow
- - authenticated(authorization): Claims
+ + checkApiPermission(authorization, operationId): IdentityApiPermissionCheckResult
+ - authenticatedUser(authorization): IdentityUser
+ - effectivePermissionCodes(userId, system): List
 }
-class "IdentityDao" as R {
- --
- + activeSession(hash, now): boolean
- + userByExternalId(externalId): Optional
- + permissions(userId, system): List
+interface "IdentitySessionRepository" as SR <<interface>> {
+ + hasActiveSession(hash, now): boolean
+}
+interface "UserRepository" as UR <<interface>> {
+ + findActiveIdentityUserByExternalId(externalId): Optional
+}
+interface "RolePermissionRepository" as PR <<interface>> {
+ + findActivePermissionCodesByRoleIds(roleIds): List
 }
 class "IdentityTokenService" as T {
  --
@@ -43,10 +50,12 @@ class "IdentityTokenService" as T {
 C -right-> U : identityService
 S .up.|> U
 C -[hidden]right- S
-S -right-> R : identityDao
+S -right-> SR : sessions
+S -right-> UR : users
+S -right-> PR : rolePermissions
 S -down-> T : tokenService
 legend bottom
-过程内部完成认证、操作映射、权限包含判断。
+过程内部完成认证、操作映射、RBAC1 角色继承展开与权限包含判断。
 事务由 checkApiPermission 的只读事务边界管理。
 endlegend
 @enduml

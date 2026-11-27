@@ -36,7 +36,7 @@ public final class DomainException extends RuntimeException {
     }
 
     public static DomainException unauthorized() {
-        return new DomainException(Kind.UNAUTHORIZED, "UNAUTHORIZED", "认证无效或已过期");
+        return new DomainException(Kind.UNAUTHORIZED, "UNAUTHORIZED", "请登录或检查接口凭据");
     }
 
     public static DomainException unauthorized(String code, String message) {

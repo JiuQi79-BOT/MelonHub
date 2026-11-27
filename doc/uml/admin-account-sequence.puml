@@ -16,22 +16,22 @@ title 创建分级管理员 · structured（候选范围校验与原子写入）
 autonumber
 participant "obj: AccountController" as C
 participant "service: StructuredAuthService" as S
-participant "dao: AuthDao" as D
-participant "roles: AdminRoleDao" as R
+participant "accounts: AdminAccountRepository" as D
+participant "roles: AdminRoleRepository" as R
 participant "«MetaClass»\n: StructuredAdminHierarchyProcedures" as P
-participant "rbac: RbacUseCase" as Audit
+participant "audit: AuditUseCase" as Audit
 activate C
 C -> S: createAccount(input, actor)
 activate S
 note over S,Audit: createAccount 事务：下面任一写入失败均回滚；账号行锁持有至事务结束
-S -> D: lockAccounts()
+S -> D: lockAll()
 activate D
 deactivate D
-note over S,R: requireRole 校验角色存在（含 DAO 查询）
+note over S,R: requireRole 校验角色存在（含 Repository 查询）
 S -> D: nodes = nodes()
 activate D
 deactivate D
-S -> R: roleFunctions = functionsByRole()
+S -> R: rows = listed()（服务层组装 roleFunctions）
 activate R
 deactivate R
 note over S,P
@@ -54,10 +54,10 @@ else problems 为空
  S -> D: id = createAccount(...)
  activate D
  deactivate D
- S -> D: replaceAccountApplications(id, applications)
+ S -> D: replaceApplicationIds(id, applications)
  activate D
  deactivate D
- S -> D: replaceAccountDepartments(id, departments)
+ S -> D: replaceDepartmentIds(id, departments)
  activate D
  deactivate D
  S -> Audit: audit(..., ACCOUNT_CREATED, ...)
@@ -71,6 +71,6 @@ deactivate S
 deactivate C
 legend bottom
 with / requireConsistent 两个私有静态包装的内容已展开；findViolations 返回问题列表，不抛领域异常。
-Controller 返回 200 {id, username}；统一错误处理返回 409，前置权限/参数错误为 403/400。
+AccountController 返回 200 AccountCreatedVO{id, username}；统一错误处理返回 409，前置权限/参数错误为 403/400。
 endlegend
 @enduml
