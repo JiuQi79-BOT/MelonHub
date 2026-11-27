@@ -14,14 +14,14 @@ skinparam sequenceMessageAlign left
 hide footbox
 title API 权限查询 · structured
 
-hide footbox
 skinparam ParticipantPadding 12
 skinparam BoxPadding 8
 autonumber
 participant "obj: IdentityController" as C
 participant "service: StructuredIdentityService" as S
 participant "tokenService: IdentityTokenService" as T
-participant "identityDao: IdentityDao" as R
+participant "sessions/users: JPA Repositories" as R
+participant "rbacRepos: Role/Permission Repositories" as PR
 activate C
 C -> S: checkApiPermission(authorization, operationId)
 activate S
@@ -29,7 +29,7 @@ note over S,R: 展开 authenticatedUser / authenticated；省略 Bearer 解析�
 S -> T: claims = verify(token, COURSE_SYSTEM)
 activate T
 deactivate T
-S -> R: active = activeSession(hash, now)
+S -> R: active = hasActiveSession(hash, now)
 activate R
 deactivate R
 alt 会话已失效
@@ -37,7 +37,7 @@ alt 会话已失效
  S --> C: ApiException (401 UNAUTHORIZED)
 else 会话有效
  autonumber resume
- S -> R: user = userByExternalId(claims.subject())
+ S -> R: user = findActiveIdentityUserByExternalId(claims.subject())
  activate R
  deactivate R
  alt 用户不存在
@@ -49,12 +49,12 @@ else 会话有效
    S --> C: ApiException (404 API_OPERATION_NOT_FOUND)
   else 操作已登记
    autonumber resume
-   S -> R: permissions = permissions(user.id(), COURSE_SYSTEM)
-   activate R
-   deactivate R
+   S -> PR: effectivePermissionCodes(user.id(), COURSE_SYSTEM)
+   activate PR
+   deactivate PR
    note right of S: allowed = permissions.contains(permission)
    autonumber stop
-   S --> C: {operationId, allowed}
+   S --> C: IdentityApiPermissionCheckResult(operationId, allowed)
   end
  end
 end
@@ -63,6 +63,6 @@ deactivate S
 deactivate C
 legend bottom
 verify 的无效令牌异常由统一错误处理转换为 401，此处聚焦有效令牌后的分支。
-ApiErrors 负责 HTTP 错误响应；Controller 正常返回 200 JSON。
+ApiErrors 负责 HTTP 错误响应；IdentityController 经 IdentityVoMapper 返回 200 JSON。
 endlegend
 @enduml

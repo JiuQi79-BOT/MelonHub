@@ -20,6 +20,7 @@ class "DddAuthService" as S {
  - accounts: AdminAccountRepositoryPort
  - roles: AdminRoleRepositoryPort
  - crypto: CryptoGateway
+ - audit: AuditUseCase
  --
  + createAccount(input, actor): long
  - hierarchy(): AdminHierarchy
@@ -30,13 +31,14 @@ interface "AdminAccountRepositoryPort" as R <<interface>> {
  + createAccount(...): long
 }
 class "JpaAdminAccountRepositoryAdapter" as A {
- - dao: AuthDao
+ - accounts: AdminAccountRepository
+ - sessions: AdminSessionRepository
  --
  + loadHierarchyNodes(): List<AdminNode>
 }
-class "AuthDao" as DAO {
- --
- + nodes(): List<AccountNode>
+interface "AdminAccountRepository" as Repo <<interface>> {
+ + lockAll(): List<AdminAccount>
+ + nodes(): List<Node>
  + createAccount(...): long
 }
 class "AdminHierarchy" as Tree <<domain model>> {
@@ -58,13 +60,13 @@ class "AdminScope" as Scope <<value object>> {
 S .up.|> U
 S -right-> R : accounts
 A .up.|> R
-A -right-> DAO : dao
+A -right-> Repo : accounts
 S .down.> Tree
 S .down.> Scope
 Tree .right.> Scope
 note left of S
 应用服务负责事务、锁与持久化编排；
 候选层级不变量由 AdminHierarchy 判断。
-角色端口、密码网关、审计见时序图和源码。
+适配器直接组合 Spring Data JPA 仓储，无 DAO 中间层。
 end note
 @enduml

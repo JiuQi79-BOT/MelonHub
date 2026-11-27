@@ -11,38 +11,38 @@ skinparam sequenceParticipantBackgroundColor #EEF3F9
 skinparam sequenceParticipantBorderColor #59708C
 skinparam sequenceGroupBackgroundColor transparent
 skinparam sequenceMessageAlign left
-title MelonHub 包依赖 · 启动时选择 structured 或 ddd
+title MelonHub 包依赖 · 三层按业务分包 + 双策略（structured / ddd）
 top to bottom direction
-package "controller / security / config" as Entry {}
-package "service.port" as Port {}
-package "service.structured" as S {}
-package "service.ddd.application" as A {}
+package "api（17 Controller / DTO / VO / Mapper / ApiErrors）" as Api {}
+package "infrastructure.security / infrastructure.config" as Security {}
+package "service.port（13 个用例端口 + Command/Result/ApiException）" as Port {}
+package "service.structured（13 个按业务分包事务脚本 + 过程工具）" as S {}
+package "service.ddd.application（13 个按业务分包应用服务 + DddBoundary）" as A {}
 package "service.ddd.domain" as D {
- package "model" as Model {}
- package "value" as Value {}
- package "repository（领域端口）" as DomainPort {}
+ package "model（规则模型 / 快照 / 报告）" as Model {}
+ package "value（值对象 / 静态规则工具 / DomainException）" as Value {}
+ package "repository（11 个领域仓储与网关端口）" as DomainPort {}
 }
-package "service.ddd.infrastructure" as I {}
-package "dao / cache / identity" as Shared {}
-package "entity / repository（Spring Data）" as JPA {}
-package "dto / exception" as Boundary {}
-Entry ..> Port
-Entry ..> Boundary
+package "infrastructure.persistence.gateway / infrastructure.gateway\n（9 个 Jpa*Adapter + SpringPlatformGatewaysAdapter）" as Adapter {}
+package "infrastructure.persistence.repository / entity\n（Spring Data JPA 仓储 + 实体）" as Repo {}
+package "infrastructure.cache / infrastructure.identity" as Platform {}
+Api ..> Port
+Security ..> Port
 S ..> Port
 A ..> Port
-S ..> Shared
+S ..> Repo
+S ..> Platform
 A ..> D
-A ..> Boundary
-I ..> D
-I ..> Shared
-Shared ..> JPA
+Adapter ..> D
+Adapter ..> Repo
+Adapter ..> Platform
 Model ..> Value
 note bottom of Port
-AuthUseCase、IdentityUseCase 等 10 个用例接口。
+OrganizationUseCase、DomainRbacUseCase、AuthUseCase、IdentityUseCase 等 13 个用例接口。
 实现关系在类图中展开；包之间画编译期依赖。
 end note
 note bottom of D
-领域规则与端口不依赖 Spring/JPA。
+领域规则与端口不依赖 Spring/JPA/api。
 model 内包含规则模型、快照和报告，
 不能仅凭包名将全部类型认定为聚合根。
 end note

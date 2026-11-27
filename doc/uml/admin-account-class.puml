@@ -17,25 +17,23 @@ interface "AuthUseCase" as U <<interface>> {
  + createAccount(input, actor): long
 }
 class "StructuredAuthService" as S {
- - dao: AuthDao
- - roles: AdminRoleDao
- - rbac: RbacUseCase
+ - accounts: AdminAccountRepository
+ - roles: AdminRoleRepository
+ - audit: AuditUseCase
  --
  + createAccount(input, actor): long
  - {static} requireConsistent(nodes, roleFunctions): void
  - {static} with(nodes, changed): List
 }
-class "AuthDao" as Dao {
- --
- + lockAccounts(): void
- + nodes(): List<AccountNode>
+interface "AdminAccountRepository" as Repo <<interface>> {
+ + lockAll(): List<AdminAccount>
+ + nodes(): List<Node>
  + createAccount(...): long
- + replaceAccountApplications(id, applications): void
- + replaceAccountDepartments(id, departments): void
+ + replaceApplicationIds(id, applications): void
+ + replaceDepartmentIds(id, departments): void
 }
-class "AdminRoleDao" as Roles {
- --
- + functionsByRole(): Map
+interface "AdminRoleRepository" as Roles <<interface>> {
+ + listed(): List<AdminRole>
 }
 class "StructuredAdminHierarchyProcedures" as Rules <<utility>> {
  --
@@ -44,16 +42,16 @@ class "StructuredAdminHierarchyProcedures" as Rules <<utility>> {
  + {static} replaceNode(accounts, changed): List
  + {static} findViolations(accounts, roleFunctions): List
 }
-interface "RbacUseCase" as Audit <<interface>> {
+interface "AuditUseCase" as Audit <<interface>> {
  + audit(actor, action, target, dept, app, detail): void
 }
 S .up.|> U
-S -right-> Dao : dao
+S -right-> Repo : accounts
 S -left-> Roles : roles
 S .down.> Rules
-S -down-> Audit : rbac
+S -down-> Audit : audit
 note bottom of Rules
 规则接收记录集合；过程本身不持有领域状态。
-Controller 通过 AuthUseCase 调用 createAccount。
+AccountController 通过 AuthUseCase 调用 createAccount。
 end note
 @enduml

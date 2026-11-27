@@ -33,7 +33,7 @@
 | IDEA | `C:\Program Files\JetBrains\IntelliJ IDEA 2024.2.1`；图形启动未实测 |
 | Shell | PowerShell 7；优先 rg 搜索。PowerShell 别名会遮蔽同名函数（例如 `Del`），临时脚本的函数名要避开内置别名 |
 
-后端包 `com.melonhub.rbac`，根包只保留 `RbacApplication`（启用定时任务）。PR #8 后入口统一依赖 `service.port` 的 10 个 `*UseCase`；启动时以 `melonhub.backend-strategy=structured|ddd` 选择 `service.structured.Structured*Service` 或 `service.ddd.application.Ddd*Service`。DDD 领域模型与端口位于 `service.ddd.domain`，适配器位于 `service.ddd.infrastructure`。下文历史简称 `RbacService`、`AuthService` 等指对应职责，并非根 service 包仍有这些旧类；结构化树规则为 `StructuredAdminHierarchyProcedures`，DDD 为 `AdminHierarchy`。类图与源码对应见 `doc/后端UML与代码导读.md`。
+后端包 `com.melonhub.rbac`，根包只保留 `RbacApplication`（启用定时任务），采用三层按业务模块分包与单模块双策略架构：入口层 `api/<biz>` 统一依赖 `service/port/<biz>` 的 13 个 `*UseCase`；启动时以 `melonhub.backend-strategy=structured|ddd` 排他装配 `service/structured/<biz>/Structured*Service` 或 `service/ddd/application/<biz>/Ddd*Service`。DDD 纯 Java 领域模型与端口位于 `service/ddd/domain/{model,value,repository}`，共享持久化与平台适配器统一位于 `infrastructure/`（已移除旧 `*Dao` 中间层，全面采用 Spring Data JPA 仓储与自定义 `RepositoryCustom/Impl`）。下文历史简称 `RbacService`、`AuthService`、`ContextDao` 等指对应职责；结构化树规则为 `service.structured.admin.StructuredAdminHierarchyProcedures`，DDD 为 `service.ddd.domain.model.AdminHierarchy`。类图与源码对应见 `doc/后端UML与代码导读.md`。
 
 老师课程系统的实际运行包已只读核对，当前经 `/auth/me` 获取权限；未发现 `resetCourseToApplication`、`setClassTeachers`、`listUsers` 或 `/auth/api-permissions` 调用，不因 OpenAPI 中出现 operationId 就增加映射。版本证据和静态核对限制见 `doc/课程权限接入核对.md`。
 
@@ -41,18 +41,18 @@
 
 | 包 | 文件与职责 |
 | --- | --- |
-| controller | `AuthController` 健康、管理员登录、改密、两步验证和 me；`AdminController` 控制台基础配置与治理入口；`AdminRoleController` 管理员角色；`GovernanceController`（`/api/admin`）审批、复核、Webhook、清单、用户导入、权限反查、即将到期、软件限额、搜索、系统状态、审计链校验；`AccountController` 管理员账号；`IdentityController` 统一身份登录、退出、当前用户、权限与组织查询；`IdentityAdminController` 统一身份用户凭据导入；`BusinessController` 业务 API（含角色申请与只读授权查询） |
-| service | `RbacService` 配置与规则，`ContextService` 上下文与校验，`AuthService` 管理员、TOTP 与 API Key 认证，`AdminRoleService` 管理员角色，`AdminTree` 管理员层级规则，`GovernanceService` 审批/复核/导入/清单/反查，`WebhookService` 事件外盒与投递，`AuditSealService` 审计哈希链封存与校验，`ConsoleService` 搜索与状态看板，`MaintenanceService` 定时清理与分配到期 |
-| dao | `RbacDao`、`ContextDao`、`AuthDao`、`AdminRoleDao`、`GovernanceDao`、`IdentityDao`、`WebhookDao`、`AuditDao`：JPA（`entity` 实体、`repository` Spring Data 仓库、`Jpql` 条件拼装与结果行）；`Visibility` 负责可见范围，应用代码中不使用 JdbcTemplate 与原生 SQL。DAO 方法签名与返回结构（Map 的键、`java.sql.Timestamp` 时间）保持迁移前的样子，由 `R31_ApiContractIntegrationTest` 核对；写操作在方法返回前 flush，批量 JPQL 执行后清空持久化上下文；做决定的读取用 JPQL 投影；加锁读取先清空持久化上下文再带 `LockModeType` 查询，取到最新提交的行；带条件的更新（认领、口令步、密码替换等）保持原条件写成 JPQL；`created_at` 等由数据库生成（`@Generated`）；需要时间运算的阈值取应用服务器时钟，比较当前时间用 JPQL `current_timestamp` |
-| cache | `PermissionCache`：Redis 缓存、代标记失效协议、熔断与纪元恢复 |
-| dto | `Requests`：输入类型与校验 |
-| security | `ApiGuard` 统一鉴权/限流/请求编号/安全头，`GlobalRateLimiter` Redis 固定窗口跨实例限流（失败回退 `RateLimiter`），`ApplicationRateLimits` 软件限额（实例缓存 30 秒），`Totp`，`AdminAccess`/`AdminPrincipal` 管理员权限，`ApplicationCaller`，`RateLimiter`，`ClientAddress`，`Credentials` |
-| exception | `ApiException`、`ApiErrors`：结构化错误（含 requestId） |
-| config | `CloudDatabaseConfiguration`（保留历史类名）、`RedisConfiguration`、`DemoData` |
+| `api/<biz>` | 按业务模块分包的 17 个控制器（`admin`：`AuthController`/`AccountController`/`AdminRoleController`；`organization`：`DepartmentController`/`UserController`/`OrganizationBusinessController`；`application`：`ApplicationController`；`domainrbac`：`DomainRbacAdminController`/`DomainRbacBusinessController`；`context`：`ContextBusinessController`；`governance`：`GovernanceAdminController`/`GovernanceBusinessController`；`webhook`：`WebhookController`；`audit`：`AuditController`；`console`：`ConsoleController`；`identity`：`IdentityController`/`IdentityAdminController`），每个子包独立维护 `dto/`、`vo/` 与 `*VoMapper`；`api/shared/` 含通用 DTO/VO、`ApiErrors` 与 `ApiTimestampSerializer` |
+| `service/port/<biz>` | 13 个用例端口（`OrganizationUseCase`、`ApplicationUseCase`、`DomainRbacUseCase`、`ContextUseCase`、`AuthUseCase`、`AdminRoleUseCase`、`GovernanceUseCase`、`WebhookUseCase`、`AuditUseCase`、`AuditSealUseCase`、`ConsoleUseCase`、`MaintenanceUseCase`、`IdentityUseCase`）及强类型 Command/Result、`ApiException`、`AdminFunction`/`AdminPrincipal`/`ApplicationCaller`/`Visibility` |
+| `service/structured/<biz>` | 13 个结构化事务脚本服务（`Structured*Service`）与无状态树规则工具 `StructuredAdminHierarchyProcedures`，直接组合 `infrastructure.persistence.repository` 与缓存/网关 |
+| `service/ddd/{domain,application}` | 纯 Java 领域层（`model/`、`value/`、`repository/` 11 个纯领域端口，严禁依赖 Spring/JPA/api）+ 13 个按业务分包的 `Ddd*Service` 与异常边界 `DddBoundary` |
+| `infrastructure/persistence` | `entity/`（JPA 实体，每表一个）、`repository/`（Spring Data JPA 仓储 + `*RepositoryCustom`/`*RepositoryImpl` + `JpaQuery`，应用代码中不使用 `JdbcTemplate` 与原生 SQL）与 `gateway/`（9 个 `Jpa*Adapter` 领域仓储适配器）。写操作方法返回前 flush，批量 JPQL 后清空持久化上下文，加锁读取先清空持久化上下文再带 `LockModeType` 查询；`R31_ApiContractIntegrationTest`（Structured 与 DDD 双策略）守卫 55 个核心接口 JSON 契约 |
+| `infrastructure/cache` | `PermissionCache`：Redis 缓存、代标记失效协议、熔断与纪元恢复 |
+| `infrastructure/security` | `ApiGuard` 统一鉴权/限流/请求编号/脱敏日志/安全头，`AdminFunctionGuard`/`RequiresFunction`，`GlobalRateLimiter`（失败回退 `RateLimiter`），`ApplicationRateLimits`（30 秒缓存），`AdminAccess`/`ApplicationAccess`，`Totp`，`ClientAddress`，`Credentials` |
+| `infrastructure/{config,gateway,identity}` | `CloudDatabaseConfiguration`、`RedisConfiguration`、`WebConfiguration`、`IdentityConfiguration`、`DemoData`；`SpringPlatformGatewaysAdapter`；`IdentityTokenService`（HS256 JWT） |
 
-Flyway 迁移为 V1–V17。V6、V7 保留旧版结构演进，V8 恢复部门 × 软件隔离，V9、V10 管理员功能与管理树，V11–V13 统一身份凭据与课程审计，V14 管理员数字主键，V15、V16 补齐隔离域复合外键。已应用的迁移保持原样，新增结构变更使用新版本。
+Flyway 迁移为 V1–V17。V6、V7 保留旧版结构演进，V8 恢复部门 × 软件隔离，V9、V10 管理员功能与管理树，V11–V13 统一身份凭据与课程审计，V14 管理员数字主键，V15、V16 补齐隔离域复合外键，V17 补充同域角色继承。已应用的迁移保持原样，新增结构变更使用新版本。
 
-Controller、Service 不直接使用 EntityManager 或仓库查询，持久化留在 DAO；新代码不写原生 SQL。不新增无意义抽象。
+Controller 不直接访问仓储或实体；DDD 应用服务不直接访问持久化仓储与缓存，统一经领域端口与 `infrastructure/persistence/gateway` 适配器；应用代码不写原生 SQL。不新增无意义抽象。
 
 前端 `frontend/src`：`main.ts` 路由与权限守卫（`superOnly` 页面仅超级管理员；`domain` 标记的页面显示授权域选择），`App.vue` 布局（侧栏、面包屑、全局搜索、授权域选择、健康徽标、主题切换、账号菜单含两步验证与修改密码；手机上侧栏改为左侧抽屉、授权域移到顶栏下方整行、全局搜索收成图标），`store.ts` 身份与授权域，`api.ts` 请求与会话（token 在 sessionStorage），`theme.ts` 明暗主题与 antd 主题令牌（默认跟随系统，选择存 localStorage `melonhub-theme`，颜色需与 `style.css` 变量同步），`responsive.ts` 手机断点（≤768px，与 `style.css` 的媒体查询同步）：`isPhone`，以及给表格单元格写 `data-label`（列标题）和 `data-empty`（只有“—”或空）供手机卡片布局使用，“操作”列按标题识别，`composables.ts` 带请求序号的分页/列表（丢弃过时响应），`labels.ts` 中文标签，`types.ts` 类型。`pages/` 15 个页面：Overview、Departments、Users（含批量导入）、Applications（API Key/Webhook 抽屉，“更多”中限流）、Roles（“清单与复制”下拉：导出本部门清单/导出全部部门清单/导入清单/从其他部门复制）、Permissions（使用者反查）、Assignments（逐角色到期、统一有效天数、即将到期标签）、Approvals、Reviews、Simulate、Audit（校验链条）、Status、Accounts、AdminRoles、Integration。`components/`：DomainPicker、DomainEmpty、GlobalSearch（Ctrl/⌘+K）、ThemeToggle、PageHead、EmptyState、ReadonlyHint、LoginView（MFA 口令步骤）、MfaModal、PasswordModal、KeysDrawer、WebhooksDrawer、ReviewDrawer、PermissionHoldersDrawer、UserAccessDrawer、RoleMembersDrawer、UserPicker、SecretModal。样式在 `style.css`，覆盖 antd 默认样式时要提高选择器优先级（如 `.shell .ant-layout-header.header`），深色模式需同时检查。
 

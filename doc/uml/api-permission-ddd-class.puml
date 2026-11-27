@@ -14,13 +14,13 @@ skinparam sequenceMessageAlign left
 title API 权限查询 · ddd 类图（相关成员）
 left to right direction
 interface "IdentityUseCase" as U <<interface>> {
- + checkApiPermission(authorization, operationId): Map
+ + checkApiPermission(authorization, operationId): IdentityApiPermissionCheckResult
 }
 class "DddIdentityService" as S {
  - repository: IdentityRepositoryPort
  - tokens: IdentityTokenGateway
  --
- + checkApiPermission(authorization, operationId): Map
+ + checkApiPermission(authorization, operationId): IdentityApiPermissionCheckResult
  - authenticatedUser(authorization): IdentityUser
 }
 interface "IdentityRepositoryPort" as R <<interface>> {
@@ -29,13 +29,18 @@ interface "IdentityRepositoryPort" as R <<interface>> {
  + permissions(userId, system): List
 }
 class "JpaIdentityRepositoryAdapter" as A {
- - dao: IdentityDao
+ - sessions: IdentitySessionRepository
+ - users: UserRepository
+ - userRoles: UserRoleRepository
+ - roleInheritances: RoleInheritanceRepository
+ - rolePermissions: RolePermissionRepository
  --
  + permissions(userId, system): List
 }
-class "IdentityDao" as DAO {
- --
- + permissions(userId, system): List
+interface "JPA Repositories" as JPA <<interface>> {
+ + hasActiveSession(hash, now): boolean
+ + findActiveIdentityUserByExternalId(externalId): Optional
+ + findActivePermissionCodesByRoleIds(roleIds): List
 }
 class "CoursePermissionCatalog" as Catalog <<utility>> {
  --
@@ -50,12 +55,12 @@ class "IdentityAccountAggregate" as Model <<domain model>> {
 S .up.|> U
 S -right-> R : repository
 A .up.|> R
-A -right-> DAO : dao
+A -right-> JPA : repositories
 Catalog .[hidden]right. Model
 S .down.> Catalog
 S .down.> Model
 note left of S
-Controller 依赖 IdentityUseCase；
+IdentityController 依赖 IdentityUseCase；
 令牌、加密与异常边界见时序图。
 本图只展开授权判断与持久化依赖。
 end note

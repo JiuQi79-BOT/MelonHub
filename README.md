@@ -83,17 +83,17 @@ Invoke-RestMethod http://127.0.0.1:8080/api/health
 
 | 路径 | 职责 |
 | --- | --- |
-| `backend/.../controller` | HTTP 路由：控制台、授权治理、管理员账号、登录与健康、业务 API |
-| `backend/.../service` | RBAC1 角色层级、事务、上下文与校验、认证与两步验证、授权治理、Webhook、审计哈希链、定时清理 |
-| `backend/.../dao`、`entity`、`repository` | JPA 实体、查询、持久化与数据库锁 |
-| `backend/.../cache` | Redis 权限缓存与失效协议 |
-| `backend/.../security` | 统一鉴权、全局与实例内限流、TOTP、管理员权限、凭据生成与哈希 |
-| `backend/.../dto`、`exception`、`config` | 请求校验、统一错误、数据库目标保护与 Redis 配置 |
-| `backend/src/main/resources/db/migration` | Flyway 迁移 V1–V17，包含旧库兼容、管理员、统一身份、管理员数字主键和隔离域复合外键迁移 |
+| `backend/.../api` | 按业务模块分包的 17 个 HTTP 控制器、DTO/VO/Mapper 与统一异常处理 `api/shared/error/ApiErrors` |
+| `backend/.../service` | `service/port`（13 个用例端口与 Command/Result）、`service/structured`（13 个结构化事务脚本服务）与 `service/ddd`（纯领域模型 + 13 个 DDD 应用服务） |
+| `backend/.../infrastructure/persistence` | `entity`（JPA 实体）、`repository`（Spring Data JPA 仓储与自定义 JPQL/悲观锁）与 `gateway`（9 个 `Jpa*Adapter` 领域仓储适配器） |
+| `backend/.../infrastructure/cache` | Redis 权限缓存与代标记失效协议 |
+| `backend/.../infrastructure/security` | 统一鉴权、功能注解拦截、全局与实例内限流、TOTP、凭据生成与哈希 |
+| `backend/.../infrastructure/{config,gateway,identity}` | 数据库目标防误连守卫、Redis/Web/Identity 配置、平台网关适配器与统一身份 JWT 工具 |
+| `backend/src/main/resources/db/migration` | Flyway 迁移 V1–V17，包含旧库兼容、管理员、统一身份、管理员数字主键、隔离域复合外键与 RBAC1 角色继承 |
 | `frontend/src` | 控制台页面、共享组件、主题、状态与请求封装 |
 | `sdk/java` | Java 业务侧 SDK（独立 Maven 工程） |
 | `scripts` | 一键启停、Redis 容器管理、测试与云端检查 |
-| `doc` | 中文文档 |
+| `doc` | 中文文档与 UML 图源 |
 
 `.local`、`output`、`target`、`dist`、`node_modules` 为忽略的工具环境、验证产物或构建产物。
 

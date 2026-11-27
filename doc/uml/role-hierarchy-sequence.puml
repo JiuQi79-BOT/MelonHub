@@ -13,46 +13,46 @@ skinparam sequenceGroupBackgroundColor transparent
 skinparam sequenceMessageAlign left
 hide footbox
 title RBAC1 设置角色继承 · structured
-participant "obj: AdminController" as C
-participant "service: StructuredRbacService" as S
-participant "dao: RbacDao" as D
+participant "obj: DomainRbacAdminController" as C
+participant "service: StructuredDomainRbacService" as S
+participant "roles: RoleRepository" as RR
+participant "roleInheritances: RoleInheritanceRepository" as RIR
 participant "cache: PermissionCache" as Cache
 participant "webhooks: WebhookUseCase" as W
 autonumber
 activate C
 C -> S: roleParents(role, dept, app, parentIds, actor)
 activate S
-S -> D: scoped(role, dept, app)
-activate D
-deactivate D
-S -> D: scopedCount(parentIds, dept, app)
-activate D
-deactivate D
-loop each parent role
- S -> D: inheritedRoleIds(parent, dept, app)
- activate D
- deactivate D
-end
-alt 自身、跨域或循环继承
- S --> C: ApiException (403/409)
-else 合法
- S -> D: lockRole(role)
- activate D
- deactivate D
- S -> D: replaceRoleParents(role, dept, app, parentIds)
- activate D
- deactivate D
- S -> Cache: touchDomain(dept, app)
- activate Cache
- deactivate Cache
- S -> W: emit(role.inheritance.changed)
- activate W
- deactivate W
- S --> C: 200 {}
+S -> RR: lockIds = findIdsByDomain(dept, app) ∪ {role} ∪ parentIds（写事务外）
+activate RR
+deactivate RR
+group 写事务（TransactionTemplate）
+ S -> RR: domainRoleIds = lockDomainRolesByIds(dept, app, lockIds)
+ activate RR
+ deactivate RR
+ note right of S: 首条 SQL 仅按 PRIMARY(id) 升序加排他锁，不提前开启 ReadView
+ S -> RIR: edges = findEdgesByDomain(dept, app)
+ activate RIR
+ deactivate RIR
+ alt 自身、跨域或循环继承
+  S --> C: ApiException (403/409)
+ else 合法
+  S -> RIR: replaceParents(role, dept, app, existing, parentIds)
+  activate RIR
+  deactivate RIR
+  S -> Cache: touchDomain(dept, app)
+  activate Cache
+  deactivate Cache
+  S -> W: emit(role.inheritance.changed)
+  activate W
+  deactivate W
+  S --> C: 200 OkVO
+ end
 end
 deactivate S
 deactivate C
 legend bottom
-权限计算在后续上下文校验中沿父角色链展开。
+写事务首条 SQL 为 PRIMARY(id) 升序排他锁，随后无锁 findEdgesByDomain 在持锁后才建立 ReadView，
+无 role_inheritances 共享锁且按精确联合主键差集删旧插新，彻底避免同域与跨域死锁。
 endlegend
 @enduml
