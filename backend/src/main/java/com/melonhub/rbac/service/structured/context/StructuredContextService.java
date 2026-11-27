@@ -12,7 +12,6 @@ import com.melonhub.rbac.infrastructure.persistence.repository.RoleInheritanceRe
 import com.melonhub.rbac.infrastructure.persistence.repository.RolePermissionRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.RoleRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.UserRepository;
-import com.melonhub.rbac.infrastructure.persistence.repository.UserRepositoryCustom;
 import com.melonhub.rbac.infrastructure.persistence.repository.UserRoleRepository;
 import com.melonhub.rbac.infrastructure.security.Credentials;
 import com.melonhub.rbac.service.port.audit.AuditUseCase;
@@ -107,7 +106,7 @@ public class StructuredContextService implements ContextUseCase {
         long departmentId = input.getDepartmentId();
         String externalId = input.getExternalId();
         domainRbac.domain(departmentId, app);
-        UserRepositoryCustom.LockedUserRow user = users.lockRowByExternalId(externalId)
+        UserRepository.LockedUserRow user = users.lockRowByExternalId(externalId)
                 .orElseThrow(() -> ApiException.missing("用户不存在"));
         long userId = user.id();
         if (!user.enabled()) {
@@ -142,8 +141,8 @@ public class StructuredContextService implements ContextUseCase {
         String token = Credentials.token();
         String hash = Credentials.hash(token);
         Instant expires = Instant.now().truncatedTo(ChronoUnit.SECONDS).plusSeconds(CONTEXT_SECONDS);
-        contexts.persistContext(hash, userId, departmentId, app, version, expires);
-        contextRoles.activateRoles(hash, active);
+        contexts.persistContext(hash, users.getReferenceById(userId), departmentId, app, version, expires);
+        contextRoles.activateRoles(hash, contexts.getReferenceById(hash), active, roles::getReferenceById);
         audit.audit(actor, "CONTEXT_ISSUED", externalId, departmentId, app,
                 "激活角色 " + active.size() + " 个" + (switched ? "，切换当前部门" : ""));
         Meta meta = new Meta(String.valueOf(userId), String.valueOf(departmentId), String.valueOf(app),

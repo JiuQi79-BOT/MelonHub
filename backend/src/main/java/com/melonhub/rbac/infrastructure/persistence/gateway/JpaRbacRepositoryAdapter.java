@@ -10,7 +10,6 @@ import com.melonhub.rbac.infrastructure.persistence.repository.AdminAccountRepos
 import com.melonhub.rbac.infrastructure.persistence.repository.ApplicationKeyRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.ApplicationRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.AuditEventRepository;
-import com.melonhub.rbac.infrastructure.persistence.repository.AuditEventRepositoryCustom;
 import com.melonhub.rbac.infrastructure.persistence.repository.AuditSealRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.DepartmentRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.MembershipRepository;
@@ -20,7 +19,6 @@ import com.melonhub.rbac.infrastructure.persistence.repository.RoleInheritanceRe
 import com.melonhub.rbac.infrastructure.persistence.repository.RolePermissionRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.RoleRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.UserRepository;
-import com.melonhub.rbac.infrastructure.persistence.repository.UserRepositoryCustom;
 import com.melonhub.rbac.infrastructure.persistence.repository.UserRoleRepository;
 import com.melonhub.rbac.service.port.security.Visibility;
 import com.melonhub.rbac.service.ddd.domain.model.DomainAuthorizationAggregate;
@@ -264,7 +262,7 @@ public class JpaRbacRepositoryAdapter implements RbacRepositoryPort {
     @Override public boolean isMember(long userId, long departmentId) { return memberships.existsByUserIdAndDepartmentId(userId, departmentId); }
     @Override public boolean isLockedMember(long userId, long departmentId) { return memberships.existsLocked(userId, departmentId); }
     @Override public long lockedMembersCount(Collection<Long> userIds, long departmentId) { return memberships.countLocked(userIds, departmentId); }
-    @Override public void addMembership(long userId, long departmentId) { memberships.addIfAbsent(userId, departmentId); }
+    @Override public void addMembership(long userId, long departmentId) { memberships.addIfAbsent(userId, departmentId, users::getReferenceById, departments::getReferenceById); }
     @Override public void removeMembership(long userId, long departmentId) { memberships.deleteByUserIdAndDepartmentId(userId, departmentId); }
     @Override public void clearInactiveDepartment(long userId) { users.clearInactiveDepartment(userId); }
 
@@ -373,7 +371,7 @@ public class JpaRbacRepositoryAdapter implements RbacRepositoryPort {
 
     @Override public List<Long> rolePermissionIds(long roleId) { return rolePermissions.findPermissionIdsByRoleId(roleId); }
     @Override public List<Long> lockedRolePermissionIds(long roleId) { return rolePermissions.findLockedPermissionIds(roleId); }
-    @Override public void replaceRolePermissions(long roleId, long departmentId, long applicationId, Collection<Long> permissionIds) { rolePermissions.replaceRolePermissions(roleId, departmentId, applicationId, permissionIds); }
+    @Override public void replaceRolePermissions(long roleId, long departmentId, long applicationId, Collection<Long> permissionIds) { rolePermissions.replaceRolePermissions(roleId, departmentId, applicationId, permissionIds, roles::getReferenceById, permissions::getReferenceById); }
     @Override public List<Long> domainRoleIds(long departmentId, long applicationId) { return roles.findIdsByDomain(departmentId, applicationId); }
     @Override
     public List<RoleInheritanceEdge> domainRoleInheritanceEdges(long departmentId, long applicationId) {
@@ -383,7 +381,7 @@ public class JpaRbacRepositoryAdapter implements RbacRepositoryPort {
     @Override
     public void replaceRoleParents(long roleId, long departmentId, long applicationId,
                                    Collection<Long> existingParentIds, Collection<Long> parentIds) {
-        roleInheritances.replaceParents(roleId, departmentId, applicationId, existingParentIds, parentIds);
+        roleInheritances.replaceParents(roleId, departmentId, applicationId, existingParentIds, parentIds, roles::getReferenceById);
     }
     @Override public boolean lockRole(long roleId) { return roles.lockById(roleId); }
     @Override public Set<Long> lockDomainRolesByIds(long departmentId, long applicationId, Collection<Long> roleIds) { return roles.lockDomainRolesByIds(departmentId, applicationId, roleIds); }
@@ -396,7 +394,7 @@ public class JpaRbacRepositoryAdapter implements RbacRepositoryPort {
 
     @Override public List<Long> roleMemberIds(long roleId) { return userRoles.findRoleMemberIds(roleId); }
     @Override public List<Long> lockedRoleMemberIds(long roleId) { return userRoles.findLockedRoleMemberIds(roleId); }
-    @Override public void addRoleMembers(long roleId, long departmentId, long applicationId, Collection<Long> userIds, String actor) { if (!userIds.isEmpty()) userRoles.addRoleMembers(roleId, departmentId, applicationId, userIds, actor); }
+    @Override public void addRoleMembers(long roleId, long departmentId, long applicationId, Collection<Long> userIds, String actor) { if (!userIds.isEmpty()) userRoles.addRoleMembers(roleId, departmentId, applicationId, userIds, actor, users::getReferenceById, roles::getReferenceById); }
     @Override public void removeRoleMembers(long roleId, Collection<Long> userIds) { if (!userIds.isEmpty()) userRoles.deleteRoleMembers(roleId, userIds); }
 
     @Override
@@ -424,7 +422,7 @@ public class JpaRbacRepositoryAdapter implements RbacRepositoryPort {
                 .map(p -> new DomainRolePair(p.getUserId(), p.getRoleId(), p.getExpiresAt())).toList();
     }
 
-    @Override public void grantRole(long userId, long departmentId, long applicationId, long roleId, Instant expiresAt, String actor) { userRoles.grantRole(userId, departmentId, applicationId, roleId, expiresAt, actor); }
+    @Override public void grantRole(long userId, long departmentId, long applicationId, long roleId, Instant expiresAt, String actor) { userRoles.grantRole(userId, departmentId, applicationId, roleId, expiresAt, actor, users::getReferenceById, roles::getReferenceById); }
     @Override public void removeUserRoles(long userId, Collection<Long> roleIds) { if (!roleIds.isEmpty()) userRoles.deleteByUserIdAndRoleIdIn(userId, roleIds); }
 
     @Override
@@ -451,7 +449,7 @@ public class JpaRbacRepositoryAdapter implements RbacRepositoryPort {
 
     @Override
     public PageSlice<AuditEventRecord> auditEvents(AuditQuery query, int page, int size) {
-        var filter = new AuditEventRepositoryCustom.AuditFilter(query.departmentId(), query.applicationId(),
+        var filter = new AuditEventRepository.AuditFilter(query.departmentId(), query.applicationId(),
                 toVisibility(query.visibility()), query.actor(), query.action(), query.keyword(), query.from(), query.to());
         var p = auditEvents.findAuditPage(filter, page, size);
         return new PageSlice<>(p.getContent().stream()
@@ -519,7 +517,7 @@ public class JpaRbacRepositoryAdapter implements RbacRepositoryPort {
 
     @Override public int deleteLapsedAssignment(long userId, long roleId) { return userRoles.deleteLapsedAssignment(userId, roleId); }
 
-    private static UserRecord toUserRecord(UserRepositoryCustom.UserRow u) {
+    private static UserRecord toUserRecord(UserRepository.UserRow u) {
         return new UserRecord(u.id(), u.name(), u.externalId(), u.email(), u.enabled(),
                 u.activeDepartmentId(), u.contextVersion(), u.createdAt());
     }

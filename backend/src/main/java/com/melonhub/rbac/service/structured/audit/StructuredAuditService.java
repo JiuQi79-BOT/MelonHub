@@ -1,7 +1,6 @@
 package com.melonhub.rbac.service.structured.audit;
 
 import com.melonhub.rbac.infrastructure.persistence.repository.AuditEventRepository;
-import com.melonhub.rbac.infrastructure.persistence.repository.AuditEventRepositoryCustom;
 import com.melonhub.rbac.infrastructure.security.ClientAddress;
 import com.melonhub.rbac.service.port.audit.AuditModels.AuditEventResult;
 import com.melonhub.rbac.service.port.audit.AuditUseCase;
@@ -38,9 +37,9 @@ public class StructuredAuditService implements AuditUseCase {
                                                String keyword, LocalDate from, LocalDate to, int page, int size) {
         Instant start = from == null ? null : from.atStartOfDay(PageResult.ZONE).toInstant();
         Instant end = to == null ? null : to.plusDays(1).atStartOfDay(PageResult.ZONE).toInstant();
-        AuditEventRepositoryCustom.AuditFilter filter =
-                new AuditEventRepositoryCustom.AuditFilter(dept, app, visible, actor, action, keyword, start, end);
-        Page<AuditEventRepositoryCustom.AuditEventRow> p = auditEvents.findAuditPage(filter, page, size);
+        AuditEventRepository.AuditFilter filter =
+                new AuditEventRepository.AuditFilter(dept, app, visible, actor, action, keyword, start, end);
+        Page<AuditEventRepository.AuditEventRow> p = auditEvents.findAuditPage(filter, page, size);
         List<AuditEventResult> items = p.getContent().stream()
                 .map(e -> new AuditEventResult(
                         e.id(), e.actor(), e.action(), e.target(), e.detail(), e.sourceIp(), e.createdAt(),

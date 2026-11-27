@@ -72,10 +72,13 @@ public class JpaPermissionContextRepositoryAdapter implements PermissionContextR
 
     @Override
     public void createContext(String tokenHash, long userId, long departmentId, long applicationId, long version, Instant expiresAt) {
-        contexts.persistContext(tokenHash, userId, departmentId, applicationId, version, expiresAt);
+        contexts.persistContext(tokenHash, users.getReferenceById(userId), departmentId, applicationId, version, expiresAt);
     }
 
-    @Override public void activateRoles(String tokenHash, Collection<Long> roleIds) { contextRoles.activateRoles(tokenHash, roleIds); }
+    @Override
+    public void activateRoles(String tokenHash, Collection<Long> roleIds) {
+        contextRoles.activateRoles(tokenHash, contexts.getReferenceById(tokenHash), roleIds, roles::getReferenceById);
+    }
 
     @Override
     public Optional<StoredContextState> contextState(String tokenHash) {

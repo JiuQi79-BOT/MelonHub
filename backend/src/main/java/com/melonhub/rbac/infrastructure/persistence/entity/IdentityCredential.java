@@ -6,16 +6,20 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import org.hibernate.annotations.Generated;
+import org.springframework.data.domain.Persistable;
 
 /**
  * 统一身份登录凭据，密码只保存为 BCrypt 摘要。
  */
 @Entity
 @Table(name = "identity_credentials")
-public class IdentityCredential {
+public class IdentityCredential implements Persistable<Long> {
 
     @Id
     @Column(name = "user_id")
@@ -38,6 +42,9 @@ public class IdentityCredential {
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
+    @Transient
+    private boolean isNew = true;
+
     public IdentityCredential() {
     }
 
@@ -54,6 +61,22 @@ public class IdentityCredential {
         this.username = username;
         this.passwordHash = passwordHash;
         this.enabled = enabled;
+    }
+
+    @Override
+    public Long getId() {
+        return userId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        this.isNew = false;
     }
 
     public Long getUserId() {

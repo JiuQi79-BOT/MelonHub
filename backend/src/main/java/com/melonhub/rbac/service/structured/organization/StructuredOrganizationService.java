@@ -16,7 +16,6 @@ import com.melonhub.rbac.infrastructure.persistence.repository.RoleInheritanceRe
 import com.melonhub.rbac.infrastructure.persistence.repository.RolePermissionRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.RoleRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.UserRepository;
-import com.melonhub.rbac.infrastructure.persistence.repository.UserRepositoryCustom;
 import com.melonhub.rbac.infrastructure.persistence.repository.UserRoleRepository;
 import com.melonhub.rbac.service.port.audit.AuditUseCase;
 import com.melonhub.rbac.service.port.common.PageResult;
@@ -164,8 +163,8 @@ public class StructuredOrganizationService implements OrganizationUseCase {
     @Transactional(readOnly = true)
     public PageResult<UserResult> users(String keyword, Long department, Boolean enabled,
                                         Collection<Long> visibleDepartments, int page, int size) {
-        Page<UserRepositoryCustom.UserRow> result = users.findPage(keyword, department, enabled, visibleDepartments, page, size);
-        List<Long> userIds = result.getContent().stream().map(UserRepositoryCustom.UserRow::id).toList();
+        Page<UserRepository.UserRow> result = users.findPage(keyword, department, enabled, visibleDepartments, page, size);
+        List<Long> userIds = result.getContent().stream().map(UserRepository.UserRow::id).toList();
         Map<Long, List<Long>> deptsByUser = new HashMap<>();
         if (!userIds.isEmpty()) {
             for (MembershipRepository.MembershipPair pair : memberships.findPairsByUserIdIn(userIds)) {
@@ -214,7 +213,7 @@ public class StructuredOrganizationService implements OrganizationUseCase {
             long createdId = users.saveAndFlush(new User().setName(body.name()).setExternalId(body.externalId())
                     .setEmail(email).setEnabled(true)).getId();
             for (long dept : depts) {
-                memberships.addIfAbsent(createdId, dept);
+                memberships.addIfAbsent(createdId, dept, users::getReferenceById, departments::getReferenceById);
             }
             audit.audit(actor, "USER_CREATED", label, null, null, "所属部门 " + depts.size() + " 个");
             return createdId;
@@ -255,7 +254,7 @@ public class StructuredOrganizationService implements OrganizationUseCase {
             memberships.deleteByUserIdAndDepartmentId(id, dept);
         }
         for (long dept : depts) {
-            memberships.addIfAbsent(id, dept);
+            memberships.addIfAbsent(id, dept, users::getReferenceById, departments::getReferenceById);
         }
         users.clearInactiveDepartment(id);
         cache.touchUser(id);

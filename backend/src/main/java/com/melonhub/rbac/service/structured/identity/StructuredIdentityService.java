@@ -2,7 +2,6 @@ package com.melonhub.rbac.service.structured.identity;
 
 import com.melonhub.rbac.infrastructure.identity.IdentityTokenService;
 import com.melonhub.rbac.infrastructure.persistence.repository.AuditEventRepository;
-import com.melonhub.rbac.infrastructure.persistence.repository.AuditEventRepositoryCustom;
 import com.melonhub.rbac.infrastructure.persistence.repository.DepartmentRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.IdentityCredentialRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.IdentitySessionRepository;
@@ -145,7 +144,7 @@ public class StructuredIdentityService implements IdentityUseCase {
         Instant issuedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         String token = tokenService.issue(credential.getUsername(), systems, issuedAt);
         IdentityTokenService.Claims claims = tokenService.verify(token, COURSE_SYSTEM);
-        if (!credentials.createSessionIfVerified(Credentials.hash(token), credential.getUserId(),
+        if (!credentials.createSessionIfVerified(users, sessions, Credentials.hash(token), credential.getUserId(),
                 credential.getUsername(), credential.getPasswordHash(), COURSE_SYSTEM, claims.expiresAt())) {
             throw ApiException.unauthorized("UNAUTHORIZED", "账号或密码错误。");
         }
@@ -161,16 +160,16 @@ public class StructuredIdentityService implements IdentityUseCase {
         if (allowedDepts.isEmpty()) {
             throw ApiException.forbidden("你没有查看课程日志的权限。");
         }
-        Page<AuditEventRepositoryCustom.CourseAuditRow> events = auditEvents.findCourseAuditPage(COURSE_SYSTEM, allowedDepts,
+        Page<AuditEventRepository.CourseAuditRow> events = auditEvents.findCourseAuditPage(COURSE_SYSTEM, allowedDepts,
                 actor, actorId, target, from == null ? null : from.toInstant(), to == null ? null : to.toInstant(), page, pageSize);
-        List<Long> actorIds = events.getContent().stream().map(AuditEventRepositoryCustom.CourseAuditRow::actorId)
+        List<Long> actorIds = events.getContent().stream().map(AuditEventRepository.CourseAuditRow::actorId)
                 .filter(Objects::nonNull).distinct().toList();
         Map<Long, List<String>> actorRoles = auditActorRoles(actorIds, COURSE_SYSTEM, allowedDepts);
         List<CourseAuditEventResult> items = events.getContent().stream().map(row -> auditItem(row, actorRoles)).toList();
         return new IdentityPageResult<>(page, pageSize, events.getTotalElements(), items);
     }
 
-    private static CourseAuditEventResult auditItem(AuditEventRepositoryCustom.CourseAuditRow row, Map<Long, List<String>> roles) {
+    private static CourseAuditEventResult auditItem(AuditEventRepository.CourseAuditRow row, Map<Long, List<String>> roles) {
         Long id = row.actorId();
         CourseAuditActorResult actor = new CourseAuditActorResult(
                 id,

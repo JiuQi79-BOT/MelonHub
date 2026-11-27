@@ -1,6 +1,7 @@
 package com.melonhub.rbac.infrastructure.persistence.repository;
 
 import com.melonhub.rbac.infrastructure.persistence.entity.PermissionContext;
+import com.melonhub.rbac.infrastructure.persistence.entity.User;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
@@ -11,9 +12,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.transaction.annotation.Transactional;
 
-public interface PermissionContextRepository
-        extends JpaRepository<PermissionContext, String>, PermissionContextRepositoryCustom {
-
+public interface PermissionContextRepository extends JpaRepository<PermissionContext, String> {
     interface ContextState {
         long getUserId();
         Long getDepartmentId();
@@ -108,6 +107,18 @@ public interface PermissionContextRepository
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from PermissionContext c where c.departmentId = :departmentId")
     int clearByDepartmentId(long departmentId);
+
+    @Transactional
+    default void persistContext(String hash, User userRef, long departmentId, long applicationId,
+                                long contextVersion, Instant expiresAt) {
+        saveAndFlush(new PermissionContext()
+                .setId(hash)
+                .setUser(userRef)
+                .setDepartmentId(departmentId)
+                .setApplicationId(applicationId)
+                .setContextVersion(contextVersion)
+                .setExpiresAt(expiresAt));
+    }
 
     @Transactional
     default int purgeExpired(int limit) {

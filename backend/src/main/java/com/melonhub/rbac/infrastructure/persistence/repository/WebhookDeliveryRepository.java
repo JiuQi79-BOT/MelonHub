@@ -135,7 +135,7 @@ public interface WebhookDeliveryRepository extends JpaRepository<WebhookDelivery
 
     @Transactional
     default int claim(long id, int attempts) {
-        return claimDelivery(id, attempts, JpaQuery.now().plus(5, ChronoUnit.MINUTES));
+        return claimDelivery(id, attempts, RepositorySupport.now().plus(5, ChronoUnit.MINUTES));
     }
 
     @Transactional
@@ -145,24 +145,24 @@ public interface WebhookDeliveryRepository extends JpaRepository<WebhookDelivery
 
     @Transactional
     default int retry(long id, int attempt, int delayMinutes, Integer status, String error) {
-        return scheduleRetry(id, attempt, JpaQuery.now().plus(delayMinutes, ChronoUnit.MINUTES),
-                status, JpaQuery.truncate(error, 300));
+        return scheduleRetry(id, attempt, RepositorySupport.now().plus(delayMinutes, ChronoUnit.MINUTES),
+                status, RepositorySupport.truncate(error, 300));
     }
 
     @Transactional
     default int fail(long id, int attempt, Integer status, String error) {
-        return markFailed(id, attempt, status, JpaQuery.truncate(error, 300));
+        return markFailed(id, attempt, status, RepositorySupport.truncate(error, 300));
     }
 
     @Transactional
     default int purgeFinished(int days, int limit) {
-        var ids = findPurgeableIds(JpaQuery.now().minus(days, ChronoUnit.DAYS), Limit.of(limit));
+        var ids = findPurgeableIds(RepositorySupport.now().minus(days, ChronoUnit.DAYS), Limit.of(limit));
         return ids.isEmpty() ? 0 : deleteByIdIn(ids);
     }
 
     @Transactional
     default int enqueueMatching(List<Webhook> webhooks, String type, String payload) {
-        Instant now = JpaQuery.now();
+        Instant now = RepositorySupport.now();
         var batch = new ArrayList<WebhookDelivery>();
         for (Webhook webhook : webhooks) {
             var events = Arrays.asList(webhook.getEvents().split(","));
@@ -176,7 +176,7 @@ public interface WebhookDeliveryRepository extends JpaRepository<WebhookDelivery
 
     @Transactional
     default void enqueueTest(Webhook webhookRef, String payload) {
-        saveAndFlush(newDelivery(webhookRef, "webhook.test", payload, JpaQuery.now()));
+        saveAndFlush(newDelivery(webhookRef, "webhook.test", payload, RepositorySupport.now()));
     }
 
     private static WebhookDelivery newDelivery(Webhook webhook, String type, String payload, Instant now) {

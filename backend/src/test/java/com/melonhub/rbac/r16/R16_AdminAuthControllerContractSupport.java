@@ -13,6 +13,7 @@ import com.melonhub.rbac.api.admin.dto.AccountUpdateDTO;
 import com.melonhub.rbac.api.admin.dto.LoginDTO;
 import com.melonhub.rbac.api.admin.dto.PasswordChangeDTO;
 import com.melonhub.rbac.infrastructure.persistence.repository.AdminAccountRepository;
+import com.melonhub.rbac.infrastructure.persistence.repository.AdminSessionRepository;
 import com.melonhub.rbac.infrastructure.security.Credentials;
 import com.melonhub.rbac.service.port.security.AdminPrincipal;
 import com.melonhub.rbac.shared.RealDbControllerSupport;
@@ -55,6 +56,7 @@ abstract class R16_AdminAuthControllerContractSupport extends RealDbControllerSu
     private static final int IDLE_TIMEOUT_EXCEEDED_MINUTES = 31;
 
     @Autowired AdminAccountRepository adminAccountRepository;
+    @Autowired AdminSessionRepository adminSessionRepository;
 
     @Test
     @DisplayName("R16-01 管理员登录成功、未知账号401、连续5次失败锁定403 ACCOUNT_LOCKED、停用账号403 ACCOUNT_DISABLED、非法DTO 400")
@@ -171,10 +173,10 @@ abstract class R16_AdminAuthControllerContractSupport extends RealDbControllerSu
         var cred = adminAccountRepository.credentials(acc.id()).orElseThrow();
         Instant expires = Instant.now().plus(1, ChronoUnit.HOURS);
         assertThat(adminAccountRepository.createSessionIfCredentialsMatch(
-                Credentials.hash(Credentials.token()), acc.id(), cred.getCredentialVersion() + 1,
+                adminSessionRepository, Credentials.hash(Credentials.token()), acc.id(), cred.getCredentialVersion() + 1,
                 cred.getPasswordHash(), cred.getMfaSecret(), expires, "127.0.0.1")).isZero();
         assertThat(adminAccountRepository.createSessionIfCredentialsMatch(
-                Credentials.hash(Credentials.token()), acc.id(), cred.getCredentialVersion(),
+                adminSessionRepository, Credentials.hash(Credentials.token()), acc.id(), cred.getCredentialVersion(),
                 "stale-hash", cred.getMfaSecret(), expires, "127.0.0.1")).isZero();
 
         mvc.perform(delete(PATH_ACCOUNT_BY_ID, acc.id()).header("Authorization", superBearer))
@@ -185,7 +187,7 @@ abstract class R16_AdminAuthControllerContractSupport extends RealDbControllerSu
                                 TEST_ADMIN_PASSWORD, true, null))))
                 .andExpect(status().isOk());
         assertThat(adminAccountRepository.createSessionIfCredentialsMatch(
-                Credentials.hash(Credentials.token()), acc.id(), cred.getCredentialVersion(),
+                adminSessionRepository, Credentials.hash(Credentials.token()), acc.id(), cred.getCredentialVersion(),
                 cred.getPasswordHash(), cred.getMfaSecret(), expires, "127.0.0.1")).isZero();
     }
 }

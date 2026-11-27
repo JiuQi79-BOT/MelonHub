@@ -1,10 +1,17 @@
 package com.melonhub.rbac.infrastructure.persistence.repository;
 
 import com.melonhub.rbac.infrastructure.persistence.entity.AdminAccount;
+import com.melonhub.rbac.infrastructure.persistence.entity.AdminRole;
+import com.melonhub.rbac.infrastructure.persistence.entity.AdminSession;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
  * entity this persistence context loaded earlier. Updates keep the conditions that make concurrent requests safe
  * (password still the one proven, code step still unused) and report how many rows changed.
  */
-public interface AdminAccountRepository extends JpaRepository<AdminAccount, Long>, AdminAccountRepositoryCustom {
+public interface AdminAccountRepository extends JpaRepository<AdminAccount, Long> {
     interface Credentials {
         long getId();
         String getUsername();
@@ -59,6 +66,19 @@ public interface AdminAccountRepository extends JpaRepository<AdminAccount, Long
             from AdminAccount a
             """;
 
+    @Transactional
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select a from AdminAccount a order by a.id")
+    List<AdminAccount> lockAll();
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select a from AdminAccount a where a.id = :id")
+    Optional<AdminAccount> findLockedById(long id);
+
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("select a from AdminAccount a where a.id = :id")
+    Optional<AdminAccount> findReadLockedById(long id);
+
     @Query(CREDENTIALS + "where a.username = :username")
     Optional<Credentials> credentials(String username);
 
@@ -93,6 +113,30 @@ public interface AdminAccountRepository extends JpaRepository<AdminAccount, Long
 
     @Query("select a.mfaPendingSecret from AdminAccount a where a.id = :id")
     List<String> pendingMfaSecret(long id);
+
+    @Transactional
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update AdminAccount a set a.passwordHash = :hash, a.role = :role, a.allApplications = true,
+                   a.allDepartments = true, a.kind = 'MANAGER', a.parent = null, a.enabled = true,
+                   a.failedAttempts = 0, a.lockedUntil = null, a.passwordChangedAt = :now,
+                   a.credentialVersion = a.credentialVersion + 1
+            where a.username = :username""")
+    int resetBootstrapRow(String username, String hash, AdminRole role, Instant now);
+
+    @Transactional
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update AdminAccount a set a.displayName = :displayName, a.role = :role, a.enabled = :enabled,
+                   a.kind = :kind, a.allDepartments = :allDepartments, a.allApplications = :allApplications
+            where a.id = :id""")
+    int updateAccount(long id, String displayName, AdminRole role, boolean enabled, String kind,
+                      boolean allDepartments, boolean allApplications);
+
+    @Transactional
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update AdminAccount a set a.parent = :parent where a.id = :id")
+    int updateParent(long id, AdminAccount parent);
 
     @Transactional
     @Modifying(flushAutomatically = true, clearAutomatically = true)
@@ -165,4 +209,72 @@ public interface AdminAccountRepository extends JpaRepository<AdminAccount, Long
             update AdminAccount a set a.mfaSecret = null, a.mfaPendingSecret = null, a.mfaLastStep = 0
             where a.id = :id and a.mfaSecret = :secret and a.mfaLastStep < :step""")
     int disableMfaWithStep(long id, String secret, long step);
+
+    @Transactional
+    default long createAccount(String username, String displayName, AdminRole role, String passwordHash,
+                               boolean enabled, Long parentId, String kind, boolean allDepartments,
+                               boolean allApplications) {
+        return saveAndFlush(new AdminAccount(username, displayName, role, passwordHash, enabled,
+                parentId == null ? null : getReferenceById(parentId),
+                kind, allDepartments, allApplications, RepositorySupport.now())).getId();
+    }
+
+    @Transactional
+    default void resetBootstrap(String username, String passwordHash, AdminRole superAdminRole) {
+        resetBootstrapRow(username, passwordHash, superAdminRole, RepositorySupport.now());
+    }
+
+    @Transactional
+    default void moveUnder(long id, long parentId) {
+        updateParent(id, getReferenceById(parentId));
+    }
+
+    @Transactional
+    default boolean recordFailure(long id, int maxFailures, int lockMinutes) {
+        AdminAccount account = findLockedById(id).orElse(null);
+        if (account == null) return false;
+        Instant now = RepositorySupport.now();
+        if (account.getFailedAttempts() + 1 >= maxFailures) {
+            account.setLockedUntil(now.plus(lockMinutes, ChronoUnit.MINUTES));
+            account.setFailedAttempts(0);
+        } else {
+            account.setFailedAttempts(account.getFailedAttempts() + 1);
+        }
+        saveAndFlush(account);
+        return account.getLockedUntil() != null && account.getLockedUntil().isAfter(now);
+    }
+
+    @Transactional
+    default int createSessionIfCredentialsMatch(AdminSessionRepository sessions, String tokenHash, long accountId,
+                                                long expectedVersion, String expectedPasswordHash,
+                                                String expectedMfaSecret, Instant expiresAt, String sourceIp) {
+        AdminAccount current = findReadLockedById(accountId).orElse(null);
+        if (current == null || !current.isEnabled()
+                || current.getCredentialVersion() != expectedVersion
+                || !current.getPasswordHash().equals(expectedPasswordHash)
+                || !Objects.equals(current.getMfaSecret(), expectedMfaSecret)) {
+            return 0;
+        }
+        sessions.saveAndFlush(new AdminSession(tokenHash, current, expiresAt, RepositorySupport.now(),
+                sourceIp, current.getCredentialVersion()));
+        return 1;
+    }
+
+    @Transactional
+    default void replaceDepartmentIds(long accountId, Collection<Long> departmentIds) {
+        findById(accountId).ifPresent(account -> {
+            account.getDepartmentIds().clear();
+            account.getDepartmentIds().addAll(departmentIds);
+            saveAndFlush(account);
+        });
+    }
+
+    @Transactional
+    default void replaceApplicationIds(long accountId, Collection<Long> applicationIds) {
+        findById(accountId).ifPresent(account -> {
+            account.getApplicationIds().clear();
+            account.getApplicationIds().addAll(applicationIds);
+            saveAndFlush(account);
+        });
+    }
 }

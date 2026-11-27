@@ -189,7 +189,7 @@ public class StructuredDomainRbacService implements DomainRbacUseCase {
                     .filter(e -> e.getChildRoleId() == role)
                     .map(RoleInheritanceRepository.Edge::getParentRoleId)
                     .toList();
-            roleInheritances.replaceParents(role, dept, app, existingParents, wanted);
+            roleInheritances.replaceParents(role, dept, app, existingParents, wanted, roles::getReferenceById);
             cache.touchDomain(dept, app);
             webhooks.emit(app, "role.inheritance.changed", Map.of("roleId", role, "departmentId", dept));
             audit.audit(actor, "ROLE_INHERITANCE_UPDATED", roleCode(role), dept, app, "继承角色 " + wanted.size() + " 个");
@@ -299,7 +299,7 @@ public class StructuredDomainRbacService implements DomainRbacUseCase {
             throw ApiException.missing("角色不存在");
         }
         Set<Long> before = new HashSet<>(rolePermissions.findLockedPermissionIds(role));
-        rolePermissions.replaceRolePermissions(role, dept, app, wanted);
+        rolePermissions.replaceRolePermissions(role, dept, app, wanted, roles::getReferenceById, permissions::getReferenceById);
         cache.touchDomain(dept, app);
         webhooks.emit(app, "role.permissions.changed", Map.of("roleId", role, "departmentId", dept));
         audit.audit(actor, "ROLE_PERMISSIONS_UPDATED", roleCode(role), dept, app, permissionDiff(before, wanted));
@@ -365,7 +365,7 @@ public class StructuredDomainRbacService implements DomainRbacUseCase {
             userRoles.deleteRoleMembers(role, removed);
         }
         if (!added.isEmpty()) {
-            userRoles.addRoleMembers(role, dept, app, added, actor);
+            userRoles.addRoleMembers(role, dept, app, added, actor, users::getReferenceById, roles::getReferenceById);
         }
         List<Long> changed = new ArrayList<>(added);
         changed.addAll(removed);
@@ -452,7 +452,7 @@ public class StructuredDomainRbacService implements DomainRbacUseCase {
                 if (current.containsKey(role) && (held == null || held.isAfter(now))) {
                     continue;
                 }
-                userRoles.grantRole(user, dept, app, role, expires, actor);
+                userRoles.grantRole(user, dept, app, role, expires, actor, users::getReferenceById, roles::getReferenceById);
                 added.add(role);
             }
             if (added.isEmpty()) {
@@ -526,7 +526,7 @@ public class StructuredDomainRbacService implements DomainRbacUseCase {
             if (held && Objects.equals(was, target)) {
                 continue;
             }
-            userRoles.grantRole(user, dept, app, role, target, actor);
+            userRoles.grantRole(user, dept, app, role, target, actor, users::getReferenceById, roles::getReferenceById);
             if (held) {
                 expiryChanges++;
             }
@@ -597,7 +597,8 @@ public class StructuredDomainRbacService implements DomainRbacUseCase {
                     .setName(r.getName()).setCode(r.getCode())
                     .setDescription(text(r.getDescription())).setEnabled(r.isEnabled())).getId();
             rolePermissions.replaceRolePermissions(created, target, app,
-                    new LinkedHashSet<>(grants.getOrDefault(r.getId(), List.of())));
+                    new LinkedHashSet<>(grants.getOrDefault(r.getId(), List.of())),
+                    roles::getReferenceById, permissions::getReferenceById);
             rolesCreated++;
         }
         int permissionsSkipped = permissionMap.size() - permissionsCreated;

@@ -5,7 +5,6 @@ import com.melonhub.rbac.infrastructure.persistence.entity.Permission;
 import com.melonhub.rbac.infrastructure.persistence.entity.Role;
 import com.melonhub.rbac.infrastructure.persistence.entity.User;
 import com.melonhub.rbac.infrastructure.persistence.repository.AccessRequestRepository;
-import com.melonhub.rbac.infrastructure.persistence.repository.AccessRequestRepositoryCustom;
 import com.melonhub.rbac.infrastructure.persistence.repository.AccessReviewItemRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.AccessReviewRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.ApplicationRepository;
@@ -18,7 +17,6 @@ import com.melonhub.rbac.infrastructure.persistence.repository.RolePermissionRep
 import com.melonhub.rbac.infrastructure.persistence.repository.RoleRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.UserRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.UserRoleRepository;
-import com.melonhub.rbac.infrastructure.persistence.repository.UserRoleRepositoryCustom;
 import com.melonhub.rbac.service.port.audit.AuditUseCase;
 import com.melonhub.rbac.service.port.common.PageResult;
 import com.melonhub.rbac.service.port.domainrbac.DomainRbacUseCase;
@@ -148,7 +146,7 @@ public class StructuredGovernanceService implements GovernanceUseCase {
         if (status != null && !status.isBlank() && !List.of("PENDING", "APPROVED", "REJECTED", "CANCELLED").contains(status.strip())) {
             throw ApiException.bad("状态只能是 PENDING、APPROVED、REJECTED 或 CANCELLED");
         }
-        Page<AccessRequestRepositoryCustom.AccessRequestRow> p = accessRequests.findPage(app, visible, status, keyword, page, size);
+        Page<AccessRequestRepository.AccessRequestRow> p = accessRequests.findPage(app, visible, status, keyword, page, size);
         return PageResult.of(p.getContent().stream().map(StructuredGovernanceService::requestResult).toList(),
                 p.getTotalElements(), page, size);
     }
@@ -174,7 +172,12 @@ public class StructuredGovernanceService implements GovernanceUseCase {
         }
         long id;
         try {
-            id = accessRequests.createRequest(user, body.departmentId(), app, body.roleId(), body.reason().strip(), body.durationDays(), actor);
+            id = accessRequests.createRequest(
+                    users.findById(user).orElseThrow(),
+                    departments.findById(body.departmentId()).orElseThrow(),
+                    applications.getReferenceById(app),
+                    roles.findById(body.roleId()).orElseThrow(),
+                    body.reason().strip(), body.durationDays(), actor);
         } catch (DataIntegrityViolationException e) {
             if (isDuplicateKey(e)) {
                 throw ApiException.conflict("该用户已有此角色的待审批申请");
@@ -212,7 +215,7 @@ public class StructuredGovernanceService implements GovernanceUseCase {
         if (!memberships.existsLocked(user, dept)) {
             throw ApiException.conflict("用户已不属于该部门，无法授权");
         }
-        userRoles.grantRole(user, dept, app, role, expires, actor);
+        userRoles.grantRole(user, dept, app, role, expires, actor, users::getReferenceById, roles::getReferenceById);
         if (accessRequests.decidePending(id, "APPROVED", actor, text(body.comment()), expires) == 0) {
             throw ApiException.conflict("申请已被并发处理");
         }
@@ -305,8 +308,11 @@ public class StructuredGovernanceService implements GovernanceUseCase {
             throw ApiException.missing("部门不存在");
         }
         Instant due = body.dueDays() == null ? null : Instant.now().truncatedTo(ChronoUnit.SECONDS).plus(body.dueDays(), ChronoUnit.DAYS);
-        long id = accessReviews.createReview(body.name().strip(), body.applicationId(), body.departmentId(), due, actor);
-        int items = reviewItems.insertSnapshot(id, body.applicationId(), body.departmentId());
+        long id = accessReviews.createReview(body.name().strip(), applications.getReferenceById(body.applicationId()),
+                body.departmentId() == null ? null : departments.findById(body.departmentId()).orElseThrow(),
+                due, actor);
+        int items = reviewItems.insertSnapshot(body.applicationId(), body.departmentId(),
+                accessReviews.getReferenceById(id), users::getReferenceById, roles::getReferenceById);
         audit.audit(actor, "REVIEW_CREATED", body.name(), body.departmentId(), body.applicationId(), "快照包含 " + items + " 条授权");
         return review(id);
     }
@@ -493,7 +499,7 @@ public class StructuredGovernanceService implements GovernanceUseCase {
                     Set<Long> current = new HashSet<>(memberships.findLockedDepartmentIds(userId));
                     for (long dept : wanted) {
                         if (!current.contains(dept)) {
-                            memberships.addIfAbsent(userId, dept);
+                            memberships.addIfAbsent(userId, dept, users::getReferenceById, departments::getReferenceById);
                         }
                     }
                     return isNew;
@@ -662,13 +668,15 @@ public class StructuredGovernanceService implements GovernanceUseCase {
                             .setDepartment(departments.getReferenceById(dept))
                             .setApplication(applications.getReferenceById(app))
                             .setName(r.name()).setCode(r.code()).setDescription(text(r.description())).setEnabled(enabled)).getId();
-                    rolePermissions.replaceRolePermissions(createdRoleId, dept, app, grants);
+                    rolePermissions.replaceRolePermissions(createdRoleId, dept, app, grants,
+                            roles::getReferenceById, permissions::getReferenceById);
                     rolesCreated++;
                 } else {
                     Set<Long> before = new HashSet<>(rolePermissions.findPermissionIdsByRoleId(roleId));
                     roles.updateProfile(roleId, r.name(), r.code(), text(r.description()));
                     roles.updateStatus(roleId, enabled);
-                    rolePermissions.replaceRolePermissions(roleId, dept, app, grants);
+                    rolePermissions.replaceRolePermissions(roleId, dept, app, grants,
+                            roles::getReferenceById, permissions::getReferenceById);
                     if (enabled != Boolean.TRUE.equals(wasEnabled.get(roleId))) {
                         webhooks.emit(app, enabled ? "role.enabled" : "role.disabled", Map.of("roleId", roleId, "departmentId", dept));
                     }
@@ -691,16 +699,16 @@ public class StructuredGovernanceService implements GovernanceUseCase {
         if (!applications.existsById(app)) {
             throw ApiException.missing("软件不存在");
         }
-        Map<HolderKey, UserRoleRepositoryCustom.PermissionHolderRow> firstByHolder = new LinkedHashMap<>();
+        Map<HolderKey, UserRoleRepository.PermissionHolderRow> firstByHolder = new LinkedHashMap<>();
         Map<HolderKey, List<PermissionHolderRoleResult>> rolesByHolder = new LinkedHashMap<>();
-        for (UserRoleRepositoryCustom.PermissionHolderRow row : userRoles.findPermissionHolders(app, code, department, visibleDepartments, HOLDER_LIMIT)) {
+        for (UserRoleRepository.PermissionHolderRow row : userRoles.findPermissionHolders(app, code, department, visibleDepartments, HOLDER_LIMIT)) {
             HolderKey key = new HolderKey(row.userId(), row.departmentId());
             firstByHolder.putIfAbsent(key, row);
             rolesByHolder.computeIfAbsent(key, k -> new ArrayList<>())
                     .add(new PermissionHolderRoleResult(row.roleId(), row.roleName(), row.roleCode(), row.expiresAt()));
         }
         List<PermissionHolderResult> holders = firstByHolder.entrySet().stream().map(e -> {
-            UserRoleRepositoryCustom.PermissionHolderRow h = e.getValue();
+            UserRoleRepository.PermissionHolderRow h = e.getValue();
             return new PermissionHolderResult(h.userId(), h.userName(), h.externalId(), h.departmentId(), h.departmentName(),
                     rolesByHolder.get(e.getKey()));
         }).toList();
@@ -717,7 +725,7 @@ public class StructuredGovernanceService implements GovernanceUseCase {
                 .toList();
     }
 
-    private static AccessRequestResult requestResult(AccessRequestRepositoryCustom.AccessRequestRow r) {
+    private static AccessRequestResult requestResult(AccessRequestRepository.AccessRequestRow r) {
         return new AccessRequestResult(
                 r.id(), r.userId(), r.userName(), r.externalId(), r.departmentId(), r.departmentName(),
                 r.applicationId(), r.applicationName(), r.roleId(), r.roleName(), r.roleCode(), r.roleEnabled(),

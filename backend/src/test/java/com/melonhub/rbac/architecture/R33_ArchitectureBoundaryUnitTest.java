@@ -253,4 +253,26 @@ class R33_ArchitectureBoundaryUnitTest {
         }
         assertThat(violations).isEmpty();
     }
+
+    @Test
+    @DisplayName("ARCH-09 持久层全面使用纯 Spring Data JPA，严禁直接使用 EntityManager、自定义 *RepositoryImpl 或 JdbcTemplate")
+    void persistenceLayerUsesPureSpringDataJpaWithoutEntityManager() throws IOException {
+        List<Path> allMainFiles = javaFilesUnder("");
+        List<String> violations = new ArrayList<>();
+        for (Path file : allMainFiles) {
+            String name = file.getFileName().toString();
+            if (name.endsWith("RepositoryCustom.java") || name.endsWith("RepositoryImpl.java") || name.equals("JpaQuery.java")) {
+                violations.add("legacy custom fragment: " + MAIN_ROOT.relativize(file));
+            }
+            for (String imp : importsOf(file)) {
+                if (imp.equals("jakarta.persistence.EntityManager")
+                        || imp.equals("jakarta.persistence.PersistenceContext")
+                        || imp.equals("org.springframework.jdbc.core.JdbcTemplate")
+                        || imp.equals("org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate")) {
+                    violations.add(MAIN_ROOT.relativize(file) + " -> " + imp);
+                }
+            }
+        }
+        assertThat(violations).isEmpty();
+    }
 }

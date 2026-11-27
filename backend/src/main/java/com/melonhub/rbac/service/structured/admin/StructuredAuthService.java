@@ -131,11 +131,12 @@ public class StructuredAuthService implements AuthUseCase, ApplicationRunner {
             throw new IllegalStateException("ADMIN_USERNAME must be 3-100 letters, digits or _.@-");
         }
         if (!accounts.existsByUsername(bootstrapUser)) {
-            accounts.createAccount(bootstrapUser, "平台管理员", AdminPrincipal.SUPER_ADMIN, encode(bootstrapPassword),
-                    true, null, AdminPrincipal.MANAGER, true, true);
+            accounts.createAccount(bootstrapUser, "平台管理员", roles.getReferenceById(AdminPrincipal.SUPER_ADMIN),
+                    encode(bootstrapPassword), true, null, AdminPrincipal.MANAGER, true, true);
             log.info("Bootstrap super administrator account created");
         } else if (bootstrapReset) {
-            accounts.resetBootstrap(bootstrapUser, encode(bootstrapPassword), AdminPrincipal.SUPER_ADMIN);
+            accounts.resetBootstrap(bootstrapUser, encode(bootstrapPassword),
+                    roles.getReferenceById(AdminPrincipal.SUPER_ADMIN));
             accounts.credentials(bootstrapUser).ifPresent(account -> endSessions(account.getId()));
             log.warn("Bootstrap administrator restored from ADMIN_PASSWORD; set ADMIN_PASSWORD_RESET=false again");
         }
@@ -182,8 +183,9 @@ public class StructuredAuthService implements AuthUseCase, ApplicationRunner {
             }
         }
         String token = Credentials.token();
-        if (accounts.createSessionIfCredentialsMatch(Credentials.hash(token), account.getId(), account.getCredentialVersion(),
-                account.getPasswordHash(), account.getMfaSecret(), nowSec().plusSeconds(sessionSeconds), ClientAddress.current()) == 0) {
+        if (accounts.createSessionIfCredentialsMatch(sessions, Credentials.hash(token), account.getId(),
+                account.getCredentialVersion(), account.getPasswordHash(), account.getMfaSecret(),
+                nowSec().plusSeconds(sessionSeconds), ClientAddress.current()) == 0) {
             audit.audit(username, "LOGIN_FAILED", username, null, null, "登录过程中账号凭据已变更");
             throw ApiException.unauthorized("BAD_CREDENTIALS", "账号凭据已变更，请重新登录");
         }
@@ -446,8 +448,8 @@ public class StructuredAuthService implements AuthUseCase, ApplicationRunner {
         requireConsistent(with(nodes, new AccountNode(0, input.username(), parentId, kind, input.role(), enabled, allDepartments,
                 Set.copyOf(depts), allApplications, Set.copyOf(apps))), roleFunctions);
         String displayName = blankTo(input.displayName(), input.username());
-        long id = accounts.createAccount(input.username(), displayName, input.role(), encode(input.password()), enabled,
-                parentId, kind, allDepartments, allApplications);
+        long id = accounts.createAccount(input.username(), displayName, roles.getReferenceById(input.role()),
+                encode(input.password()), enabled, parentId, kind, allDepartments, allApplications);
         accounts.replaceApplicationIds(id, apps);
         accounts.replaceDepartmentIds(id, depts);
         audit.audit(actor.actor(), "ACCOUNT_CREATED", input.username(), null, null,
@@ -515,7 +517,8 @@ public class StructuredAuthService implements AuthUseCase, ApplicationRunner {
         }
         requireConsistent(with(nodes, new AccountNode(id, username, parentId, kind, input.role(), input.enabled(),
                 allDepartments, Set.copyOf(depts), allApplications, Set.copyOf(apps))), roleFunctions);
-        accounts.updateAccount(id, blankTo(input.displayName(), username), input.role(), input.enabled(), kind, allDepartments, allApplications);
+        accounts.updateAccount(id, blankTo(input.displayName(), username), roles.getReferenceById(input.role()),
+                input.enabled(), kind, allDepartments, allApplications);
         accounts.replaceApplicationIds(id, apps);
         accounts.replaceDepartmentIds(id, depts);
         if (parentChanged) {

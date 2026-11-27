@@ -7,12 +7,16 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.MapsId;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+import org.springframework.data.domain.Persistable;
 
 /** A role inherits the permissions of each listed parent role in the same domain. */
 @Entity
 @Table(name = "role_inheritances")
-public class RoleInheritance {
+public class RoleInheritance implements Persistable<RoleInheritanceId> {
     @EmbeddedId private RoleInheritanceId id;
     @MapsId("childRoleId") @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "child_role_id") private Role childRole;
@@ -20,9 +24,12 @@ public class RoleInheritance {
     @JoinColumn(name = "parent_role_id") private Role parentRole;
     @Column(name = "department_id", nullable = false) private Long departmentId;
     @Column(name = "application_id", nullable = false) private Long applicationId;
+    @Transient private boolean isNew = true;
 
     public RoleInheritance() {}
-    public RoleInheritanceId getId() { return id; }
+    @Override public RoleInheritanceId getId() { return id; }
+    @Override public boolean isNew() { return isNew; }
+    @PostLoad @PostPersist void markNotNew() { this.isNew = false; }
     public RoleInheritance setId(RoleInheritanceId id) { this.id = id; return this; }
     public Role getChildRole() { return childRole; }
     public RoleInheritance setChildRole(Role childRole) { this.childRole = childRole; return this; }

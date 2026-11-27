@@ -2,7 +2,6 @@ package com.melonhub.rbac.service.structured.audit;
 
 import com.melonhub.rbac.infrastructure.persistence.repository.AuditEventRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.AuditSealRepository;
-import com.melonhub.rbac.infrastructure.persistence.repository.AuditSealRepositoryCustom;
 import com.melonhub.rbac.service.port.audit.AuditModels.AuditSealStateResult;
 import com.melonhub.rbac.service.port.audit.AuditModels.AuditVerifyResult;
 import com.melonhub.rbac.service.port.audit.AuditSealUseCase;
@@ -82,7 +81,7 @@ public class StructuredAuditSealService implements AuditSealUseCase {
     }
 
     private int sealBatch() {
-        AuditSealRepositoryCustom.SealSnapshot seal = seals.lockSeal();
+        AuditSealRepository.SealSnapshot seal = seals.lockSeal();
         List<AuditEventRepository.ChainEvent> rows = events.findUnsealed(Limit.of(BATCH));
         String previous = seal.lastHash();
         long seq = seal.lastSeq();
@@ -109,7 +108,7 @@ public class StructuredAuditSealService implements AuditSealUseCase {
     @Override
     public int purge(int days) {
         Integer result = transactions.execute(status -> {
-            AuditSealRepositoryCustom.SealSnapshot seal = seals.lockSeal();
+            AuditSealRepository.SealSnapshot seal = seals.lockSeal();
             long below = events.findFirstSeqWithinDays(days).map(seq -> Math.min(seq, seal.lastSeq())).orElse(seal.lastSeq());
             Optional<AuditEventRepository.Link> end = events.findPrefixEnd(below, PURGE_BATCH);
             if (end.isEmpty()) {
@@ -129,7 +128,7 @@ public class StructuredAuditSealService implements AuditSealUseCase {
     }
 
     private AuditVerifyResult walk(long start, int limit) {
-        AuditSealRepositoryCustom.SealSnapshot seal = seals.readSeal();
+        AuditSealRepository.SealSnapshot seal = seals.readSeal();
         List<AuditEventRepository.ChainEvent> rows = events.findSealedRange(start, seal.lastSeq(), Limit.of(limit));
         Optional<AuditEventRepository.Link> before = start > 0 ? events.findLinkBefore(start) : Optional.empty();
         String expected = before.map(AuditEventRepository.Link::hash).orElse(seal.anchorHash());

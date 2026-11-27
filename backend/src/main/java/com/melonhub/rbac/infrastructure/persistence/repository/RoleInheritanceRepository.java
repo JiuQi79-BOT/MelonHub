@@ -1,5 +1,6 @@
 package com.melonhub.rbac.infrastructure.persistence.repository;
 
+import com.melonhub.rbac.infrastructure.persistence.entity.Role;
 import com.melonhub.rbac.infrastructure.persistence.entity.RoleInheritance;
 import com.melonhub.rbac.infrastructure.persistence.entity.RoleInheritanceId;
 import java.util.ArrayDeque;
@@ -9,10 +10,13 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongFunction;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.transaction.annotation.Transactional;
 
-public interface RoleInheritanceRepository extends JpaRepository<RoleInheritance, RoleInheritanceId>, RoleInheritanceRepositoryCustom {
+public interface RoleInheritanceRepository extends JpaRepository<RoleInheritance, RoleInheritanceId> {
     interface Edge {
         long getChildRoleId();
         long getParentRoleId();
@@ -32,6 +36,40 @@ public interface RoleInheritanceRepository extends JpaRepository<RoleInheritance
               and c.enabled = true and p.enabled = true
             order by ri.id.childRoleId, ri.id.parentRoleId""")
     List<Edge> findActiveEdgesByDomain(long departmentId, long applicationId);
+
+    @Transactional
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("delete from RoleInheritance ri where ri.id.childRoleId = :childRoleId and ri.id.parentRoleId = :parentRoleId")
+    int deleteByEdge(long childRoleId, long parentRoleId);
+
+    /** 仅按精确联合主键删旧插新，避免范围 DELETE 触发间隙锁/supremum 锁。 */
+    @Transactional
+    default void replaceParents(long childRoleId, long departmentId, long applicationId,
+                                Collection<Long> existingParentIds, Collection<Long> parentIds,
+                                LongFunction<Role> roleRef) {
+        var existing = new LinkedHashSet<>(existingParentIds);
+        var wanted = new LinkedHashSet<>(parentIds);
+        for (long oldParent : existing) {
+            if (!wanted.contains(oldParent)) {
+                deleteByEdge(childRoleId, oldParent);
+            }
+        }
+        var toInsert = new ArrayList<RoleInheritance>();
+        Role child = null;
+        for (long parentId : wanted) {
+            if (existing.contains(parentId)) continue;
+            if (child == null) child = roleRef.apply(childRoleId);
+            toInsert.add(new RoleInheritance()
+                    .setId(new RoleInheritanceId(childRoleId, parentId))
+                    .setChildRole(child)
+                    .setParentRole(roleRef.apply(parentId))
+                    .setDepartmentId(departmentId)
+                    .setApplicationId(applicationId));
+        }
+        if (!toInsert.isEmpty()) {
+            saveAllAndFlush(toInsert);
+        }
+    }
 
     /** 沿给定继承边集合从根角色集合展开全部可达父角色 ID。 */
     static List<Long> expandEdges(Collection<Long> roots, List<Edge> edges) {

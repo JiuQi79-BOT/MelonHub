@@ -6,16 +6,20 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import org.hibernate.annotations.Generated;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.springframework.data.domain.Persistable;
 
 /** An issued permission context; only the SHA-256 of its token is stored. */
 @Entity
 @Table(name = "permission_contexts")
-public class PermissionContext {
+public class PermissionContext implements Persistable<String> {
     @Id @JdbcTypeCode(SqlTypes.CHAR) @Column(length = 64) private String id;
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "user_id") private User user;
     @Column(name = "department_id") private Long departmentId;
@@ -25,9 +29,12 @@ public class PermissionContext {
     private long contextVersion;
     private Instant expiresAt;
     @Generated @Column(insertable = false, updatable = false) private Instant createdAt;
+    @Transient private boolean isNew = true;
 
     public PermissionContext() {}
-    public String getId() { return id; }
+    @Override public String getId() { return id; }
+    @Override public boolean isNew() { return isNew; }
+    @PostLoad @PostPersist void markNotNew() { this.isNew = false; }
     public PermissionContext setId(String id) { this.id = id; return this; }
     public User getUser() { return user; }
     public PermissionContext setUser(User user) { this.user = user; return this; }

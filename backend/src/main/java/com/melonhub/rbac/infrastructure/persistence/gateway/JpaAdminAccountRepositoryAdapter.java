@@ -2,6 +2,7 @@ package com.melonhub.rbac.infrastructure.persistence.gateway;
 
 import com.melonhub.rbac.infrastructure.persistence.entity.AdminAccount;
 import com.melonhub.rbac.infrastructure.persistence.repository.AdminAccountRepository;
+import com.melonhub.rbac.infrastructure.persistence.repository.AdminRoleRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.AdminSessionRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.ApplicationKeyRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.ApplicationRepository;
@@ -29,15 +30,17 @@ import org.springframework.transaction.annotation.Transactional;
 @ConditionalOnProperty(name = "melonhub.backend-strategy", havingValue = "ddd")
 public class JpaAdminAccountRepositoryAdapter implements AdminAccountRepositoryPort {
     private final AdminAccountRepository accounts;
+    private final AdminRoleRepository adminRoles;
     private final AdminSessionRepository sessions;
     private final ApplicationRepository applications;
     private final ApplicationKeyRepository keys;
     private final DepartmentRepository departments;
 
-    public JpaAdminAccountRepositoryAdapter(AdminAccountRepository accounts, AdminSessionRepository sessions,
-                                            ApplicationRepository applications, ApplicationKeyRepository keys,
-                                            DepartmentRepository departments) {
+    public JpaAdminAccountRepositoryAdapter(AdminAccountRepository accounts, AdminRoleRepository adminRoles,
+                                            AdminSessionRepository sessions, ApplicationRepository applications,
+                                            ApplicationKeyRepository keys, DepartmentRepository departments) {
         this.accounts = accounts;
+        this.adminRoles = adminRoles;
         this.sessions = sessions;
         this.applications = applications;
         this.keys = keys;
@@ -49,12 +52,13 @@ public class JpaAdminAccountRepositoryAdapter implements AdminAccountRepositoryP
     @Override
     public long createAccount(String username, String displayName, String role, String passwordHash, boolean enabled,
                               Long parentId, String kind, boolean allDepartments, boolean allApplications) {
-        return accounts.createAccount(username, displayName, role, passwordHash, enabled, parentId, kind, allDepartments, allApplications);
+        return accounts.createAccount(username, displayName, adminRoles.getReferenceById(role), passwordHash,
+                enabled, parentId, kind, allDepartments, allApplications);
     }
 
     @Override
     public void resetBootstrap(String username, String passwordHash, String superAdminRole) {
-        accounts.resetBootstrap(username, passwordHash, superAdminRole);
+        accounts.resetBootstrap(username, passwordHash, adminRoles.getReferenceById(superAdminRole));
     }
 
     @Override
@@ -79,7 +83,7 @@ public class JpaAdminAccountRepositoryAdapter implements AdminAccountRepositoryP
 
     @Override
     public int createSession(String tokenHash, AdminCredentialAccount account, Instant expiresAt, String sourceIp) {
-        return accounts.createSessionIfCredentialsMatch(tokenHash, account.id(), account.credentialVersion(),
+        return accounts.createSessionIfCredentialsMatch(sessions, tokenHash, account.id(), account.credentialVersion(),
                 account.passwordHash(), account.mfaSecret(), expiresAt, sourceIp);
     }
 
@@ -203,7 +207,8 @@ public class JpaAdminAccountRepositoryAdapter implements AdminAccountRepositoryP
     @Override
     public void updateAccount(long id, String displayName, String role, boolean enabled, String kind,
                               boolean allDepartments, boolean allApplications) {
-        accounts.updateAccount(id, displayName, role, enabled, kind, allDepartments, allApplications);
+        accounts.updateAccount(id, displayName, adminRoles.getReferenceById(role), enabled, kind,
+                allDepartments, allApplications);
     }
 
     @Override public void moveAccountUnder(long id, long parentId) { accounts.moveUnder(id, parentId); }

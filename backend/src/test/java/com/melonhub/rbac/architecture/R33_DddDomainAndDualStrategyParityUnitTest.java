@@ -37,7 +37,6 @@ import com.melonhub.rbac.infrastructure.persistence.repository.RoleInheritanceRe
 import com.melonhub.rbac.infrastructure.persistence.repository.RolePermissionRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.RoleRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.UserRepository;
-import com.melonhub.rbac.infrastructure.persistence.repository.UserRepositoryCustom;
 import com.melonhub.rbac.infrastructure.persistence.repository.UserRoleRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.WebhookDeliveryRepository;
 import com.melonhub.rbac.infrastructure.security.Credentials;
@@ -307,7 +306,8 @@ class R33_DddDomainAndDualStrategyParityUnitTest {
                             permissions, rolePermissions, roleInheritances, userRoles, contexts, adminAccounts, auditEvents, auditSeals),
                     new JpaPermissionContextRepositoryAdapter(contexts, contextRoles, users, applications, departments,
                             memberships, roles, rolePermissions, roleInheritances, userRoles),
-                    new JpaGovernanceRepositoryAdapter(accessRequests, accessReviews, reviewItems, userRoles),
+                    new JpaGovernanceRepositoryAdapter(accessRequests, accessReviews, reviewItems, userRoles,
+                            users, departments, applications, roles),
                     new JpaIdentityRepositoryAdapter(identityCredentials, identitySessions, users, departments,
                             memberships, roles, rolePermissions, roleInheritances, userRoles, auditEvents),
                     gateway, audit, eventPublisher);
@@ -426,7 +426,7 @@ class R33_DddDomainAndDualStrategyParityUnitTest {
         var cache = mock(PermissionCache.class);
 
         when(users.lockRowByExternalId(USER_EXT_ID)).thenReturn(Optional.of(
-                new UserRepositoryCustom.LockedUserRow(USER_ID, true, DEPT_KEEP_ID, 3L)));
+                new UserRepository.LockedUserRow(USER_ID, true, DEPT_KEEP_ID, 3L)));
         when(applications.existsByIdAndEnabledTrue(APP_ID)).thenReturn(true);
         when(memberships.existsByUserIdAndDepartmentId(USER_ID, DEPT_REMOVE_ID)).thenReturn(true);
         when(userRoles.findActiveAssignedRoleIds(USER_ID, DEPT_REMOVE_ID, APP_ID)).thenReturn(List.of(EXPIRED_CONTEXT_ROLE_ID));

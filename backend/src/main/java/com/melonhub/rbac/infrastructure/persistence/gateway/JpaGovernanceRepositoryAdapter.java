@@ -3,9 +3,12 @@ package com.melonhub.rbac.infrastructure.persistence.gateway;
 import static com.melonhub.rbac.infrastructure.persistence.gateway.JpaRbacRepositoryAdapter.toVisibility;
 
 import com.melonhub.rbac.infrastructure.persistence.repository.AccessRequestRepository;
-import com.melonhub.rbac.infrastructure.persistence.repository.AccessRequestRepositoryCustom;
 import com.melonhub.rbac.infrastructure.persistence.repository.AccessReviewItemRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.AccessReviewRepository;
+import com.melonhub.rbac.infrastructure.persistence.repository.ApplicationRepository;
+import com.melonhub.rbac.infrastructure.persistence.repository.DepartmentRepository;
+import com.melonhub.rbac.infrastructure.persistence.repository.RoleRepository;
+import com.melonhub.rbac.infrastructure.persistence.repository.UserRepository;
 import com.melonhub.rbac.infrastructure.persistence.repository.UserRoleRepository;
 import com.melonhub.rbac.service.ddd.domain.model.AccessRequestAggregate;
 import com.melonhub.rbac.service.ddd.domain.model.AccessReviewAggregate;
@@ -30,13 +33,23 @@ public class JpaGovernanceRepositoryAdapter implements GovernanceRepositoryPort 
     private final AccessReviewRepository reviews;
     private final AccessReviewItemRepository reviewItems;
     private final UserRoleRepository userRoles;
+    private final UserRepository users;
+    private final DepartmentRepository departments;
+    private final ApplicationRepository applications;
+    private final RoleRepository roles;
 
     public JpaGovernanceRepositoryAdapter(AccessRequestRepository requests, AccessReviewRepository reviews,
-                                          AccessReviewItemRepository reviewItems, UserRoleRepository userRoles) {
+                                          AccessReviewItemRepository reviewItems, UserRoleRepository userRoles,
+                                          UserRepository users, DepartmentRepository departments,
+                                          ApplicationRepository applications, RoleRepository roles) {
         this.requests = requests;
         this.reviews = reviews;
         this.reviewItems = reviewItems;
         this.userRoles = userRoles;
+        this.users = users;
+        this.departments = departments;
+        this.applications = applications;
+        this.roles = roles;
     }
 
     @Override
@@ -62,7 +75,12 @@ public class JpaGovernanceRepositoryAdapter implements GovernanceRepositoryPort 
     @Override
     public long createRequest(long userId, long departmentId, long applicationId, long roleId, String reason, Integer durationDays, String actor) {
         try {
-            return requests.createRequest(userId, departmentId, applicationId, roleId, reason, durationDays, actor);
+            return requests.createRequest(
+                    users.findById(userId).orElseThrow(),
+                    departments.findById(departmentId).orElseThrow(),
+                    applications.getReferenceById(applicationId),
+                    roles.findById(roleId).orElseThrow(),
+                    reason, durationDays, actor);
         } catch (DataIntegrityViolationException e) {
             if (isDuplicateKey(e)) throw DomainException.conflict("该用户已有此角色的待审批申请");
             throw e;
@@ -94,12 +112,14 @@ public class JpaGovernanceRepositoryAdapter implements GovernanceRepositoryPort 
 
     @Override
     public long createReview(String name, long applicationId, Long departmentId, Instant dueAt, String actor) {
-        return reviews.createReview(name, applicationId, departmentId, dueAt, actor);
+        return reviews.createReview(name, applications.getReferenceById(applicationId),
+                departmentId == null ? null : departments.findById(departmentId).orElseThrow(), dueAt, actor);
     }
 
     @Override
     public int insertReviewSnapshot(long reviewId, long applicationId, Long departmentId) {
-        return reviewItems.insertSnapshot(reviewId, applicationId, departmentId);
+        return reviewItems.insertSnapshot(applicationId, departmentId,
+                reviews.getReferenceById(reviewId), users::getReferenceById, roles::getReferenceById);
     }
 
     @Override
@@ -153,7 +173,7 @@ public class JpaGovernanceRepositoryAdapter implements GovernanceRepositoryPort 
     @Override public void markReviewItemApplied(long itemId, boolean skipped) { reviewItems.markApplied(itemId, skipped); }
     @Override public int closeReview(long reviewId, String actor, String summary) { return reviews.closeOpenReview(reviewId, actor, summary); }
 
-    private static AccessRequestRecord toRequestRecord(AccessRequestRepositoryCustom.AccessRequestRow r) {
+    private static AccessRequestRecord toRequestRecord(AccessRequestRepository.AccessRequestRow r) {
         return new AccessRequestRecord(
                 r.id(), r.userId(), r.userName(), r.externalId(), r.departmentId(), r.departmentName(),
                 r.applicationId(), r.applicationName(), r.roleId(), r.roleName(), r.roleCode(), r.roleEnabled(),

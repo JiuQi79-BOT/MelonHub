@@ -79,8 +79,8 @@ public class JpaIdentityRepositoryAdapter implements IdentityRepositoryPort {
     @Override
     public boolean createSession(String tokenHash, IdentityAccountAggregate.IdentityCredentialSnapshot credential,
                                  String systemCode, Instant expiresAt) {
-        return credentials.createSessionIfVerified(tokenHash, credential.userId(), credential.username(),
-                credential.passwordHash(), systemCode, expiresAt);
+        return credentials.createSessionIfVerified(users, sessions, tokenHash, credential.userId(),
+                credential.username(), credential.passwordHash(), systemCode, expiresAt);
     }
 
     @Override public boolean hasActiveSession(String tokenHash, Instant now) { return sessions.hasActiveSession(tokenHash, now); }

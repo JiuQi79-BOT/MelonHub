@@ -1,12 +1,14 @@
 package com.melonhub.rbac.infrastructure.persistence.repository;
 
 import com.melonhub.rbac.infrastructure.persistence.entity.AdminRole;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.transaction.annotation.Transactional;
 
-public interface AdminRoleRepository extends JpaRepository<AdminRole, String>, AdminRoleRepositoryCustom {
+public interface AdminRoleRepository extends JpaRepository<AdminRole, String> {
     interface RoleUsage {
         String getRole();
         long getAccounts();
@@ -23,4 +25,30 @@ public interface AdminRoleRepository extends JpaRepository<AdminRole, String>, A
 
     @Query("select count(a) from AdminAccount a where a.role.code = :code")
     long accounts(String code);
+
+    @Transactional
+    default void createRole(String code, String name, String description, Collection<String> functionCodes) {
+        var role = new AdminRole(code, name, description);
+        role.getFunctions().addAll(functionCodes);
+        saveAndFlush(role);
+    }
+
+    @Transactional
+    default void updateRole(String code, String name, String description, Collection<String> functionCodes) {
+        findById(code).ifPresent(role -> {
+            role.setName(name);
+            role.setDescription(description);
+            role.getFunctions().clear();
+            role.getFunctions().addAll(functionCodes);
+            saveAndFlush(role);
+        });
+    }
+
+    @Transactional
+    default void deleteRole(String code) {
+        findById(code).ifPresent(role -> {
+            delete(role);
+            flush();
+        });
+    }
 }

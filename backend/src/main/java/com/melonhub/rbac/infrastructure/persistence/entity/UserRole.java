@@ -7,15 +7,19 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.MapsId;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import org.springframework.data.domain.Persistable;
 
 /** A role assigned to a user, optionally until expiresAt. grantId identifies this grant; it changes when the role is granted again. */
 @Entity
 @Table(name = "user_roles")
-public class UserRole {
+public class UserRole implements Persistable<UserRoleId> {
     @EmbeddedId private UserRoleId id;
     @MapsId("userId") @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "user_id") private User user;
     @MapsId("roleId") @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "role_id") private Role role;
@@ -27,9 +31,12 @@ public class UserRole {
     private String grantedBy;
     private Instant grantedAt;
     @JdbcTypeCode(SqlTypes.CHAR) @Column(length = 36) private String grantId;
+    @Transient private boolean isNew = true;
 
     public UserRole() {}
-    public UserRoleId getId() { return id; }
+    @Override public UserRoleId getId() { return id; }
+    @Override public boolean isNew() { return isNew; }
+    @PostLoad @PostPersist void markNotNew() { this.isNew = false; }
     public UserRole setId(UserRoleId id) { this.id = id; return this; }
     public User getUser() { return user; }
     public UserRole setUser(User user) { this.user = user; return this; }

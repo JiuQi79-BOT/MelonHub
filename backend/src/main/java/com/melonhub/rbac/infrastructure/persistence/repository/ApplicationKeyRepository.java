@@ -1,16 +1,18 @@
 package com.melonhub.rbac.infrastructure.persistence.repository;
 
 import com.melonhub.rbac.infrastructure.persistence.entity.ApplicationKey;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.transaction.annotation.Transactional;
 
-public interface ApplicationKeyRepository extends JpaRepository<ApplicationKey, Long>, ApplicationKeyRepositoryCustom {
+public interface ApplicationKeyRepository extends JpaRepository<ApplicationKey, Long> {
     interface KeyState {
         long getKeyId();
         long getApplicationId();
@@ -55,6 +57,12 @@ public interface ApplicationKeyRepository extends JpaRepository<ApplicationKey, 
               and k.revokedAt is null and (k.expiresAt is null or k.expiresAt > current_timestamp)""")
     long countActiveByApplicationId(long applicationId);
 
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("""
+            select k from ApplicationKey k where k.application.id = :applicationId
+              and k.revokedAt is null and (k.expiresAt is null or k.expiresAt > current_timestamp)""")
+    List<ApplicationKey> findLockedActive(long applicationId);
+
     @Query("""
             select k.application.id as applicationId, count(k) as count from ApplicationKey k
             where k.application.id in :applicationIds and k.revokedAt is null
@@ -79,4 +87,9 @@ public interface ApplicationKeyRepository extends JpaRepository<ApplicationKey, 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("update ApplicationKey k set k.lastUsedAt = :now where k.id in :ids")
     int markUsed(Collection<Long> ids, Instant now);
+
+    @Transactional
+    default long countLockedActive(long applicationId) {
+        return findLockedActive(applicationId).size();
+    }
 }
