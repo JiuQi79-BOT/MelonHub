@@ -47,10 +47,6 @@ public final class PermissionContextAggregate {
             List<String> permissions,
             Instant refreshAt
     ) {
-        public boolean isFreshAt(Instant now) {
-            return expiresAt.isAfter(now) && (refreshAt == null || refreshAt.isAfter(now));
-        }
-
         public CheckEvaluation evaluate(List<String> requestedPermissions) {
             var held = new HashSet<>(permissions);
             var decisions = new LinkedHashMap<String, Boolean>();
@@ -115,11 +111,5 @@ public final class PermissionContextAggregate {
             }
         }
         return earliest;
-    }
-
-    public static long cacheTtlSeconds(Instant refreshAt, Instant now, long maxTtlSeconds) {
-        if (refreshAt == null) return maxTtlSeconds;
-        long remaining = refreshAt.getEpochSecond() - now.getEpochSecond();
-        return Math.max(1L, Math.min(maxTtlSeconds, remaining));
     }
 }

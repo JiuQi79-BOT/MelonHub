@@ -2,7 +2,6 @@ package com.melonhub.rbac.service.ddd.domain.repository;
 
 import com.melonhub.rbac.service.ddd.domain.model.AuditHashChainAggregate;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -31,5 +30,5 @@ public interface AuditChainRepositoryPort {
 
     void updateAnchor(AuditHashChainAggregate.ChainLink anchor);
 
-    Map<String, Object> sealStateView();
+    AuditHashChainAggregate.SealState sealState();
 }

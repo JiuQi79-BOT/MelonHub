@@ -15,11 +15,11 @@ public interface IdentityRepositoryPort {
 
     record DepartmentUserRecord(String userId, String no, String name, long departmentId, String departmentName) {}
 
-    record CourseAuditPage(List<IdentityAccountAggregate.CourseAuditRecord> items, long total) {}
-
     Optional<IdentityAccountAggregate.IdentityCredentialSnapshot> findCredential(String username);
 
     Optional<IdentityAccountAggregate.IdentityUser> findUserByExternalId(String externalId);
+
+    Optional<Long> findAnyUserIdByExternalId(String externalId);
 
     boolean createSession(String tokenHash, IdentityAccountAggregate.IdentityCredentialSnapshot credential, String systemCode, Instant expiresAt);
 
@@ -49,8 +49,9 @@ public interface IdentityRepositoryPort {
 
     long departmentUserCount(long departmentId, String keyword);
 
-    CourseAuditPage courseAuditEvents(String systemCode, Collection<Long> departmentIds, String actor, Long actorId,
-                                      String target, Instant from, Instant to, int page, int pageSize);
+    PageSlice<IdentityAccountAggregate.CourseAuditRecord> courseAuditEvents(
+            String systemCode, Collection<Long> departmentIds, String actor, Long actorId,
+            String target, Instant from, Instant to, int page, int pageSize);
 
     Map<Long, List<String>> auditActorRoles(Collection<Long> actorIds, String systemCode, Collection<Long> departmentIds);
 }

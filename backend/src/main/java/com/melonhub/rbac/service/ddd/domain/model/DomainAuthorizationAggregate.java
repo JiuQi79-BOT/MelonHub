@@ -26,7 +26,7 @@ public final class DomainAuthorizationAggregate {
 
     public record RoleSpec(long id, String name, String code, String description, boolean enabled) {}
 
-    public record AssignedDomainRole(long id, String name, String code, boolean enabled, Instant expiresAt, Object expiresAtView) {
+    public record AssignedDomainRole(long id, String name, String code, boolean enabled, Instant expiresAt) {
         public boolean isExpiredAt(Instant now) {
             return expiresAt != null && expiresAt.isBefore(now);
         }
@@ -72,17 +72,35 @@ public final class DomainAuthorizationAggregate {
 
     public record RoleCopyItem(RoleSpec sourceRole, List<Long> sourcePermissionIds) {}
 
+    public record SelfAccessRole(long id, String name, String code, boolean enabled, Instant expiresAt) {}
+
+    public record SelfAccessPreparation(List<Long> usableRoleIds, List<SelfAccessRole> roles) {}
+
+    public record SelfAccessReport(long userId, long departmentId, long applicationId, List<SelfAccessRole> roles, List<String> permissions) {}
+
+    public record SimulatedRole(long id, String name, String code, boolean enabled, Instant expiresAt, boolean expired, boolean active) {}
+
+    public record AggregatedPermission(long id, String code, String name, String resource, String action, List<Long> grantedBy) {}
+
     public record DomainRoleAssessment(
             List<String> issues,
             List<String> notices,
             Set<Long> usableRoleIds,
             Set<Long> activeRoleIds,
-            List<Map<String, Object>> roleViews
+            List<SimulatedRole> roles
     ) {}
 
-    public record SelfAccessPreparation(
-            List<Long> usableRoleIds,
-            List<Map<String, Object>> roleViews
+    public record SimulationOutcome(
+            boolean eligible,
+            List<String> issues,
+            List<String> notices,
+            boolean member,
+            boolean applicationEnabled,
+            boolean switchesDepartment,
+            List<SimulatedRole> roles,
+            List<AggregatedPermission> permissions,
+            Map<String, Boolean> decisions,
+            Boolean allowed
     ) {}
 
     private final IsolationDomain domain;
@@ -93,26 +111,27 @@ public final class DomainAuthorizationAggregate {
 
     public IsolationDomain domain() { return domain; }
 
-    public static String formatRemaining(Object... countUnitPairs) {
+    public record DepartmentUsage(long members, long roles, long permissions, long admins) {}
+
+    public record ApplicationUsage(long roles, long permissions) {}
+
+    public static void assertDepartmentDeletable(DepartmentUsage usage) {
         var parts = new ArrayList<String>();
-        for (int i = 0; i < countUnitPairs.length; i += 2) {
-            long n = (Long) countUnitPairs[i];
-            if (n > 0) parts.add(n + " " + countUnitPairs[i + 1]);
-        }
-        return String.join("、", parts);
-    }
-
-    public static void assertDepartmentDeletable(long[] usage) {
-        String left = formatRemaining(usage[0], "名成员", usage[1], "个角色", usage[2], "个权限", usage[3], "名限定于该部门的管理员");
-        if (!left.isEmpty()) {
-            throw DomainException.conflict("部门下还有 " + left + "，请先移除后再删除");
+        if (usage.members() > 0) parts.add(usage.members() + " 名成员");
+        if (usage.roles() > 0) parts.add(usage.roles() + " 个角色");
+        if (usage.permissions() > 0) parts.add(usage.permissions() + " 个权限");
+        if (usage.admins() > 0) parts.add(usage.admins() + " 名限定于该部门的管理员");
+        if (!parts.isEmpty()) {
+            throw DomainException.conflict("部门下还有 " + String.join("、", parts) + "，请先移除后再删除");
         }
     }
 
-    public static void assertApplicationDeletable(long[] usage) {
-        String left = formatRemaining(usage[0], "个角色", usage[1], "个权限");
-        if (!left.isEmpty()) {
-            throw DomainException.conflict("软件下还有 " + left + "，请先删除，或改为停用");
+    public static void assertApplicationDeletable(ApplicationUsage usage) {
+        var parts = new ArrayList<String>();
+        if (usage.roles() > 0) parts.add(usage.roles() + " 个角色");
+        if (usage.permissions() > 0) parts.add(usage.permissions() + " 个权限");
+        if (!parts.isEmpty()) {
+            throw DomainException.conflict("软件下还有 " + String.join("、", parts) + "，请先删除，或改为停用");
         }
     }
 
@@ -224,30 +243,18 @@ public final class DomainAuthorizationAggregate {
 
     public SelfAccessPreparation prepareSelfAccess(List<AssignedDomainRole> assignedRoles, Instant now) {
         var usable = new ArrayList<Long>();
-        var views = new ArrayList<Map<String, Object>>();
+        var views = new ArrayList<SelfAccessRole>();
         for (var role : assignedRoles) {
             if (role.isEffectiveAt(now)) usable.add(role.id());
-            var item = new LinkedHashMap<String, Object>();
-            item.put("id", role.id());
-            item.put("name", role.name());
-            item.put("code", role.code());
-            item.put("enabled", role.enabled());
-            item.put("expiresAt", role.expiresAtView());
-            views.add(item);
+            views.add(new SelfAccessRole(role.id(), role.name(), role.code(), role.enabled(), role.expiresAt()));
         }
         return new SelfAccessPreparation(usable, views);
     }
 
-    public Map<String, Object> buildSelfAccessResult(long userId, SelfAccessPreparation prep, List<PermissionGrant> grants) {
+    public SelfAccessReport buildSelfAccessReport(long userId, SelfAccessPreparation prep, List<PermissionGrant> grants) {
         var permissionCodes = new LinkedHashSet<String>();
         for (var grant : grants) permissionCodes.add(grant.code());
-        var result = new LinkedHashMap<String, Object>();
-        result.put("userId", userId);
-        result.put("departmentId", domain.departmentId());
-        result.put("applicationId", domain.applicationId());
-        result.put("roles", prep.roleViews());
-        result.put("permissions", new ArrayList<>(permissionCodes));
-        return result;
+        return new SelfAccessReport(userId, domain.departmentId(), domain.applicationId(), prep.roles(), new ArrayList<>(permissionCodes));
     }
 
     public DomainRoleAssessment assessSimulationRoles(
@@ -287,23 +294,15 @@ public final class DomainAuthorizationAggregate {
                 }
             }
         }
-        var views = new ArrayList<Map<String, Object>>();
+        var roles = new ArrayList<SimulatedRole>();
         for (var role : assignedRoles) {
-            var item = new LinkedHashMap<String, Object>();
-            item.put("id", role.id());
-            item.put("name", role.name());
-            item.put("code", role.code());
-            item.put("enabled", role.enabled());
-            item.put("expiresAt", role.expiresAtView());
-            item.put("expired", role.isExpiredAt(now));
-            item.put("active", active.contains(role.id()));
-            views.add(item);
+            roles.add(new SimulatedRole(role.id(), role.name(), role.code(), role.enabled(),
+                    role.expiresAt(), role.isExpiredAt(now), active.contains(role.id())));
         }
-        return new DomainRoleAssessment(issues, notices, usable, active, views);
+        return new DomainRoleAssessment(issues, notices, usable, active, roles);
     }
 
-    public Map<String, Object> buildSimulationReport(
-            Map<String, Object> userView,
+    public SimulationOutcome buildSimulationOutcome(
             Long activeDepartmentId,
             boolean applicationEnabled,
             boolean member,
@@ -313,25 +312,26 @@ public final class DomainAuthorizationAggregate {
     ) {
         var permissions = aggregateGrants(activeGrants);
         boolean eligible = assessment.issues().isEmpty();
-        var result = new LinkedHashMap<String, Object>();
-        result.put("eligible", eligible);
-        result.put("issues", assessment.issues());
-        result.put("notices", assessment.notices());
-        result.put("user", userView);
-        result.put("member", member);
-        result.put("applicationEnabled", applicationEnabled);
-        result.put("switchesDepartment", activeDepartmentId == null || activeDepartmentId != domain.departmentId());
-        result.put("roles", assessment.roleViews());
-        result.put("permissions", eligible ? new ArrayList<>(permissions.values()) : List.of());
+        Map<String, Boolean> decisions = null;
+        Boolean allowed = null;
         if (requestedPermissions != null && !requestedPermissions.isEmpty()) {
-            var decisions = new LinkedHashMap<String, Boolean>();
+            decisions = new LinkedHashMap<>();
             for (String code : requestedPermissions) {
                 decisions.put(code, eligible && permissions.containsKey(code));
             }
-            result.put("decisions", decisions);
-            result.put("allowed", decisions.values().stream().allMatch(Boolean::booleanValue));
+            allowed = decisions.values().stream().allMatch(Boolean::booleanValue);
         }
-        return result;
+        return new SimulationOutcome(
+                eligible,
+                assessment.issues(),
+                assessment.notices(),
+                member,
+                applicationEnabled,
+                activeDepartmentId == null || activeDepartmentId != domain.departmentId(),
+                assessment.roles(),
+                eligible ? new ArrayList<>(permissions.values()) : List.of(),
+                decisions,
+                allowed);
     }
 
     public static String describeSetDiff(Collection<String> added, Collection<String> removed) {
@@ -342,22 +342,16 @@ public final class DomainAuthorizationAggregate {
         return String.join("；", parts);
     }
 
-    @SuppressWarnings("unchecked")
-    private static Map<String, Map<String, Object>> aggregateGrants(List<PermissionGrant> grants) {
-        var permissions = new LinkedHashMap<String, Map<String, Object>>();
+    private static Map<String, AggregatedPermission> aggregateGrants(List<PermissionGrant> grants) {
+        var roleIdsByCode = new LinkedHashMap<String, LinkedHashSet<Long>>();
+        var firstByCode = new LinkedHashMap<String, PermissionGrant>();
         for (var grant : grants) {
-            var permission = permissions.computeIfAbsent(grant.code(), code -> {
-                var p = new LinkedHashMap<String, Object>();
-                p.put("id", grant.permissionId());
-                p.put("code", code);
-                p.put("name", grant.name());
-                p.put("resource", grant.resource());
-                p.put("action", grant.action());
-                p.put("grantedBy", new ArrayList<Long>());
-                return p;
-            });
-            ((List<Long>) permission.get("grantedBy")).add(grant.roleId());
+            firstByCode.putIfAbsent(grant.code(), grant);
+            roleIdsByCode.computeIfAbsent(grant.code(), k -> new LinkedHashSet<>()).add(grant.roleId());
         }
+        var permissions = new LinkedHashMap<String, AggregatedPermission>();
+        firstByCode.forEach((code, g) -> permissions.put(code,
+                new AggregatedPermission(g.permissionId(), code, g.name(), g.resource(), g.action(), List.copyOf(roleIdsByCode.get(code)))));
         return permissions;
     }
 }

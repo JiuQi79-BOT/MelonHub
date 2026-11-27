@@ -5,16 +5,33 @@ import com.melonhub.rbac.service.ddd.domain.model.AccessReviewAggregate;
 import com.melonhub.rbac.service.ddd.domain.value.DomainVisibility;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
  * 授权治理（角色申请审批与定期复核）领域仓储端口。
  */
 public interface GovernanceRepositoryPort {
-    PageSlice requests(Long applicationId, DomainVisibility visibility, String status, String keyword, int page, int size);
+    record AccessRequestRecord(long id, Long userId, String userName, String externalId, Long departmentId, String departmentName,
+                               long applicationId, String applicationName, Long roleId, String roleName, String roleCode,
+                               Boolean roleEnabled, String reason, Integer durationDays, String status, String requestedBy,
+                               String decidedBy, Instant decidedAt, String decisionComment, Instant grantExpiresAt,
+                               Instant createdAt) {}
 
-    Optional<Map<String, Object>> requestView(long id);
+    record ReviewSummaryRecord(long id, String name, long applicationId, String applicationName, Long departmentId, String departmentName,
+                               String status, Instant dueAt, String createdBy, Instant createdAt, String closedBy, Instant closedAt,
+                               long items, long pending, long kept, long revoked, long skipped) {}
+
+    record ReviewDetailRecord(long id, String name, long applicationId, String applicationName, Long departmentId, String departmentName,
+                              String status, Instant dueAt, String createdBy, Instant createdAt, String closedBy, Instant closedAt,
+                              String summary, long items, long pending, long kept, long revoked, long skipped) {}
+
+    record ReviewItemRecord(long id, Long userId, String userName, String externalId, Long roleId, String roleName, String roleCode,
+                            Long departmentId, String departmentName, String decision, String comment, String decidedBy,
+                            Instant decidedAt, boolean applied, boolean skipped) {}
+
+    PageSlice<AccessRequestRecord> requests(Long applicationId, DomainVisibility visibility, String status, String keyword, int page, int size);
+
+    Optional<AccessRequestRecord> requestView(long id);
 
     Optional<AccessRequestAggregate> findRequest(long id);
 
@@ -26,21 +43,23 @@ public interface GovernanceRepositoryPort {
 
     int cancelOwnRequest(long id, long userId);
 
-    int cancelPendingByColumn(String column, long targetId, String comment);
+    int cancelPendingForUser(long userId, String comment);
 
-    List<Map<String, Object>> requestsOfUser(long userId, long applicationId);
+    int cancelPendingForRole(long roleId, String comment);
+
+    List<AccessRequestRecord> requestsOfUser(long userId, long applicationId);
 
     long createReview(String name, long applicationId, Long departmentId, Instant dueAt, String actor);
 
     int insertReviewSnapshot(long reviewId, long applicationId, Long departmentId);
 
-    Optional<Map<String, Object>> reviewView(long id);
+    Optional<ReviewDetailRecord> reviewView(long id);
 
     Optional<AccessReviewAggregate> findReview(long id);
 
-    List<Map<String, Object>> reviews(Long applicationId, DomainVisibility visibility, String status);
+    List<ReviewSummaryRecord> reviews(Long applicationId, DomainVisibility visibility, String status);
 
-    PageSlice reviewItems(long reviewId, String decision, int page, int size);
+    PageSlice<ReviewItemRecord> reviewItems(long reviewId, String decision, int page, int size);
 
     Optional<String> lockReviewStatus(long reviewId);
 

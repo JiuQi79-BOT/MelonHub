@@ -3,7 +3,6 @@ package com.melonhub.rbac.service.ddd.domain.model;
 import com.melonhub.rbac.service.ddd.domain.value.CoursePermissionCatalog;
 import com.melonhub.rbac.service.ddd.domain.value.DomainException;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,6 +16,12 @@ public final class IdentityAccountAggregate {
     public record IdentityCredentialSnapshot(long userId, String username, String passwordHash) {}
 
     public record CourseAuditRecord(long id, Instant at, String type, String target, String actorNo, Long actorId, String actorName) {}
+
+    public record Profile(String subject, List<String> roles, List<String> permissions, String name, String no) {}
+
+    public record CourseAuditActor(Long id, String name, List<String> roles, boolean deleted) {}
+
+    public record CourseAuditProjection(long id, String at, CourseAuditActor actor, String type, String target) {}
 
     private final IdentityUser user;
     private final List<String> rawRoles;
@@ -47,23 +52,12 @@ public final class IdentityAccountAggregate {
         }
     }
 
-    public Map<String, Object> profileView() {
-        var response = new LinkedHashMap<String, Object>();
-        response.put("subject", user.externalId());
-        response.put("roles", CoursePermissionCatalog.normalizeRoles(rawRoles));
-        response.put("permissions", permissions);
-        response.put("name", user.name());
-        response.put("no", user.externalId());
-        return response;
+    public Profile profile() {
+        return new Profile(user.externalId(), CoursePermissionCatalog.normalizeRoles(rawRoles), permissions, user.name(), user.externalId());
     }
 
     public boolean hasUiPermission(String permission) {
         return permissions.contains(permission);
-    }
-
-    public boolean hasApiOperationPermission(String operationId) {
-        String required = CoursePermissionCatalog.requirePermissionForOperation(operationId);
-        return permissions.contains(required);
     }
 
     public void requireOrganizationReadAccess() {
@@ -78,18 +72,12 @@ public final class IdentityAccountAggregate {
         }
     }
 
-    public static Map<String, Object> projectCourseAuditEvent(CourseAuditRecord event, Map<Long, List<String>> actorRolesByUserId) {
-        var actor = new LinkedHashMap<String, Object>();
-        actor.put("id", event.actorId());
-        actor.put("name", event.actorId() == null ? event.actorNo() : event.actorName());
-        actor.put("roles", event.actorId() == null ? List.of() : actorRolesByUserId.getOrDefault(event.actorId(), List.of()));
-        actor.put("deleted", event.actorId() == null);
-        return Map.of(
-                "id", event.id(),
-                "at", event.at().toString(),
-                "actor", actor,
-                "type", event.type(),
-                "target", event.target()
-        );
+    public static CourseAuditProjection projectCourseAuditEvent(CourseAuditRecord event, Map<Long, List<String>> actorRolesByUserId) {
+        var actor = new CourseAuditActor(
+                event.actorId(),
+                event.actorId() == null ? event.actorNo() : event.actorName(),
+                event.actorId() == null ? List.of() : actorRolesByUserId.getOrDefault(event.actorId(), List.of()),
+                event.actorId() == null);
+        return new CourseAuditProjection(event.id(), event.at().toString(), actor, event.type(), event.target());
     }
 }

@@ -1,15 +1,17 @@
 package com.melonhub.rbac.service.ddd.domain.model;
 
 import com.melonhub.rbac.service.ddd.domain.value.AuditCanonicalizer;
-import java.util.LinkedHashMap;
+import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 审计哈希链聚合根：封装按封存序连续计算 SHA-256 链哈希、前缀裁剪边界以及链路篡改/断链/尾缺检测状态机。
  */
 public final class AuditHashChainAggregate {
     public record SealMetadata(long lastId, long lastSeq, String lastHash, long anchorSeq, String anchorHash, long v2FromSeq) {}
+
+    public record SealState(long lastId, long lastSeq, String lastHash, long sealedCount, long anchorSeq,
+                            Instant updatedAt, long unsealed, long total) {}
 
     public record ChainLink(long seq, String hash) {}
 
@@ -28,6 +30,20 @@ public final class AuditHashChainAggregate {
             String chainHash
     ) {}
 
+    public record VerificationResult(
+            boolean ok,
+            String problem,
+            long checked,
+            Long firstSeq,
+            Long lastSeq,
+            Long firstId,
+            Long lastId,
+            Long brokenAt,
+            Long brokenSeq,
+            boolean complete,
+            Long nextSeq
+    ) {}
+
     private final SealMetadata seal;
 
     public AuditHashChainAggregate(SealMetadata seal) {
@@ -44,7 +60,7 @@ public final class AuditHashChainAggregate {
         return firstSeqWithinRetention == null ? seal.lastSeq() : Math.min(firstSeqWithinRetention, seal.lastSeq());
     }
 
-    public Map<String, Object> verifySegment(List<AuditEventData> rows, ChainLink previousLink, int limit, Map<String, Object> sealStateView) {
+    public VerificationResult verifySegment(List<AuditEventData> rows, ChainLink previousLink, int limit) {
         String expected = previousLink != null ? previousLink.hash() : seal.anchorHash();
         long seen = previousLink != null ? previousLink.seq() : seal.anchorSeq();
         long checked = 0, firstId = -1, lastId = -1, firstSeq = -1, brokenAt = -1, brokenSeq = -1;
@@ -75,19 +91,17 @@ public final class AuditHashChainAggregate {
         if (complete && (seen != seal.lastSeq() || !AuditCanonicalizer.constantTimeEquals(expected, seal.lastHash()))) {
             problem = "TAIL_MISSING";
         }
-        var result = new LinkedHashMap<String, Object>();
-        result.put("ok", problem == null);
-        result.put("problem", problem);
-        result.put("checked", checked);
-        result.put("firstSeq", firstSeq < 0 ? null : firstSeq);
-        result.put("lastSeq", checked == 0 ? null : seen);
-        result.put("firstId", firstId < 0 ? null : firstId);
-        result.put("lastId", lastId < 0 ? null : lastId);
-        result.put("brokenAt", brokenAt < 0 ? null : brokenAt);
-        result.put("brokenSeq", brokenSeq < 0 ? null : brokenSeq);
-        result.put("complete", complete);
-        result.put("nextSeq", problem == null && !complete ? seen + 1 : null);
-        result.put("seal", sealStateView);
-        return result;
+        return new VerificationResult(
+                problem == null,
+                problem,
+                checked,
+                firstSeq < 0 ? null : firstSeq,
+                checked == 0 ? null : seen,
+                firstId < 0 ? null : firstId,
+                lastId < 0 ? null : lastId,
+                brokenAt < 0 ? null : brokenAt,
+                brokenSeq < 0 ? null : brokenSeq,
+                complete,
+                problem == null && !complete ? seen + 1 : null);
     }
 }

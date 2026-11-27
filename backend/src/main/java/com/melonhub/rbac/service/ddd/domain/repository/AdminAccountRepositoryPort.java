@@ -5,7 +5,6 @@ import com.melonhub.rbac.service.ddd.domain.model.AdminHierarchy;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -16,6 +15,16 @@ public interface AdminAccountRepositoryPort {
                            String kind, boolean root, boolean allDepartments, boolean stale) {}
 
     record ApiKeySnapshot(long keyId, long applicationId, boolean valid, Instant expiresAt) {}
+
+    record AccountSummaryRecord(long id, String username, String displayName, String role, boolean enabled,
+                                int failedAttempts, long locked, Instant lockedUntil, Instant lastLoginAt,
+                                Instant passwordChangedAt, Instant createdAt, long activeSessions, long mfaEnabled,
+                                boolean allApplications, Long parentId, String parentUsername, String kind,
+                                boolean allDepartments) {}
+
+    record AccountApplicationPair(long accountId, long applicationId) {}
+
+    record AccountDepartmentPair(long accountId, long departmentId) {}
 
     boolean accountExists(String username);
 
@@ -70,11 +79,11 @@ public interface AdminAccountRepositoryPort {
 
     List<AdminHierarchy.AdminNode> loadHierarchyNodes();
 
-    List<Map<String, Object>> listAccountRows();
+    List<AccountSummaryRecord> listAccountRows();
 
-    List<Map<String, Object>> accountApplicationPairs();
+    List<AccountApplicationPair> accountApplicationPairs();
 
-    List<Map<String, Object>> accountDepartmentPairs();
+    List<AccountDepartmentPair> accountDepartmentPairs();
 
     List<Long> accountApplications(long accountId);
 

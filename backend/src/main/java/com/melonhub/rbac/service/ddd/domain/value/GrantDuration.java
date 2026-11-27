@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -52,30 +51,5 @@ public final class GrantDuration {
             explicit.put(entry.roleId(), validateExplicitExpiry(entry.expiresAt(), now));
         }
         return explicit;
-    }
-
-    public static Map<Long, Instant> resolvePerRoleExpiries(
-            Collection<Long> targetRoleIds,
-            Map<Long, Instant> currentExpiries,
-            Integer expiresInDays,
-            List<RoleExpiryOverride> overrides,
-            Instant now
-    ) {
-        Instant base = now.truncatedTo(ChronoUnit.SECONDS);
-        Instant uniform = fromDays(expiresInDays, base);
-        var explicit = resolveExplicitMap(targetRoleIds, overrides, base);
-        var resolved = new LinkedHashMap<Long, Instant>();
-        for (long roleId : targetRoleIds) {
-            if (explicit.containsKey(roleId)) {
-                resolved.put(roleId, explicit.get(roleId));
-            } else if (uniform != null) {
-                resolved.put(roleId, uniform);
-            } else if (currentExpiries.containsKey(roleId)) {
-                resolved.put(roleId, currentExpiries.get(roleId));
-            } else {
-                resolved.put(roleId, null);
-            }
-        }
-        return resolved;
     }
 }

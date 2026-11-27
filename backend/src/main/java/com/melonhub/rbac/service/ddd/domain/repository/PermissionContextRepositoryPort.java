@@ -4,7 +4,6 @@ import com.melonhub.rbac.service.ddd.domain.model.PermissionContextAggregate;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -14,6 +13,9 @@ public interface PermissionContextRepositoryPort {
     record LockedUserContextRow(long userId, boolean enabled, Long activeDepartmentId, long contextVersion) {}
 
     record StoredContextState(long userId, long departmentId, long applicationId, long contextVersion, Instant expiresAt, boolean valid) {}
+
+    record ActiveContextRecord(long departmentId, String departmentName, long applicationId, String applicationName,
+                               Instant createdAt, Instant expiresAt, long activeRoleCount, long valid) {}
 
     Optional<LockedUserContextRow> lockUserByExternalId(String externalId);
 
@@ -31,15 +33,15 @@ public interface PermissionContextRepositoryPort {
 
     void activateRoles(String tokenHash, Collection<Long> roleIds);
 
+    record EffectiveAccess(List<PermissionContextAggregate.EffectiveRole> roles, List<String> permissions) {}
+
     Optional<StoredContextState> contextState(String tokenHash);
 
-    List<PermissionContextAggregate.EffectiveRole> effectiveRoles(long userId, String tokenHash, long departmentId, long applicationId);
-
-    List<String> effectivePermissions(long userId, String tokenHash, long departmentId, long applicationId);
+    EffectiveAccess effectiveAccess(long userId, String tokenHash, long departmentId, long applicationId);
 
     void revokeByHash(String tokenHash, long applicationId);
 
-    List<Map<String, Object>> activeContexts(long userId);
+    List<ActiveContextRecord> activeContexts(long userId);
 
     int revokeUser(long userId);
 
