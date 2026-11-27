@@ -46,7 +46,7 @@ class "JpaRbacRepositoryAdapter" as A {
 }
 interface "RoleInheritanceRepository" as RIR <<interface>> {
  + findEdgesByDomain(dept, app): List
- + replaceParents(child, dept, app, existing, parents): void
+ + replaceParents(child, dept, app, existing, parents, roleRef): void
 }
 class "RoleInheritance" as RI {
  - id: RoleInheritanceId

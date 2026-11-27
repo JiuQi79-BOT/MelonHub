@@ -37,7 +37,7 @@ interface "RoleInheritanceRepository" as RIR <<interface>> {
  + findEdgesByDomain(dept, app): List
  + {static} expandEdges(roots, edges): List
  + mapExpandedToDirectActiveRoles(directRoles, dept, app): Map
- + replaceParents(child, dept, app, existing, parents): void
+ + replaceParents(child, dept, app, existing, parents, roleRef): void
 }
 class "RoleInheritance" as RI {
  - id: RoleInheritanceId

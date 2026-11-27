@@ -32,6 +32,7 @@ interface "AdminAccountRepositoryPort" as R <<interface>> {
 }
 class "JpaAdminAccountRepositoryAdapter" as A {
  - accounts: AdminAccountRepository
+ - adminRoles: AdminRoleRepository
  - sessions: AdminSessionRepository
  --
  + loadHierarchyNodes(): List<AdminNode>

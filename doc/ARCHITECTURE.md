@@ -232,7 +232,7 @@ flowchart TB
 | `service/structured/<biz>/` | 纯结构化实现：13 个 `Structured*Service` + 纯静态过程校验集 `StructuredAdminHierarchyProcedures`（`melonhub.backend-strategy=structured`，默认） |
 | `service/ddd/domain/` | 不依赖框架的纯 Java 领域层：`value/`、`model/`、`repository/`（11 个领域仓储与网关端口） |
 | `service/ddd/application/<biz>/` | 13 个 DDD 应用服务 `Ddd*Service` 与边界异常映射 `DddBoundary`（`melonhub.backend-strategy=ddd`） |
-| `infrastructure/persistence/` | `entity/`（JPA 实体，每张表一个，复合主键用 `@EmbeddedId`）、`repository/`（Spring Data JPA 仓储 + `*RepositoryCustom`/`*RepositoryImpl` + `JpaQuery`，无独立 DAO 层）与 `gateway/`（9 个 `Jpa*Adapter`） |
+| `infrastructure/persistence/` | `entity/`（JPA 实体，每张表一个，复合主键用 `@EmbeddedId`，9 个分配主键实体实现 `Persistable<ID>`）、`repository/`（25 个纯 Spring Data JPA 仓储接口 + `RepositorySupport`，全面基于 `@Query`/`@Lock`/`@Modifying`/`Pageable`/`Limit`，零 `EntityManager`、无独立 DAO 层）与 `gateway/`（9 个 `Jpa*Adapter`） |
 | `infrastructure/gateway/` | `SpringPlatformGatewaysAdapter` 平台网关适配器（缓存、加密、HTTP Webhook、JWT、指标） |
 | `infrastructure/identity/` | `IdentityTokenService`：统一身份纯 JDK HS256 JWT 签发与常量时间验签工具 |
 | `infrastructure/cache/` | `PermissionCache`：Redis 缓存、失效协议、熔断与恢复 |

@@ -430,9 +430,8 @@ mvn -f backend/pom.xml test "-Dtest=*UnitTest"
 
 ## 7. 联调边界与待演进事项（对标 `CourseProjectMgt`）
 
-为便于与教师示例平台 [CourseProjectMgt](https://gitee.com/mingqcn/course-project-mgt) 持续演进，记录当前 4 项已知接口与加固边界（需按实际调用和验证范围判断，不等同本轮必补缺陷）：
+为便于与教师示例平台 [CourseProjectMgt](https://gitee.com/mingqcn/course-project-mgt) 持续演进，记录当前 3 项已知接口与加固边界（需按实际调用和验证范围判断，不等同本轮必补缺陷；注：此前记录的模糊检索通配符转义已在纯 Spring Data JPA 重构中统一通过 `RepositorySupport.like()` + `escape '!'` 覆盖全部检索接口）：
 
 1. **外部审计日志写入接口（`POST /auth/audit-logs`）**：MelonHub 已实现 `GET /auth/audit-logs`（`R25`）按授权部门查询课程业务事件；`CourseProjectMgt` 的 `UnifiedAuditClient` 另定义了事务提交后写入接口 `POST /auth/audit-logs`（带 `requestId` 幂等键及 `before/after/termId/courseId/classId` 扩展字段），后续可在 MelonHub 补齐写入入口与扩展列以打通闭环。
 2. **课程 API `operationId` 映射边界**：`resetCourseToApplication`、`setClassTeachers`、`listUsers` 未加入当前映射；2026-11-24 已核对老师系统身份客户端和实际运行镜像中的 499 个应用类，未发现这些操作名或 `/auth/api-permissions` 调用。当前课程后端通过 `/auth/me` 获取权限集合。此处不是当前接入缺陷，本次不补映射；换版后重新核对。见 [课程权限接入核对](课程权限接入核对.md)。
 3. **统一身份登录防爆破与过期会话清理**：管理后台 `/api/auth/login` 已具备 IP 限流、5 次失败锁定与 `dummyHash` 防枚举；后续可将 `/auth/login` 同样接入 `GlobalRateLimiter` 与失败锁定，并在 `MaintenanceUseCase`（`StructuredMaintenanceService` / `DddMaintenanceService`）补充对过期/已撤销 `identity_sessions` 的分批清理。
-4. **模糊检索通配符转义统一**：`AuditEventRepositoryImpl` 的课程审计查询已使用 `JpaQuery.like()` + `escape '!'`，后续可将部门与成员搜索查询同步改为相同转义方式。

@@ -37,7 +37,7 @@ group 写事务（TransactionTemplate）
  alt 自身、跨域或循环继承
   S --> C: ApiException (403/409)
  else 合法
-  S -> RIR: replaceParents(role, dept, app, existing, parentIds)
+  S -> RIR: replaceParents(role, dept, app, existing, parentIds, roles::getReferenceById)
   activate RIR
   deactivate RIR
   S -> Cache: touchDomain(dept, app)
